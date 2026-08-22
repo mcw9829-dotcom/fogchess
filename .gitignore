@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# 로그 / 런타임
+*.log
+out.log
+err.log
+
+# OS / 에디터
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -81,7 +81,7 @@
   .capture::before { content: ""; position: absolute; inset: 4%; border-radius: 50%;
     border: 4px solid rgba(56,140,58,.85); z-index: 1; box-sizing: border-box; }
   .capture:hover::before { border-width: 6px; }
-  /* 공격 범위(비숍 곡사·전차 돌파): 반투명 빨강 / 실제 착탄칸은 진한 빨강 */
+  /* 공격 표적(비숍 저격·전차 돌파): 반투명 하늘색 / 실제 착탄칸은 진한 빨강 */
   .aim { cursor: crosshair; }
   .fireReach, .barrageReach { box-shadow: inset 0 0 0 999px rgba(35,165,230,.32); }   /* 사거리=하늘색(우드 보색이라 잘 보임) */
   .splash, .lineHit { box-shadow: inset 0 0 0 999px rgba(214,48,44,.5) !important; }  /* 착탄=진한 빨강 */
@@ -203,7 +203,7 @@
       </div>
     </div>
     <div class="help" style="margin-top:8px">
-      🌲 숲 = 시야·이동·직사 차단(곡사만 넘김) · 🌿 부쉬 = 매복지(속의 기물은 상대에게 안 보임 — 들어가서 잡거나 룩/비숍 포격으로만 확인) · 어두운 칸 = 안개
+      🌲 숲 = 시야·이동·사격 모두 차단 · 🌿 부쉬 = 매복지(속의 기물은 상대에게 안 보임 — 들어가서 잡거나 룩 돌파사격으로 수색) · 어두운 칸 = 안개
     </div>
   </div>
 
@@ -227,8 +227,8 @@
       <b>기물 (14개: 룩2·나이트2·비숍2·폰7·킹1)</b><br>
       ♟ 폰: 첫수 2칸 · 앞·좌·우·앞대각 1칸(후퇴 불가) · 시야 1<br>
       ♞ 나이트: 체스와 동일 · <b>시야 2</b>(정찰)<br>
-      ♝ 비숍(야포): 대각 2 이동 / <b>곡사 포격</b>(원형 사거리·X자 5칸, 숲 넘김)<br>
-      ♜ 룩(전차): 상하좌우 3칸 / <b>돌파 사격</b>(직선 3칸 관통, 숲에 막힘)<br>
+      ♝ 비숍(저격수): 대각 2 이동 / <b>단일 저격</b>(사거리 5, <b>시야에 든 적만</b>·숨으면 못 맞힘, 쏘면 위치 노출)<br>
+      ♜ 룩(전차): 상하좌우 3칸 이동 / <b>돌파 사격</b>(<b>십자 4칸</b> 관통, 숲에 막힘)<br>
       ♚ 킹: 8방향 1칸 · <b>목숨 1</b> · 비숍·전차는 공격 시 위치 노출<br>
     </div>
   </div>
@@ -242,14 +242,23 @@
         <li>🌫️ <b>안개</b>: 내 기물 주변만 보인다. 기물이 사라지면 그 자리 시야도 사라짐.</li>
         <li>🧭 <b>배치</b>: 시작 60~70초 동안 내 진영 3줄에 기물을 놓는다(왕을 잘 숨기기!).</li>
         <li>⚔️ <b>승리</b>: 적 왕을 한 번 맞히면 끝(킹 목숨 1).</li>
-        <li>🌲 <b>숲</b>=시야·이동·직사 차단(곡사만 넘김).</li>
-        <li>🌿 <b>부쉬(매복지)</b>=들어갈 수 있고, 그 안의 기물은 상대에게 <b>보이지 않음</b>(인접·시야로도 안 보임). 확인하려면 <b>부쉬로 들어가 잡거나</b> 룩/비숍 <b>포격으로 수색</b>. 왕 숨기기·매복에 최적(단, 부쉬 안에서 공격하면 내 위치 노출).</li>
+        <li>🌲 <b>숲</b>=시야·이동·사격 모두 차단.</li>
+        <li>🌿 <b>부쉬(매복지)</b>=들어갈 수 있고, 그 안의 기물은 상대에게 <b>보이지 않음</b>(인접·시야로도 안 보임). 확인하려면 <b>부쉬로 들어가 잡거나</b> 룩 <b>돌파사격으로 수색</b>. 왕 숨기기·매복에 최적(단, 부쉬 안에서 공격하면 내 위치 노출).</li>
       </ul>
       <div id="helpPieces" class="hpieces"></div>
-      <p class="note">💥 비숍·🚜 전차는 <b>공격하면 내 위치가 적에게 노출</b>돼요 — 쏘는 타이밍이 곧 심리전.</p>
+      <p class="note">🎯 비숍·🚜 전차는 <b>공격하면 내 위치가 적에게 노출</b>돼요 — 쏘는 타이밍이 곧 심리전.</p>
     </div>
   </div>
 
+  <div id="promoModal" class="modal" style="display:none">
+    <div class="modalCard" style="max-width:320px; text-align:center">
+      <h2>♟ 폰 승격</h2>
+      <p class="note" style="margin:0 0 12px">끝 줄에 도달했어요 — 무엇으로 바꿀까요?</p>
+      <div id="promoBtns" style="display:flex; gap:12px; justify-content:center"></div>
+    </div>
+  </div>
+
+<script src="/sound.js"></script>
 <script>
 let ROOM = null, TOKEN = '', COLOR = null, VIEW = null;
 let SEL = null, MOVES = [], canFire = false, fireCells = [], canBarrage = false, barrageCells = [];
@@ -265,37 +274,7 @@ function pieceSrc(t, o){
   return `/img/Chess_${letter}${o === 'W' ? 'l' : 'd'}t45.svg`;
 }
 
-// ---------- 사운드 ----------
-let AC = null;
-function ac(){ if(!AC){ try{ AC = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } return AC; }
-function tone(freq, dur, type, vol, slideTo){
-  const c = ac(); if(!c) return;
-  const o = c.createOscillator(), g = c.createGain();
-  o.type = type||'sine'; o.frequency.value = freq;
-  if(slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, c.currentTime+dur);
-  g.gain.value = vol||0.2; g.gain.exponentialRampToValueAtTime(0.001, c.currentTime+dur);
-  o.connect(g).connect(c.destination); o.start(); o.stop(c.currentTime+dur);
-}
-function noise(dur, vol){
-  const c = ac(); if(!c) return;
-  const b = c.createBuffer(1, c.sampleRate*dur, c.sampleRate);
-  const d = b.getChannelData(0);
-  for(let i=0;i<d.length;i++) d[i] = (Math.random()*2-1)*Math.pow(1-i/d.length,2);
-  const s = c.createBufferSource(); s.buffer = b;
-  const g = c.createGain(); g.gain.value = vol||0.4;
-  s.connect(g).connect(c.destination); s.start();
-}
-const SND = {
-  move:    ()=> tone(320, .08, 'triangle', .18),
-  place:   ()=> tone(440, .05, 'square', .12),
-  capture: ()=>{ tone(180,.12,'sawtooth',.22,90); noise(.15,.25); },
-  fire:    ()=>{ tone(90,.5,'sawtooth',.3,40); noise(.5,.5); },
-  barrage: ()=>{ for(let i=0;i<4;i++) setTimeout(()=>tone(140,.06,'square',.16),i*55); noise(.35,.4); },
-  kill:    ()=>{ tone(70,.7,'sawtooth',.35,30); noise(.7,.6); setTimeout(()=>tone(520,.3,'square',.2),120); },
-  victory: ()=>{ [523,659,784,1047].forEach((f,i)=>setTimeout(()=>tone(f,.2,'square',.16),i*95)); },
-  defeat:  ()=>{ [392,330,262].forEach((f,i)=>setTimeout(()=>tone(f,.28,'sawtooth',.16),i*130)); },
-  drawend: ()=>{ tone(440,.18,'triangle',.14); setTimeout(()=>tone(392,.24,'triangle',.14),150); },
-};
+// 사운드(ac()/tone()/noise()/SND)는 sound.js 로 분리됨 — 소리 수정은 그 파일에서.
 
 async function api(path, opts){ return (await fetch(path, opts)).json(); }
 function post(path, body){ return api(path, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{})}); }
@@ -346,9 +325,17 @@ async function doBarrage(r,c){ await act({type:'barrage', pid:SEL.id, r, c}); cl
 async function placePiece(r,c){ ac(); await act({type:'place', pid:SEL.id, r, c}); if(soundOn) SND.place(); SEL=null; poll(); }
 async function setReady(v){ await act({type:'ready', value:v}); poll(); }
 async function rematch(){ await act({type:'rematch'}); clearSel(); lastFx=0; feedSeen=0; prevPos={}; overShown=null; poll(); }
+async function doPromote(t){ await act({type:'promote', choice:t}); document.getElementById('promoModal').style.display='none'; poll(); }
+async function doResign(){ if(!confirm('정말 기권할까요? 상대가 승리합니다.')) return; await act({type:'resign'}); clearSel(); poll(); }
+async function leaveRoom(){
+  if(!confirm('이 방에서 나갈까요?')) return;
+  if(ROOM) localStorage.removeItem('fog_'+ROOM);
+  ROOM=null; TOKEN=''; COLOR=null; VIEW=null; location.hash='';
+  clearSel(); prevPos={}; overShown=null; lastFx=0; feedSeen=0;
+  await join(); poll();
+}
 function showMsg(m){ const e=document.getElementById('msg'); e.textContent=m||''; setTimeout(()=>{ if(e.textContent===m) e.textContent=''; }, 2500); }
 function inList(l,r,c){ return l.some(([a,b])=>a===r&&b===c); }
-function splashCells(r,c){ return [[r,c],[r-1,c-1],[r-1,c+1],[r+1,c-1],[r+1,c+1]]; }
 
 // ---------- 사운드 on/off ----------
 let soundOn = localStorage.getItem('fog_sound') !== '0';
@@ -459,13 +446,13 @@ function terrainEdge(r,c,t){
 function barrageLine(tr,tc){
   if(!SEL) return [];
   const dr0 = tr-SEL.r, dc0 = tc-SEL.c;
-  if((dr0===0)===(dc0===0)) return [];
+  if((dr0===0)===(dc0===0)) return [];           // 상하좌우 직선만(대각 불가)
   const dr = dr0===0?0:(dr0>0?1:-1), dc = dc0===0?0:(dc0>0?1:-1);
   const out=[];
-  for(let d=1; d<=3; d++){
+  for(let d=1; d<=4; d++){                        // 사거리 4
     const r=SEL.r+dr*d, c=SEL.c+dc*d;
     if(r<0||r>11||c<0||c>11) break;
-    if(VIEW.grid[r][c].t===1) break;
+    if(VIEW.grid[r][c].t===1) break;             // 숲에 막힘
     out.push([r,c]);
   }
   return out;
@@ -534,6 +521,23 @@ function renderOverlay(){
   ac(); if(soundOn) (SND[snd]||function(){})();
 }
 
+function renderPromo(me, solo){
+  const pm = document.getElementById('promoModal');
+  const show = VIEW && VIEW.promote && COLOR!=='spectator' && (solo || VIEW.turn===me);
+  if(!show){ pm.style.display='none'; return; }
+  if(pm.style.display!=='flex'){                 // 새로 뜰 때만 버튼 구성(깜빡임 방지)
+    const box=document.getElementById('promoBtns'); box.innerHTML='';
+    [['R','전차'],['N','나이트'],['B','비숍']].forEach(([t,name])=>{
+      const b=document.createElement('button');
+      b.style.cssText='display:flex; flex-direction:column; align-items:center; gap:4px; padding:10px 14px;';
+      b.innerHTML=`<img src="${pieceSrc(t, me)}" style="width:42px;height:42px" draggable="false"><span style="font-size:12px">${name}</span>`;
+      b.onclick=()=>doPromote(t);
+      box.appendChild(b);
+    });
+  }
+  pm.style.display='flex';
+}
+
 function render(){
   if(!VIEW) return;
   const me = VIEW.yourColor;                 // 조작 중인 색(솔로는 차례마다 바뀜)
@@ -596,14 +600,14 @@ function render(){
   if(SEL && VIEW.phase==='play' && VIEW.turn===me){
     if(canFire){
       const b = document.createElement('button');
-      b.textContent = attackMode==='fire' ? '💥 곡사 포격 ON — 목표 클릭' : '💥 곡사 포격 (원형 사거리)';
+      b.textContent = attackMode==='fire' ? '🎯 저격 ON — 표적 클릭' : '🎯 비숍 저격 (시야 내 사거리 5)';
       b.className = attackMode==='fire' ? 'fire' : 'attn';   // 미선택이면 펄스로 유도
       b.onclick = ()=>{ ac(); attackMode = attackMode==='fire'?null:'fire'; hoverCell=null; render(); };
       ctr.appendChild(b);
     }
     if(canBarrage){
       const b = document.createElement('button');
-      b.textContent = attackMode==='barrage' ? '🚜 돌파 사격 ON — 방향 클릭' : '🚜 돌파 사격 (직선 3칸)';
+      b.textContent = attackMode==='barrage' ? '🚜 돌파 사격 ON — 방향 클릭' : '🚜 돌파 사격 (십자 4칸)';
       b.className = attackMode==='barrage' ? 'tank' : 'attn';
       b.onclick = ()=>{ ac(); attackMode = attackMode==='barrage'?null:'barrage'; hoverCell=null; render(); };
       ctr.appendChild(b);
@@ -611,8 +615,8 @@ function render(){
     if((canFire||canBarrage) && !attackMode){
       const ah = document.createElement('div'); ah.className='help'; ah.style.marginTop='2px';
       ah.textContent = canFire
-        ? '💥 이 비숍은 포격 가능 — 위 버튼을 누르고 하늘색 사거리에서 목표를 클릭'
-        : '🚜 이 전차는 돌파 사격 가능 — 위 버튼을 누르고 방향(하늘색 직선)을 클릭';
+        ? '🎯 이 비숍은 저격 가능 — 위 버튼 누르고 하늘색 표적(보이는 적)을 클릭. 숨은 적은 못 맞힘'
+        : '🚜 이 전차는 십자 돌파 사격 가능 — 위 버튼 누르고 하늘색 방향(상하좌우)을 클릭';
       ctr.appendChild(ah);
     }
   }
@@ -622,6 +626,10 @@ function render(){
     mkBtn(soundOn ? '🔊 소리 켜짐' : '🔇 소리 꺼짐',
       ()=>{ soundOn=!soundOn; localStorage.setItem('fog_sound', soundOn?'1':'0'); if(soundOn) ac(); render(); });
   }
+  if(COLOR!=='spectator' && VIEW.phase!=='over' && VIEW.bothJoined){
+    mkBtn('🏳 기권', doResign, 'fire');
+  }
+  if(ROOM){ mkBtn('🚪 나가기', leaveRoom); }
   const coach = document.createElement('div'); coach.className='help'; coach.style.marginTop='6px';
   coach.textContent = coachText(me, solo);
   ctr.appendChild(coach);
@@ -629,6 +637,7 @@ function render(){
   document.getElementById('log').innerHTML = VIEW.log.map(x=>'· '+x).join('<br>');
   renderFeed();
   renderOverlay();
+  renderPromo(me, solo);
 
   // 보드
   boardEl.innerHTML = '';
@@ -681,7 +690,7 @@ function render(){
       }
     }
 
-    if(canSetup && r>=z0 && r<=z1 && cell.t===0){
+    if(canSetup && r>=z0 && r<=z1 && (cell.t===0 || cell.t===3)){   // 빈 땅·부쉬 배치 가능(숲·강은 불가)
       const rr=r, cc=c;
       d.ondragover = (e)=>e.preventDefault();
       d.ondrop = (e)=>{ e.preventDefault(); if(SEL) placePiece(rr, cc); };
@@ -722,9 +731,7 @@ function paintAim(){
   document.querySelectorAll('.splash,.lineHit').forEach(e=>e.classList.remove('splash','lineHit'));
   if(!SEL || !hoverCell) return;
   if(attackMode==='fire'){
-    splashCells(hoverCell[0], hoverCell[1]).forEach(([r,c])=>{
-      if(r>=0&&r<12&&c>=0&&c<12){ const el=boardEl.children[r*12+c]; if(el) el.classList.add('splash'); }
-    });
+    const [r,c]=hoverCell; const el=boardEl.children[r*12+c]; if(el) el.classList.add('splash');  // 단일 타일 저격
   } else if(attackMode==='barrage'){
     barrageLine(hoverCell[0], hoverCell[1]).forEach(([r,c])=>{
       const el=boardEl.children[r*12+c]; if(el) el.classList.add('lineHit');
@@ -752,10 +759,10 @@ function fillHelpPieces(){
   const box = document.getElementById('helpPieces'); if(box.childElementCount) return;
   const rows = [
     ['P','폰 — 앞·좌·우·앞대각 1칸(첫수 2칸), 후퇴 불가. 수비 라인.'],
-    ['N','나이트 — 체스와 동일, 시야 2칸. 정찰의 핵심.'],
-    ['B','비숍(야포) — 대각 2 이동 / 곡사 포격(원형 사거리, X자 5칸, 숲 넘김).'],
-    ['R','전차(룩) — 상하좌우 3칸 / 돌파 사격(직선 3칸 관통, 숲에 막힘).'],
-    ['K','킹 — 8방향 1칸. 목숨 1. 이걸 지키고, 적 것을 노려라.'],
+    ['N','나이트 — 체스와 동일, 시야 2칸. 정찰의 핵심(비숍의 천적).'],
+    ['B','비숍(저격수) — 대각 2 이동 / 단일 저격(사거리 5, 시야에 든 적만·쏘면 노출).'],
+    ['R','전차(룩) — 상하좌우 3칸 이동 / 돌파 사격(십자 4칸, 숲에 막힘).'],
+    ['K','킹 — 8방향 1칸 이동, 시야 3칸(정찰). 목숨 1. 이걸 지키고, 적 것을 노려라.'],
   ];
   box.innerHTML = rows.map(([t,desc])=>
     `<div class="hp"><img src="${pieceSrc(t,COLOR==='B'?'B':'W')}"><span>${desc}</span></div>`).join('');

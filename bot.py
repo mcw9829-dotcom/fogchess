@@ -8,15 +8,15 @@ AI 봇 상대 — 서버가 '봇 차례'에 이 모듈을 불러 자동으로 �
 우선순위(choose_action):
   1) 보이는 적 킹을 잡는/포격하는 수 → 무조건(게임 끝)
   2) 내 킹이 위협받으면 → 위협 기물 제거 or 안전한 칸(부쉬)으로 회피
-  3) 그 외 공격(멜리 캡처 / 비숍 곡사 / 전차 돌파사격, 값진 표적 우선)
-     + 기억한 적 킹 위치를 비숍으로 포격 수색
+  3) 그 외 공격(멜리 캡처 / 비숍 단일 저격 / 전차 8방향 돌파사격, 값진 표적 우선)
   4) 표적 없음 → 전진·정찰(기억한 적 위치로 추격, 나이트 우선, 킹은 숨김)
 
 기억(st['botmem']): {(r,c): {'t':종류,'seen':턴}} — 시야에 든 칸은 매 턴 갱신·삭제.
 """
-from config import BISHOP_RANGE, ROOK_RANGE, ZONE
+from config import BISHOP_RANGE, BISHOP_MOVE, ROOK_FIRE, ZONE
 from game_map import FORESTS, BUSHES, in_board
 import pieces
+from pieces import DIRS4
 
 VALUE = {'K': 1000, 'R': 5, 'B': 4, 'N': 3, 'P': 1}
 KNIGHT = [(-2, -1), (-2, 1), (2, -1), (2, 1), (-1, -2), (-1, 2), (1, -2), (1, 2)]
@@ -53,18 +53,9 @@ def _my_king(st, me):
                  if p['o'] == me and p['t'] == 'K' and p['alive']), None)
 
 
-def _splash_safe(st, me, tr, tc):
-    """비숍 곡사 착탄(X자 5칸)에 아군이 없으면 True — 자책 방지."""
-    for dr, dc in pieces.SPLASH:
-        q = pieces.piece_at(st, tr + dr, tc + dc)
-        if q is not None and q['o'] == me:
-            return False
-    return True
-
-
 def _first_piece_in_line(st, p, dr, dc):
     """전차 사격 방향으로 처음 만나는 기물 (r, c, piece). 숲/보드밖이면 None."""
-    for dist in range(1, ROOK_RANGE + 1):
+    for dist in range(1, ROOK_FIRE + 1):
         r, c = p['r'] + dr * dist, p['c'] + dc * dist
         if not in_board(r, c) or (r, c) in FORESTS:
             return None
@@ -125,15 +116,13 @@ def _threat_cells(known, me):
                 for dc in (-1, 0, 1):
                     if dr or dc:
                         danger.add((r + dr, c + dc))
-        elif t == 'B':                                 # 곡사: 반경 BISHOP_RANGE 원 안
-            R = BISHOP_RANGE
-            for dr in range(-R, R + 1):
-                for dc in range(-R, R + 1):
-                    if dr * dr + dc * dc <= R * R:
-                        danger.add((r + dr, c + dc))
-        elif t == 'R':                                 # 돌파사격: 4방향 직선(숲에 막힘)
-            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                for d in range(1, ROOK_RANGE + 1):
+        elif t == 'B':                                 # 저격은 시야 필요 → 근접(대각 이동 2칸)만 위협 모델
+            for dr, dc in [(-1, -1), (-1, 1), (1, -1), (1, 1)]:
+                for d in range(1, BISHOP_MOVE + 1):
+                    danger.add((r + dr * d, c + dc * d))
+        elif t == 'R':                                 # 돌파사격: 십자 직선(숲에 막힘)
+            for dr, dc in DIRS4:
+                for d in range(1, ROOK_FIRE + 1):
                     rr, cc = r + dr * d, c + dc * d
                     if not in_board(rr, cc) or (rr, cc) in FORESTS:
                         break
@@ -179,15 +168,14 @@ def _attack_candidates(st, me, enemies):
             if (er, ec) in pieces.legal_moves(st, p['id']):
                 cands.append((val * 10 + kbonus - VALUE[p['t']] * 0.1,
                               'move', p['id'], er, ec))
-        if et == 'K' or val >= 3:                        # 값진 표적만 노출 감수하고 곡사
+        if et == 'K' or val >= 3:                        # 값진 표적을 비숍 저격(사거리5·시야에 든 적)
             for p in mine:
-                if p['t'] == 'B' and (er - p['r']) ** 2 + (ec - p['c']) ** 2 <= BISHOP_RANGE ** 2 \
-                        and _splash_safe(st, me, er, ec):
+                if p['t'] == 'B' and (er - p['r']) ** 2 + (ec - p['c']) ** 2 <= BISHOP_RANGE ** 2:
                     cands.append((val * 9 + kbonus, 'fire', p['id'], er, ec))
-    for p in mine:                                       # 전차 돌파사격(방향 첫 기물이 보이는 적)
+    for p in mine:                                       # 전차 돌파사격(십자 첫 기물이 보이는 적)
         if p['t'] != 'R':
             continue
-        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+        for dr, dc in DIRS4:
             hit = _first_piece_in_line(st, p, dr, dc)
             if hit:
                 r, c, q = hit
@@ -197,20 +185,6 @@ def _attack_candidates(st, me, enemies):
                         cands.append((v * 9 + (500 if q['t'] == 'K' else 0),
                                       'barrage', p['id'], r, c))
     return cands
-
-
-def _memory_king_shots(st, me, remembered):
-    """기억한 적 킹 위치(신선한 것)를 비숍 곡사로 수색 포격 — 부쉬에 숨은 킹 노림."""
-    out = []
-    now = st['turnCount']
-    for (r, c, t, seen) in remembered:
-        if t != 'K' or now - seen > MEM_TTL:
-            continue
-        for p in _mine(st, me):
-            if p['t'] == 'B' and (r - p['r']) ** 2 + (c - p['c']) ** 2 <= BISHOP_RANGE ** 2 \
-                    and _splash_safe(st, me, r, c):
-                out.append((1000 * 8, 'fire', p['id'], r, c))   # 승리수(9500)보단 낮게(빗나갈 수 있음)
-    return out
 
 
 def _best(cands):
@@ -227,7 +201,7 @@ def choose_action(st, me):
     remembered = _remembered(st, me)                # 기억한 적(안 보이는 것 포함)
     known = enemies + [(r, c, t) for (r, c, t, _) in remembered]
 
-    cands = _attack_candidates(st, me, enemies) + _memory_king_shots(st, me, remembered)
+    cands = _attack_candidates(st, me, enemies)
 
     # 1) 보이는 적 킹을 잡는 수 → 무조건
     win = [x for x in cands if x[0] >= WIN_SCORE]
@@ -288,6 +262,9 @@ def _advance(st, me, enemies, remembered):
 # ------------------------- 실행 -------------------------
 def act(st, me):
     """봇이 한 수 둔다(적용은 pieces.apply_*에 위임). 둔 수가 있으면 True."""
+    if st.get('promote') and st['promote']['color'] == me:   # 승격 대기면 전차로 승격
+        pieces.apply_promote(st, me, 'R')
+        return True
     action = choose_action(st, me)
     if not action:
         return False

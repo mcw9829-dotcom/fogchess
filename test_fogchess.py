@@ -264,14 +264,13 @@ def test_bot_king_evades_threat():
     assert act[0] == 'move' and act[1] == 'B_K1' and (act[2], act[3]) not in danger
 
 
-def test_bot_memory_king_shot():
+def test_bot_snipes_visible_enemy():
     st = bare()
-    st['turn'] = 'B'
-    put(st, 'B_K1', 'B', 'K', 1, 1)                 # 내 킹 안전
-    put(st, 'B_B1', 'B', 'B', 5, 5)                 # 비숍
-    put(st, 'W_K1', 'W', 'K', 5, 7)                 # 안 보이는 적 킹
-    st['botmem'] = {'B': {(5, 7): {'t': 'K', 'seen': 0}}}
-    assert bot.choose_action(st, 'B') == ('fire', 'B_B1', 5, 7)
+    st['turn'] = 'W'
+    put(st, 'W_B1', 'W', 'B', 5, 5)                 # 비숍
+    put(st, 'W_N1', 'W', 'N', 5, 7)                 # 정찰(시야2)로 (5,8)을 봄
+    put(st, 'B_R1', 'B', 'R', 5, 8)                 # 사거리 안 + 보이는 값진 적
+    assert bot.choose_action(st, 'W') == ('fire', 'W_B1', 5, 8)
 
 
 def test_bot_setup_hides_king_in_bush():
@@ -280,3 +279,71 @@ def test_bot_setup_hides_king_in_bush():
     bot.setup_and_ready(st, 'B')
     k = next(p for p in st['pieces'].values() if p['o'] == 'B' and p['t'] == 'K')
     assert (k['r'], k['c']) == (2, 5) and st['ready']['B'] is True
+
+
+# ------------------------- 신규 규칙 -------------------------
+def test_king_vision_3():
+    st = bare()
+    put(st, 'W_K1', 'W', 'K', 5, 5)                 # 킹 시야 반경 3
+    vis = pieces.visible_cells(st, 'W')
+    assert (5, 8) in vis and (2, 5) in vis          # 3칸까지 보임
+    assert (5, 9) not in vis                        # 4칸은 안 보임
+
+
+def test_bishop_snipe_needs_vision():
+    st = bare()
+    put(st, 'W_B1', 'W', 'B', 5, 5)                 # 비숍 시야 1
+    put(st, 'B_R1', 'B', 'R', 5, 9)                 # 사거리 안(4)이지만 안 보임
+    ok, _ = pieces.apply_fire(st, 'W', 'W_B1', 5, 9)
+    assert not ok                                   # 못 봐서 저격 불가
+    put(st, 'W_N1', 'W', 'N', 5, 8)                 # 정찰이 (5,9)를 봄
+    ok, _ = pieces.apply_fire(st, 'W', 'W_B1', 5, 9)
+    assert ok and not st['pieces']['B_R1']['alive']  # 이제 저격 성공
+
+
+def test_bishop_snipe_single_tile_only():
+    st = bare()
+    put(st, 'W_B1', 'W', 'B', 5, 5)
+    tgt = put(st, 'B_N1', 'B', 'N', 5, 6)           # 표적(인접·보임)
+    near = put(st, 'B_R1', 'B', 'R', 4, 5)          # 옆칸 — 옛 X자였다면 같이 죽었음
+    pieces.apply_fire(st, 'W', 'W_B1', 5, 6)
+    assert not tgt['alive'] and near['alive']       # 딱 한 칸만 명중
+
+
+def test_barrage_cross_only_range4():
+    st = bare()                                     # 대각선은 사격 불가(십자 전용)
+    put(st, 'W_R1', 'W', 'R', 5, 5)
+    put(st, 'B_P1', 'B', 'P', 7, 7)
+    ok, _ = pieces.apply_barrage(st, 'W', 'W_R1', 7, 7)
+    assert not ok and st['pieces']['B_P1']['alive']
+    st = bare()                                     # 직선 4칸은 명중
+    put(st, 'W_R1', 'W', 'R', 5, 5)
+    put(st, 'B_P1', 'B', 'P', 5, 9)
+    ok, _ = pieces.apply_barrage(st, 'W', 'W_R1', 5, 9)
+    assert ok and not st['pieces']['B_P1']['alive']
+
+
+def test_pawn_promotion_flow():
+    st = bare()
+    st['turn'] = 'W'
+    put(st, 'W_P1', 'W', 'P', 1, 5, moved=True)
+    ok, _ = pieces.apply_move(st, 'W', 'W_P1', 0, 5)   # 끝줄 도달
+    assert ok and st['promote'] and st['promote']['color'] == 'W'
+    assert st['turn'] == 'W'                            # 승격 전엔 턴 유지
+    ok, _ = pieces.apply_promote(st, 'W', 'R')
+    assert ok and st['pieces']['W_P1']['t'] == 'R'
+    assert st['promote'] is None and st['turn'] == 'B'  # 승격 후 턴 넘어감
+
+
+def test_promotion_rejects_bad_choice():
+    st = bare()
+    st['promote'] = {'pid': 'W_P1', 'color': 'W'}
+    assert not pieces.apply_promote(st, 'W', 'K')[0]    # 킹으로는 승격 불가
+    assert not pieces.apply_promote(st, 'W', 'Q')[0]    # 퀸 없음
+
+
+def test_resign_gives_win_to_opponent():
+    st = pieces.new_game()
+    st['phase'] = 'play'
+    ok, _ = pieces.apply_resign(st, 'W')
+    assert ok and st['phase'] == 'over' and st['winner'] == 'B'

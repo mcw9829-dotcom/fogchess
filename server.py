@@ -22,7 +22,7 @@ from config import (PORT, CODE_ALPHABET, SEAT_TIMEOUT, SETUP_SECONDS, USE_PERLIN
 from game_map import FORESTS, RIVERS, BUSHES, terrain_to_ascii
 from pieces import (new_game, legal_moves, fire_cells, barrage_reach,
                     apply_move, apply_fire, apply_barrage, apply_place, autoplace,
-                    player_view, advance_turn)
+                    player_view, advance_turn, apply_promote, apply_resign)
 import bot
 
 BOT_TOKEN = '__bot__'   # 컴퓨터(봇) 좌석 토큰
@@ -161,6 +161,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if u.path in ('/', '/index.html'):
             self._file('client.html', 'text/html; charset=utf-8')
             return
+        if u.path == '/sound.js':
+            self._file('sound.js', 'application/javascript; charset=utf-8')
+            return
         if u.path.startswith('/img/'):
             name = os.path.basename(u.path)
             ext = os.path.splitext(name)[1].lower()
@@ -296,6 +299,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         maybe_setup_timer(room)
                     self._json({'ok': True})
                     return
+                if act == 'resign':
+                    ok, msg = apply_resign(st, color)
+                    self._json({'ok': ok, 'msg': msg})
+                    return
                 if act == 'place':
                     ok, msg = apply_place(st, color, data['pid'], data['r'], data['c'])
                 elif act == 'autoplace':
@@ -317,6 +324,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     ok, msg = apply_fire(st, color, data['pid'], data['r'], data['c'])
                 elif act == 'barrage':
                     ok, msg = apply_barrage(st, color, data['pid'], data['r'], data['c'])
+                elif act == 'promote':
+                    ok, msg = apply_promote(st, color, data.get('choice'))
                 else:
                     ok, msg = False, '알 수 없는 동작.'
                 if ok and room.get('bot'):

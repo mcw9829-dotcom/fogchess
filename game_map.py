@@ -2,7 +2,7 @@
 """
 맵/지형 — 숲(mountain) 배치와 시야 차단(LOS)을 담당한다.
 숲은 펄린 노이즈로 자동 생성하거나(config.USE_PERLIN=True) MAP_ROWS를 그대로 쓴다.
-숲은 시야·이동을 막지만 비숍 곡사 포탄은 넘어간다(사거리 판정은 pieces.py).
+숲은 시야·이동·사격을 모두 막는다(LOS 차단). 사거리·명중 판정은 pieces.py.
 """
 import math
 import random
