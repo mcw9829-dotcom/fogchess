@@ -8,20 +8,22 @@ import time
 import random
 
 from config import (N, VISION, KING_LIVES, ROOK_RANGE, ROOK_FIRE, BISHOP_MOVE,
-                    BISHOP_RANGE, MUZZLE, ZONE, TURN_LIMIT)
+                    BISHOP_RANGE, QUEEN_MOVE, SCAN_RANGE, SCAN_DUR, MUZZLE,
+                    ZONE, TURN_LIMIT, TURN_SECONDS, MAX_MISSES)
 from game_map import FORESTS, RIVERS, BUSHES, IMPASSABLE, in_board, los_clear
 
 # 비숍 X자 5칸 착탄 / 폰 전진 방향 / 한글 이름
 SPLASH = [(0, 0), (-1, -1), (-1, 1), (1, -1), (1, 1)]
 DIRS4 = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # 룩 십자(상하좌우) 사격
+DIRS8 = DIRS4 + [(-1, -1), (-1, 1), (1, -1), (1, 1)]  # 퀸 8방향 이동
 FORWARD = {'W': -1, 'B': 1}
-PIECE_KR = {'K': '킹', 'R': '전차', 'B': '비숍', 'N': '나이트', 'P': '폰'}
+PIECE_KR = {'K': '킹', 'R': '전차', 'B': '비숍', 'N': '나이트', 'P': '폰', 'Q': '퀸'}
 SIDE_KR = {'W': '백', 'B': '흑'}
 
 
 # ------------------------- 상태 생성 -------------------------
 def default_pieces():
-    """기본 포진(백): 룩2 나이트2 비숍2 폰7 킹1 = 14. 흑은 180도 대칭."""
+    """기본 포진(백): 룩2 나이트2 비숍2 퀸1 폰8 킹1 = 16. 흑은 180도 대칭."""
     p = {}
     counter = {}
 
@@ -32,11 +34,11 @@ def default_pieces():
                   'alive': True, 'lives': KING_LIVES if t == 'K' else 1,
                   'moved': False}
 
-    back = [('R', 3), ('N', 4), ('B', 5), ('K', 6), ('B', 7), ('N', 8), ('R', 9)]
+    back = [('R', 2), ('N', 3), ('B', 4), ('Q', 5), ('K', 6), ('B', 7), ('N', 8), ('R', 9)]
     for (t, c) in back:
         add(t, 'W', 11, c)
         add(t, 'B', 0, N - 1 - c)
-    for c in range(3, 10):  # 폰 7개
+    for c in range(2, 10):  # 폰 8개
         add('P', 'W', 10, c)
         add('P', 'B', 1, N - 1 - c)
     return p
@@ -50,6 +52,8 @@ def new_game():
         'pieces': default_pieces(),
         'ready': {'W': False, 'B': False},
         'deadline': None,           # 배치 마감 시각(epoch)
+        'turn_deadline': None,      # 현재 턴 마감 시각(epoch) — 플레이 중 TURN_SECONDS
+        'misses': {'W': 0, 'B': 0}, # 연속 미행동(시간초과 자동 넘김) 횟수 — 자기 수를 두면 0으로 리셋
         'reveals': [],              # {pid, viewer, until}
         'feed': [],                 # 킬로그 {seq, actor, atype, method, victim, vtype}
         'feedseq': 0,
@@ -58,6 +62,7 @@ def new_game():
         'log': ['방 생성됨 — 친구가 접속하면 배치가 시작됩니다.'],
         'winner': None,             # 'W'/'B' 승자, 또는 'draw'
         'promote': None,            # 승격 대기 {pid, color} — 폰이 끝줄 도달 시
+        'scans': [],                # 활성 퀸 스캔 [{viewer, cells, until}] — 그 2×2를 감시
     }
 
 
@@ -91,6 +96,11 @@ def visible_cells(st, color):
                 r, c = pr + dr, pc + dc
                 if in_board(r, c) and los_clear(pr, pc, r, c):
                     vis.add((r, c))
+    for s in st.get('scans', []):              # 스캔 감시 지역(레이더 — 시야차단 무시)
+        if s['viewer'] == color and st['turnCount'] < s['until']:
+            for (r, c) in s['cells']:
+                if in_board(r, c):
+                    vis.add((r, c))
     return vis
 
 
@@ -102,15 +112,23 @@ def revealed(st, color, pid):
     return False
 
 
+def scanning(st, color, r, c):
+    """color가 지금 (r,c)를 퀸 스캔으로 감시 중이면 True."""
+    for s in st.get('scans', []):
+        if s['viewer'] == color and st['turnCount'] < s['until'] and (r, c) in s['cells']:
+            return True
+    return False
+
+
 def enemy_visible_at(st, color, r, c, vis=None):
     """(r,c)에 color가 '실제로 볼 수 있는' 적 기물이 있으면 반환, 아니면 None.
-    부쉬 은폐·안개·숲 시야차단을 그대로 적용한다(비숍 저격 명중 판정용)."""
+    부쉬 은폐·안개·숲 시야차단을 적용하되, 스캔 감시 지역은 부쉬도 뚫어본다."""
     q = piece_at(st, r, c)
     if q is None or q['o'] == color:
         return None
-    if revealed(st, color, q['id']):
-        return q
-    if (r, c) in BUSHES:                       # 부쉬 속 적: 노출 전엔 저격 불가
+    if revealed(st, color, q['id']) or scanning(st, color, r, c):
+        return q                               # 노출됐거나 내가 스캔 중이면 보임(부쉬 무시)
+    if (r, c) in BUSHES:                        # 부쉬 속 적: 그 외엔 저격 불가
         return None
     if vis is None:
         vis = visible_cells(st, color)
@@ -181,8 +199,21 @@ def legal_moves(st, pid):
                     out.append((nr, nc))
                 break
     elif t == 'R':
-        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+        for dr, dc in DIRS4:
             for dist in range(1, ROOK_RANGE + 1):
+                nr, nc = r + dr * dist, c + dc * dist
+                if not in_board(nr, nc) or (nr, nc) in IMPASSABLE:
+                    break
+                q = piece_at(st, nr, nc)
+                if q is None:
+                    out.append((nr, nc))
+                    continue
+                if q['o'] != o:
+                    out.append((nr, nc))
+                break
+    elif t == 'Q':
+        for dr, dc in DIRS8:                          # 8방향 최대 QUEEN_MOVE칸
+            for dist in range(1, QUEEN_MOVE + 1):
                 nr, nc = r + dr * dist, c + dc * dist
                 if not in_board(nr, nc) or (nr, nc) in IMPASSABLE:
                     break
@@ -214,6 +245,24 @@ def fire_cells(st, pid):
     return out
 
 
+def fire_range(st, pid):
+    """비숍의 저격 '사거리 원' 전체(반경 BISHOP_RANGE, 숲 제외) — 표시용.
+    실제 명중은 이 안에서 '보이는 적'(fire_cells)만. 사거리는 늘 보여주되,
+    표적이 없으면 '사거리 안에 보이는 적이 없다'는 걸 직관적으로 알린다."""
+    p = st['pieces'].get(pid)
+    if not p or p['t'] != 'B' or not p['alive']:
+        return []
+    R2 = BISHOP_RANGE ** 2
+    out = []
+    for dr in range(-BISHOP_RANGE, BISHOP_RANGE + 1):
+        for dc in range(-BISHOP_RANGE, BISHOP_RANGE + 1):
+            if (dr or dc) and dr * dr + dc * dc <= R2:
+                r, c = p['r'] + dr, p['c'] + dc
+                if in_board(r, c) and (r, c) not in FORESTS:
+                    out.append((r, c))
+    return out
+
+
 def _orth(dr, dc):
     """상하좌우 직선이면 단위 방향, 아니면 None(대각 불가)."""
     if (dr == 0) == (dc == 0):
@@ -236,14 +285,54 @@ def barrage_reach(st, pid):
     return cells
 
 
+def scan_cells(st, pid):
+    """퀸이 스캔을 지정할 수 있는 칸(맨해튼 SCAN_RANGE 안) — 하이라이트용."""
+    p = st['pieces'].get(pid)
+    if not p or p['t'] != 'Q' or not p['alive']:
+        return []
+    out = []
+    for dr in range(-SCAN_RANGE, SCAN_RANGE + 1):
+        for dc in range(-SCAN_RANGE, SCAN_RANGE + 1):
+            if abs(dr) + abs(dc) <= SCAN_RANGE:
+                r, c = p['r'] + dr, p['c'] + dc
+                if in_board(r, c):
+                    out.append((r, c))
+    return out
+
+
 # ------------------------- 액션 적용 -------------------------
-def advance_turn(st):
+def advance_turn(st, real_move=True):
+    if real_move:                                         # 실제로 수를 둔 사람은 미행동 카운터 리셋
+        st.setdefault('misses', {'W': 0, 'B': 0})[st['turn']] = 0
     st['turnCount'] += 1
     st['turn'] = 'B' if st['turn'] == 'W' else 'W'
+    if st.get('scans'):                                   # 만료된 스캔 감시 정리
+        st['scans'] = [s for s in st['scans'] if st['turnCount'] < s['until']]
     if st['phase'] == 'play' and st['turnCount'] >= TURN_LIMIT:
         st['phase'] = 'over'
         st['winner'] = 'draw'
         st['log'].append(f"턴 한도({TURN_LIMIT}) 도달 — 무승부!")
+    # 다음 턴 제한시간 세팅(게임이 계속될 때만)
+    st['turn_deadline'] = (time.time() + TURN_SECONDS) if st['phase'] == 'play' else None
+
+
+def time_out(st):
+    """턴 제한시간 초과 — 그 턴은 자동으로 상대에게 넘긴다(기물은 그대로).
+    연속 MAX_MISSES회(=TURN_SECONDS*MAX_MISSES초) 미행동이면 패배(상대 자동 승리)."""
+    if st['phase'] != 'play':
+        return False
+    loser = st['turn']
+    st['misses'][loser] = st['misses'].get(loser, 0) + 1
+    n = st['misses'][loser]
+    st['log'].append(f"⏳ {SIDE_KR[loser]} 시간 초과 — 턴을 넘깁니다 ({n}/{MAX_MISSES}).")
+    if n >= MAX_MISSES:                                   # 1분간 미행동 → 상대 자동 승리
+        st['phase'] = 'over'
+        st['winner'] = 'B' if loser == 'W' else 'W'
+        st['turn_deadline'] = None
+        st['log'].append(f"⌛ {SIDE_KR[loser]} 미행동 {MAX_MISSES}회 — {SIDE_KR[st['winner']]} 자동 승리!")
+        return True
+    advance_turn(st, real_move=False)                    # 미행동자 카운터는 유지한 채 턴만 넘김
+    return True
 
 
 def kill(st, target, actor_color, atype, method):
@@ -338,6 +427,28 @@ def apply_barrage(st, color, pid, tr, tc):
     set_fx(st, 'kill' if king_hit else 'barrage', hit, color)
     if st['phase'] != 'over':
         advance_turn(st)
+    return True, None
+
+
+def apply_scan(st, color, pid, tr, tc):
+    """퀸 스캔 — 지정 지점 기준 2×2를 SCAN_DUR턴 감시(안개·부쉬 뚫음). 퀸은 머즐 플래시 없음(위치 안 노출)."""
+    p = st['pieces'].get(pid)
+    if not p or p['o'] != color or not p['alive'] or p['t'] != 'Q':
+        return False, '스캔할 퀸이 아닙니다.'
+    if not in_board(tr, tc):
+        return False, '보드 밖입니다.'
+    if abs(tr - p['r']) + abs(tc - p['c']) > SCAN_RANGE:
+        return False, '스캔 사거리 밖입니다.'
+    area = [(tr, tc), (tr, tc + 1), (tr + 1, tc), (tr + 1, tc + 1)]  # 지정칸=좌상단 2×2
+    cells = [(r, c) for (r, c) in area if in_board(r, c)]
+    found = sum(1 for (r, c) in cells
+                if (piece_at(st, r, c) or {}).get('o') not in (None, color))
+    st.setdefault('scans', []).append(                 # 그 지역을 SCAN_DUR턴 동안 감시
+        {'viewer': color, 'cells': cells, 'until': st['turnCount'] + SCAN_DUR})
+    # 퀸은 머즐 플래시 없음 — 스캔해도 자기 위치는 노출되지 않는다(감시 지역만 상대에게 보임).
+    st['log'].append(f"{SIDE_KR[color]} 퀸 스캔! → ({tr},{tc}) 2×2 감시 (적 {found}기 포착)")
+    set_fx(st, 'scan', cells, color)
+    advance_turn(st)
     return True, None
 
 
@@ -437,8 +548,8 @@ def player_view(st, color, reveal=False):
                     else:
                         rv = revealed(st, color, q['id'])
                         if (r, c) in BUSHES:            # 부쉬 속 적: 완전 은폐 — 인접·시야로는 안 보임.
-                            show = rv or reveal        #  들어가서 잡거나(멜리) 룩/비숍 포격으로만 확인.
-                        else:                          #  (rv=공격 노출, reveal=디버그 전체보기)
+                            show = rv or reveal or scanning(st, color, r, c)  # 스캔 감시 지역이면 뚫어봄
+                        else:                          #  (rv=공격 노출, reveal=디버그 전체보기, vis에 스캔 지역 포함)
                             show = rv or (r, c) in vis
                         if show:
                             cell['p'] = {'t': q['t'], 'o': q['o']}
@@ -472,6 +583,8 @@ def player_view(st, color, reveal=False):
         'winner': st['winner'],
         'promote': (st['promote']['pid'] if (st.get('promote') and not spectator
                                              and st['promote']['color'] == color) else None),
+        'scanTiles': [[r, c] for s in st.get('scans', [])       # 활성 스캔 감시 타일(양쪽 다 봄)
+                      if st['turnCount'] < s['until'] for (r, c) in s['cells']],
         'log': st['log'][-9:],
         'feed': [] if spectator else [e for e in st['feed'] if color in (e['actor'], e['victim'])][-8:],
         'grid': grid,

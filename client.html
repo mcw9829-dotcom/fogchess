@@ -4,234 +4,112 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>안개전장 체스</title>
-<style>
-  :root {
-    --cell: 42px;
-    --light: #f0d9b5; --dark: #b58863;
-    --mtn1: #8a8f7a; --mtn2: #767c66;
-    --sel: #f6f669; --moveDot: rgba(20,85,30,.35);
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; font-family: system-ui, "Malgun Gothic", sans-serif;
-    background: #262421; color: #e6ebf2; display: flex; gap: 22px;
-    padding: 16px; flex-wrap: wrap;
-  }
-  h1 { font-size: 18px; margin: 0 0 6px; }
-  .badge { font-size: 12px; color: #9a938a; font-weight: 400; }
-  .boardWrap { position: relative; width: max-content; }
-  #board {
-    display: grid; grid-template-columns: repeat(12, var(--cell));
-    grid-template-rows: repeat(12, var(--cell));
-    border: 4px solid #3a352f; user-select: none; box-shadow: 0 8px 30px rgba(0,0,0,.5);
-  }
-  .cell { width: var(--cell); height: var(--cell); position: relative;
-    display: flex; align-items: center; justify-content: center; }
-  .light { background: var(--light); } .dark { background: var(--dark); }
-  /* RPG Maker풍 산: 바위 몸통 + 이웃 기준 밝은 윗면/그림자/측면(오토타일) */
-  .mtn {
-    background:
-      radial-gradient(circle at 32% 34%, rgba(255,255,255,.13) 0 1.5px, transparent 2.5px),
-      radial-gradient(circle at 66% 56%, rgba(0,0,0,.16) 0 1.5px, transparent 2.5px),
-      radial-gradient(circle at 48% 78%, rgba(0,0,0,.12) 0 2px, transparent 3px),
-      linear-gradient(#9c7d54, #7c6140 58%, #5f4a2e);
-  }
-  .mtn::after { content:""; position:absolute; inset:0; box-shadow: var(--edge, none); }
-  /* RPG Maker풍 강: 위에서 본 물색 + 흐르는 물결 + 물가 포말(오토타일) */
-  .river { background: linear-gradient(180deg, #58b1e7, #3f93cf 58%, #2f7bb2); }
-  .river::after {
-    content:""; position:absolute; inset:0;
-    background:
-      repeating-linear-gradient(90deg, transparent 0 6px, rgba(255,255,255,.16) 6px 9px, transparent 9px 16px),
-      repeating-linear-gradient(90deg, transparent 0 10px, rgba(255,255,255,.10) 10px 12px, transparent 12px 22px);
-    background-size: 32px 100%, 44px 100%;
-    animation: water 1.8s linear infinite;
-    box-shadow: var(--edge, none);
-  }
-  @keyframes water { from{background-position:0 0, 0 0;} to{background-position:-32px 0, -44px 0;} }
-  /* ── 부쉬(매복지): 잎이 우거진 덤불 ── */
-  .bush{ background:
-      radial-gradient(circle at 30% 28%, rgba(255,255,255,.11) 0 2px, transparent 3px),
-      radial-gradient(circle at 62% 46%, rgba(0,0,0,.20) 0 2.5px, transparent 3.5px),
-      radial-gradient(circle at 42% 74%, rgba(0,0,0,.18) 0 2.5px, transparent 3.5px),
-      radial-gradient(circle at 78% 70%, rgba(255,255,255,.09) 0 2px, transparent 3px),
-      linear-gradient(#4f8f43,#3c7735 60%,#2f5f2b); }
-  .bush::after{ content:""; position:absolute; inset:0; box-shadow:var(--edge,none); }
-  .piece.concealed{ opacity: .55; }   /* 부쉬 은신 = 반투명(부쉬 잎 뒤에 숨은 느낌) */
-  /* ── SVG 지형(숲/부쉬) 레이어 ── */
-  .terrain{ position:absolute; inset:0; z-index:0; pointer-events:none; }
-  .terrain svg{ width:100%; height:100%; display:block; overflow:visible;
-    filter: drop-shadow(0 1px 1px rgba(0,0,0,.35)); }
-  .bushfront{ z-index:3; }              /* 부쉬 잎은 기물(z2) 앞으로 → 은신 강조 */
-  .bushfront svg{ filter:none; }        /* 아래로 흐르는 그림자 제거 → 최저점을 칸 하단에 딱 맞춤 */
-  .cell.fog .terrain{ filter: brightness(.4); }
-  .fog { box-shadow: inset 0 0 0 999px rgba(14,18,22,.86); }
-  .fog.mtn::after, .fog.river::after, .fog.bush::after { opacity: .22; }
-  .piece { width: 88%; height: 88%; z-index: 2; pointer-events: none;
-    filter: drop-shadow(0 2px 2px rgba(0,0,0,.45)); }
-  .sel { box-shadow: inset 0 0 0 4px var(--sel); }
-  .lastfx { box-shadow: inset 0 0 0 4px rgba(246,246,105,.55); }
-  /* 이동 인디케이터(리체스식): 빈 칸=초록 점 / 잡을 수 있는 적=초록 링 */
-  .movable { cursor: pointer; }
-  .movable::before { content: ""; position: absolute; width: 34%; height: 34%;
-    border-radius: 50%; background: rgba(56,140,58,.62); z-index: 1;
-    transition: transform .08s; }
-  .movable:hover::before { transform: scale(1.25); }
-  .capture { cursor: pointer; }
-  .capture::before { content: ""; position: absolute; inset: 4%; border-radius: 50%;
-    border: 4px solid rgba(56,140,58,.85); z-index: 1; box-sizing: border-box; }
-  .capture:hover::before { border-width: 6px; }
-  /* 공격 표적(비숍 저격·전차 돌파): 반투명 하늘색 / 실제 착탄칸은 진한 빨강 */
-  .aim { cursor: crosshair; }
-  .fireReach, .barrageReach { box-shadow: inset 0 0 0 999px rgba(35,165,230,.32); }   /* 사거리=하늘색(우드 보색이라 잘 보임) */
-  .splash, .lineHit { box-shadow: inset 0 0 0 999px rgba(214,48,44,.5) !important; }  /* 착탄=진한 빨강 */
-  .zone { cursor: grab; box-shadow: inset 0 0 0 3px rgba(120,200,255,.55); }
-  .selpiece { cursor: grab; }
-  .selpiece:active { cursor: grabbing; }
-  .dragclone { position: fixed; width: var(--cell); height: var(--cell); pointer-events: none;
-    z-index: 999; transform: translate(-50%,-50%); filter: drop-shadow(0 5px 7px rgba(0,0,0,.55)); }
-  @keyframes attnpulse { 0%,100%{ box-shadow:0 0 0 0 rgba(214,48,44,0); } 50%{ box-shadow:0 0 0 4px rgba(214,48,44,.42); } }
-  button.attn { animation: attnpulse 1.1s ease-in-out infinite; }
-  @media (prefers-reduced-motion: reduce){ button.attn{ animation:none; box-shadow:0 0 0 3px rgba(214,48,44,.42); } }
-  .boom { position: absolute; inset: 0; z-index: 5; border-radius: 50%;
-    background: radial-gradient(circle, #fff2, #ffb14a 30%, #e0451f 55%, transparent 70%);
-    animation: boom .5s ease-out forwards; pointer-events: none; }
-  @keyframes boom { from { transform: scale(.2); opacity: 1; } to { transform: scale(1.6); opacity: 0; } }
-  .overlay { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 14px; text-align: center;
-    background: rgba(14,18,22,.72); backdrop-filter: blur(2px); }
-  .overlay .big { font-size: 40px; font-weight: 800; }
-  .overlay .sub { font-size: 15px; color: #cdc7bd; }
-  .panel { min-width: 260px; max-width: 340px; }
-  #status { font-size: 15px; font-weight: 700; margin: 6px 0; min-height: 22px; }
-  #timer { font-size: 26px; font-weight: 800; color: #ffd24a; }
-  .msg { color: #ffb14a; font-size: 13px; min-height: 18px; }
-  .invite { background: #1c2a1c; border: 1px solid #3a5a3a; border-radius: 8px; padding: 8px; margin: 6px 0; }
-  .invite .lbl { font-size: 12px; color: #9fd39f; }
-  .invite .row { display: flex; gap: 6px; margin-top: 4px; }
-  .invite input { flex: 1; background: #0f140f; color: #d7f0d7; border: 1px solid #3a5a3a;
-    border-radius: 6px; padding: 6px; font-size: 12px; }
-  .roomtag { font-size: 12px; color: #9a938a; }
-  .forces { display: flex; justify-content: space-between; font-size: 13px; margin: 4px 0; }
-  .dotc { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
-  button { background: #4a4741; color: #f2f0ee; border: 1px solid #5c584f;
-    padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; margin: 3px 0; }
-  button:hover { background: #565249; }
-  button.on { background: #789f3a; border-color: #8cb84a; }
-  button.fire { background: #b5642a; border-color: #d47b3a; }
-  button.tank { background: #2f6db5; border-color: #3f8bd6; }
-  button.big { font-size: 16px; padding: 10px 20px; background: #789f3a; border-color: #8cb84a; }
-  #log { background: #1c1a18; border: 1px solid #3a352f; border-radius: 8px;
-    padding: 8px; height: 110px; overflow-y: auto; font-size: 12.5px; line-height: 1.55; }
-  .secTitle { font-size: 11px; color: #9a938a; margin: 10px 0 3px; letter-spacing: .5px; }
-  #feed { background: #14120f; border: 1px solid #3a352f; border-radius: 8px;
-    padding: 6px; min-height: 40px; max-height: 150px; overflow-y: auto; }
-  .kf { display: flex; align-items: center; gap: 4px; font-size: 12px; padding: 3px 6px;
-    margin: 2px 0; border-radius: 6px; background: #201d1a; border-left: 3px solid #4a4741; }
-  .kf img { width: 20px; height: 20px; }
-  .kf em { font-style: normal; font-size: 14px; margin: 0 2px; }
-  .kf .nm { color: #cdc7bd; }
-  .kf.kf-you { border-left-color: #6fae3a; }
-  .kf.kf-me  { border-left-color: #d64545; }
-  .kf-new { animation: kfin .4s ease-out; }
-  @keyframes kfin { from { transform: translateX(-8px); opacity: 0; } to { transform: none; opacity: 1; } }
-  .tag { display: inline-block; padding: 3px 10px; border-radius: 6px; font-size: 12px; }
-  .help { font-size: 12px; color: #a49d93; line-height: 1.65; }
-  .help b { color: #d7d0c6; }
-  /* 좌표 라벨 */
-  .boardArea { display: grid; grid-template-columns: 20px max-content;
-    grid-template-rows: 18px max-content; width: max-content; }
-  .corner {}
-  .coordRow { display: grid; grid-template-columns: repeat(12, var(--cell)); align-items: end; }
-  .coordCol { display: grid; grid-template-rows: repeat(12, var(--cell)); justify-items: center; }
-  .coordRow span, .coordCol span { display:flex; align-items:center; justify-content:center;
-    font-size: 10px; color: #8a837a; }
-  /* 미니 버튼 / 규칙 모달 */
-  .mini { font-size: 12px; padding: 3px 8px; margin-left: 8px; vertical-align: middle; }
-  .modal { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.6);
-    display: flex; align-items: center; justify-content: center; padding: 16px; }
-  .modalCard { position: relative; background: #2b2825; border: 1px solid #4a4741;
-    border-radius: 12px; padding: 20px 22px; max-width: 440px; max-height: 88vh; overflow-y: auto;
-    box-shadow: 0 12px 40px rgba(0,0,0,.6); }
-  .modalCard h2 { margin: 0 0 10px; font-size: 18px; }
-  .modalCard .goal { background: #1c2a1c; border-left: 3px solid #6fae3a; padding: 8px 10px;
-    border-radius: 6px; font-size: 14px; }
-  .modalCard ul { padding-left: 18px; font-size: 13px; line-height: 1.7; color: #cdc7bd; }
-  .modalCard .note { font-size: 12.5px; color: #a49d93; background: #211d1a;
-    padding: 8px 10px; border-radius: 6px; }
-  .modalX { position: absolute; top: 10px; right: 10px; padding: 4px 9px; }
-  .hpieces { display: grid; gap: 6px; margin: 10px 0; }
-  .hpieces .hp { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
-  .hpieces .hp img { width: 26px; height: 26px; }
-  .hpieces .hp b { color: #e6ebf2; }
-
-  /* ===== 3층: 손맛(juice) ===== */
-  .piece { transition: transform .18s ease; }
-  body { background: radial-gradient(1200px 720px at 50% -12%, #3b3a30, #221f1a 58%, #16140f 100%); }
-  h1 { letter-spacing: .5px; }
-  .badge { text-transform: uppercase; letter-spacing: 1px; }
-  /* 전장 지도풍 프레임 + 비네트 */
-  #board { border-color: #241f18;
-    box-shadow: 0 0 0 3px #5a4d34, 0 0 0 6px #241f18, 0 10px 34px rgba(0,0,0,.6),
-                inset 0 0 60px rgba(0,0,0,.35); }
-  .boardWrap::after { content:''; position:absolute; inset:0; pointer-events:none; z-index:9;
-    box-shadow: inset 0 0 75px rgba(28,18,6,.5); }
-  /* 포격 섬광 / 화면 흔들림 */
-  .flash { position:absolute; inset:-35%; z-index:6; border-radius:50%; pointer-events:none;
-    background: radial-gradient(circle, #fff 0%, #ffd27a 28%, transparent 62%);
-    animation: flash .3s ease-out forwards; }
-  @keyframes flash { from{opacity:1; transform:scale(.4);} to{opacity:0; transform:scale(1.35);} }
-  .shake { animation: shake .38s ease; }
-  @keyframes shake { 0%,100%{transform:translate(0,0)} 20%{transform:translate(-5px,2px)}
-    40%{transform:translate(5px,-3px)} 60%{transform:translate(-4px,-2px)} 80%{transform:translate(4px,3px)} }
-  /* 승리/패배 스탬프 */
-  .overlay .big { animation: stampIn .5s cubic-bezier(.2,1.5,.4,1) both; }
-  @keyframes stampIn { from{opacity:0; transform:scale(2.3) rotate(-12deg);} to{opacity:1; transform:none;} }
-</style>
+<link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <!-- ===== 시작 메뉴 ===== -->
+  <div id="home" class="screen">
+    <div class="menu">
+      <div class="menu-logo">🎖️ 안개전장 체스</div>
+      <div class="menu-sub">WW1 Fog Chess — 안개 속 왕을 찾아 처치하라</div>
+      <button class="menu-btn" id="mLobby"><span class="mi">👥</span><span class="mt"><b>로비 게임 만들기</b><small>친구와 사설 방에서 대전(초대 링크)</small></span></button>
+      <button class="menu-btn" id="mJoin"><span class="mi">🤝</span><span class="mt"><b>친구에게 도전</b><small>친구가 준 방 코드로 참가</small></span></button>
+      <button class="menu-btn" id="mBot"><span class="mi">💻</span><span class="mt"><b>컴퓨터와 대국</b><small>쉬움 · 보통 · 어려움</small></span></button>
+      <button class="menu-btn" id="mSolo"><span class="mi">🧪</span><span class="mt"><b>혼자 테스트</b><small>양쪽을 번갈아(핫시트)</small></span></button>
+      <button class="menu-btn ghost" id="mSettings"><span class="mi">⚙️</span><span class="mt"><b>설정</b><small>효과음 · 다크/화이트 · 기물 설명</small></span></button>
+    </div>
+  </div>
+
+  <!-- ===== 컴퓨터 난이도 ===== -->
+  <div id="botMenu" class="screen" style="display:none">
+    <div class="menu">
+      <div class="menu-logo">💻 컴퓨터와 대국</div>
+      <div class="menu-sub">난이도를 고르세요</div>
+      <button class="menu-btn" id="lvEasy"><span class="mi">🟢</span><span class="mt"><b>쉬움</b><small>자주 실수하는 초보용</small></span></button>
+      <button class="menu-btn" id="lvNormal"><span class="mi">🟡</span><span class="mt"><b>보통</b><small>기본 휴리스틱(기억·정찰·회피)</small></span></button>
+      <button class="menu-btn" id="lvHard"><span class="mi">🔴</span><span class="mt"><b>어려움</b><small>미니맥스 + 알파-베타 수읽기</small></span></button>
+      <button class="menu-btn ghost back">← 뒤로</button>
+    </div>
+  </div>
+
+  <!-- ===== 친구 참가 ===== -->
+  <div id="joinMenu" class="screen" style="display:none">
+    <div class="menu">
+      <div class="menu-logo">🤝 친구에게 도전</div>
+      <div class="menu-sub">친구가 준 방 코드를 입력하세요</div>
+      <input id="joinCode" class="menu-input" placeholder="예: AB12" maxlength="8" autocomplete="off">
+      <button class="menu-btn" id="joinGo"><span class="mi">➡️</span><span class="mt"><b>방 참가</b></span></button>
+      <button class="menu-btn ghost back">← 뒤로</button>
+    </div>
+  </div>
+
+  <!-- ===== 설정 ===== -->
+  <div id="settings" class="screen" style="display:none">
+    <div class="menu">
+      <div class="menu-logo">⚙️ 설정</div>
+      <div class="set-row"><span>🔊 효과음</span><label class="switch"><input type="checkbox" id="setSound"><span class="sl"></span></label></div>
+      <div class="set-row"><span>🎵 배경음악</span><label class="switch"><input type="checkbox" id="setBgm"><span class="sl"></span></label></div>
+      <div class="set-row"><span>🔉 볼륨</span><input type="range" id="setVol" min="0" max="100" step="5" class="menu-range"></div>
+      <div class="set-row"><span>🎨 테마</span>
+        <div class="seg"><button id="thDark" class="seg-b">🌙 다크</button><button id="thLight" class="seg-b">☀️ 화이트</button></div>
+      </div>
+      <div class="set-row"><span>👁 색약 모드<small class="set-note">이동·착탄을 청록/주황으로</small></span><label class="switch"><input type="checkbox" id="setCb"><span class="sl"></span></label></div>
+      <button class="menu-btn" id="setPieces"><span class="mi">📖</span><span class="mt"><b>기물 설명 보기</b></span></button>
+      <button class="menu-btn ghost back">← 뒤로</button>
+    </div>
+  </div>
+
+  <div id="game" class="gamewrap" style="display:none">
   <div>
     <h1>안개전장 체스 <span class="badge">WW1 Fog Chess · v4</span>
-      <button id="helpBtn" class="mini">❔ 규칙</button></h1>
+      <button id="helpBtn" class="mini">❔ 규칙</button>
+      <button id="setBtn" class="mini">⚙ 설정</button></h1>
+    <div id="turnBanner" class="turnBanner"></div>
     <div class="boardArea">
       <div class="corner"></div>
       <div id="colLabels" class="coordRow"></div>
       <div id="rowLabels" class="coordCol"></div>
       <div class="boardWrap">
         <div id="board"></div>
+        <svg id="annot" xmlns="http://www.w3.org/2000/svg"></svg>
         <div id="overlay"></div>
       </div>
-    </div>
-    <div class="help" style="margin-top:8px">
-      🌲 숲 = 시야·이동·사격 모두 차단 · 🌿 부쉬 = 매복지(속의 기물은 상대에게 안 보임 — 들어가서 잡거나 룩 돌파사격으로 수색) · 어두운 칸 = 안개
     </div>
   </div>
 
   <div class="panel">
-    <div id="whoami" class="tag"></div> <span id="roomtag" class="roomtag"></span>
-    <div id="invite" class="invite" style="display:none">
-      <div class="lbl">🔗 친구 초대 링크 (같은 와이파이에서 열기)</div>
-      <div class="row"><input id="inviteUrl" readonly><button id="copyBtn">복사</button></div>
+    <!-- 내 정보 · 초대 -->
+    <div class="card">
+      <div id="whoami" class="tag"></div> <span id="roomtag" class="roomtag"></span>
+      <div id="invite" class="invite" style="display:none">
+        <div class="lbl">🔗 친구 초대 링크 (같은 와이파이에서 열기)</div>
+        <div class="row"><input id="inviteUrl" readonly><button id="copyBtn">복사</button></div>
+      </div>
     </div>
-    <div id="timer"></div>
-    <div id="status"></div>
-    <div id="forces" class="forces"></div>
-    <div id="msg" class="msg"></div>
-    <div id="controls" style="margin:6px 0"></div>
-    <button id="rematch">↻ 새 게임 / 재대결</button>
-    <div class="secTitle">☠ 킬로그</div>
-    <div id="feed"></div>
-    <div class="secTitle">기록</div>
-    <div id="log"></div>
-    <div class="help" style="margin-top:10px">
-      <b>기물 (14개: 룩2·나이트2·비숍2·폰7·킹1)</b><br>
-      ♟ 폰: 첫수 2칸 · 앞·좌·우·앞대각 1칸(후퇴 불가) · 시야 1<br>
-      ♞ 나이트: 체스와 동일 · <b>시야 2</b>(정찰)<br>
-      ♝ 비숍(저격수): 대각 2 이동 / <b>단일 저격</b>(사거리 5, <b>시야에 든 적만</b>·숨으면 못 맞힘, 쏘면 위치 노출)<br>
-      ♜ 룩(전차): 상하좌우 3칸 이동 / <b>돌파 사격</b>(<b>십자 4칸</b> 관통, 숲에 막힘)<br>
-      ♚ 킹: 8방향 1칸 · <b>목숨 1</b> · 비숍·전차는 공격 시 위치 노출<br>
+
+    <!-- 상황 -->
+    <div class="card">
+      <div id="timer"></div>
+      <div id="status"></div>
+      <div id="forces" class="forces"></div>
+      <div id="misses"></div>
+      <div id="msg" class="msg"></div>
+    </div>
+
+    <!-- 조작 -->
+    <div class="card">
+      <div id="controls"></div>
+      <button id="rematch">↻ 새 게임 / 재대결</button>
+    </div>
+
+    <!-- 로그 (규칙은 상단 ❔규칙 버튼) -->
+    <div class="card">
+      <div class="secTitle">☠ 킬로그</div>
+      <div id="feed"></div>
+      <details class="logbox"><summary>📜 이동 기록</summary><div id="log"></div></details>
     </div>
   </div>
+  </div><!-- /#game -->
 
   <div id="helpModal" class="modal" style="display:none">
     <div class="modalCard">
@@ -242,6 +120,7 @@
         <li>🌫️ <b>안개</b>: 내 기물 주변만 보인다. 기물이 사라지면 그 자리 시야도 사라짐.</li>
         <li>🧭 <b>배치</b>: 시작 60~70초 동안 내 진영 3줄에 기물을 놓는다(왕을 잘 숨기기!).</li>
         <li>⚔️ <b>승리</b>: 적 왕을 한 번 맞히면 끝(킹 목숨 1).</li>
+        <li>⏳ <b>턴 20초</b>: 넘기면 그 턴은 <b>자동으로 상대에게 넘어감</b>(기물 그대로). <b>연속 3회(1분) 미행동 = 상대 자동 승리</b>. 수를 두면 리셋.</li>
         <li>🌲 <b>숲</b>=시야·이동·사격 모두 차단.</li>
         <li>🌿 <b>부쉬(매복지)</b>=들어갈 수 있고, 그 안의 기물은 상대에게 <b>보이지 않음</b>(인접·시야로도 안 보임). 확인하려면 <b>부쉬로 들어가 잡거나</b> 룩 <b>돌파사격으로 수색</b>. 왕 숨기기·매복에 최적(단, 부쉬 안에서 공격하면 내 위치 노출).</li>
       </ul>
@@ -259,533 +138,6 @@
   </div>
 
 <script src="/sound.js"></script>
-<script>
-let ROOM = null, TOKEN = '', COLOR = null, VIEW = null;
-let SEL = null, MOVES = [], canFire = false, fireCells = [], canBarrage = false, barrageCells = [];
-let attackMode = null, lastFx = 0, hoverCell = null, feedSeen = 0;
-let prevPos = {}, overShown = null, soloReveal = false;
-
-const boardEl = document.getElementById('board');
-const PIECE_KR = {K:'킹', R:'전차', B:'비숍', N:'나이트', P:'폰'};
-const METHOD_ICON = {melee:'⚔️', artillery:'💥', barrage:'🚜'};
-function SIDE(c){ return c==='W'?'백':'흑'; }
-function pieceSrc(t, o){
-  const letter = {K:'k', R:'r', B:'b', N:'n', P:'p'}[t];
-  return `/img/Chess_${letter}${o === 'W' ? 'l' : 'd'}t45.svg`;
-}
-
-// 사운드(ac()/tone()/noise()/SND)는 sound.js 로 분리됨 — 소리 수정은 그 파일에서.
-
-async function api(path, opts){ return (await fetch(path, opts)).json(); }
-function post(path, body){ return api(path, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{})}); }
-
-async function join(){
-  const stored = ROOM ? (localStorage.getItem('fog_'+ROOM) || '') : '';
-  const r = await post('/join', {room: ROOM, token: stored});
-  ROOM = r.room; TOKEN = r.token; COLOR = r.color;
-  location.hash = '#'+ROOM;
-  localStorage.setItem('fog_'+ROOM, TOKEN);
-}
-async function poll(){
-  const r = await api(`/state?room=${ROOM}&token=${TOKEN}&reveal=${soloReveal?1:0}`);
-  if(r.gone){ await join(); return; }
-  VIEW = r; render();
-}
-async function soloStart(){
-  const r = await post('/join', {solo:true});
-  ROOM = r.room; TOKEN = r.token; COLOR = r.color;   // 'solo'
-  location.hash = '#'+ROOM; localStorage.setItem('fog_'+ROOM, TOKEN);
-  clearSel(); prevPos={}; overShown=null; lastFx=0; feedSeen=0;
-  poll();
-}
-async function botStart(){
-  const r = await post('/join', {vs_bot:true});
-  ROOM = r.room; TOKEN = r.token; COLOR = r.color;   // 'W' (사람=백, 컴퓨터=흑)
-  location.hash = '#'+ROOM; localStorage.setItem('fog_'+ROOM, TOKEN);
-  clearSel(); prevPos={}; overShown=null; lastFx=0; feedSeen=0;
-  poll();
-}
-async function selectPiece(p){
-  if(VIEW.phase !== 'play' || VIEW.turn !== VIEW.yourColor) return;
-  SEL = p; attackMode = null;
-  const r = await api(`/moves?room=${ROOM}&token=${TOKEN}&pid=${p.id}`);
-  MOVES = r.moves||[]; canFire = r.canFire; fireCells = r.fireCells||[];
-  canBarrage = r.canBarrage; barrageCells = r.barrageCells||[];
-  render();
-}
-async function act(body){
-  const r = await post('/action', Object.assign({room:ROOM, token:TOKEN}, body));
-  if(r.msg) showMsg(r.msg);
-  return r;
-}
-function clearSel(){ SEL=null; MOVES=[]; attackMode=null; hoverCell=null; }
-async function doMove(r,c){ await act({type:'move', pid:SEL.id, r, c}); clearSel(); poll(); }
-async function doFire(r,c){ await act({type:'fire', pid:SEL.id, r, c}); clearSel(); poll(); }
-async function doBarrage(r,c){ await act({type:'barrage', pid:SEL.id, r, c}); clearSel(); poll(); }
-async function placePiece(r,c){ ac(); await act({type:'place', pid:SEL.id, r, c}); if(soundOn) SND.place(); SEL=null; poll(); }
-async function setReady(v){ await act({type:'ready', value:v}); poll(); }
-async function rematch(){ await act({type:'rematch'}); clearSel(); lastFx=0; feedSeen=0; prevPos={}; overShown=null; poll(); }
-async function doPromote(t){ await act({type:'promote', choice:t}); document.getElementById('promoModal').style.display='none'; poll(); }
-async function doResign(){ if(!confirm('정말 기권할까요? 상대가 승리합니다.')) return; await act({type:'resign'}); clearSel(); poll(); }
-async function leaveRoom(){
-  if(!confirm('이 방에서 나갈까요?')) return;
-  if(ROOM) localStorage.removeItem('fog_'+ROOM);
-  ROOM=null; TOKEN=''; COLOR=null; VIEW=null; location.hash='';
-  clearSel(); prevPos={}; overShown=null; lastFx=0; feedSeen=0;
-  await join(); poll();
-}
-function showMsg(m){ const e=document.getElementById('msg'); e.textContent=m||''; setTimeout(()=>{ if(e.textContent===m) e.textContent=''; }, 2500); }
-function inList(l,r,c){ return l.some(([a,b])=>a===r&&b===c); }
-
-// ---------- 사운드 on/off ----------
-let soundOn = localStorage.getItem('fog_sound') !== '0';
-
-// ---------- 직관 조작: 드래그로 이동 ----------
-let dragState = null;
-function boardCellFromEvent(ev){
-  const rect = boardEl.getBoundingClientRect();
-  const b = 4;                                    // #board 테두리 두께(px)
-  const cell = boardEl.clientWidth / 12;          // 한 칸 픽셀
-  const c = Math.floor((ev.clientX - rect.left - b) / cell);
-  const r = Math.floor((ev.clientY - rect.top  - b) / cell);
-  return (r<0||r>11||c<0||c>11) ? null : [r,c];
-}
-function piecePointerDown(pd, ev){
-  if(VIEW.phase!=='play' || VIEW.turn!==VIEW.yourColor) return;
-  ev.preventDefault();
-  if(!(SEL && SEL.id===pd.id)) selectPiece(pd);   // 미선택이면 선택(+행마 조회·렌더)
-  dragState = { pd, moved:false, x:ev.clientX, y:ev.clientY, clone:null };
-  window.addEventListener('pointermove', piecePointerMove);
-  window.addEventListener('pointerup', piecePointerUp);
-}
-function piecePointerMove(ev){
-  if(!dragState) return;
-  if(!dragState.moved && Math.hypot(ev.clientX-dragState.x, ev.clientY-dragState.y) < 5) return;
-  dragState.moved = true;
-  if(!dragState.clone){                            // 커서를 따라오는 반투명 클론
-    const img = document.createElement('img');
-    img.className = 'dragclone';
-    img.src = pieceSrc(dragState.pd.t, VIEW.yourColor);
-    document.body.appendChild(img);
-    dragState.clone = img;
-  }
-  dragState.clone.style.left = ev.clientX + 'px';
-  dragState.clone.style.top  = ev.clientY + 'px';
-}
-function piecePointerUp(ev){
-  window.removeEventListener('pointermove', piecePointerMove);
-  window.removeEventListener('pointerup', piecePointerUp);
-  const ds = dragState; dragState = null;
-  if(ds && ds.clone) ds.clone.remove();
-  if(!ds || !ds.moved) return;                     // 움직임 없으면 그냥 클릭(선택 유지)
-  const cell = boardCellFromEvent(ev);
-  if(cell && SEL && SEL.id===ds.pd.id && !attackMode && inList(MOVES, cell[0], cell[1]))
-    doMove(cell[0], cell[1]);                       // 합법 이동칸에 놓으면 이동
-}
-
-// ---------- 온보딩: 지금 뭘 해야 하는지 한 줄 ----------
-function coachText(me, solo){
-  if(COLOR==='spectator') return '👀 관전 중 — 조작할 수 없어요.';
-  if(VIEW.phase==='setup') return VIEW.bothJoined
-    ? '① 기물을 드래그/클릭해 내 3줄 안에 배치 → ② [준비 완료].'
-    : '상대 접속 대기 중 — 또는 [🤖 컴퓨터와 대전] / [🧪 혼자 테스트].';
-  if(VIEW.phase==='over') return '게임 종료 — [↻ 재대결]로 다시 시작할 수 있어요.';
-  if(!solo && VIEW.turn!==me) return '⏳ 상대 턴 — 잠시 기다려 주세요.';
-  if(SEL) return '초록=이동(드래그하거나 클릭). 비숍·전차는 위 공격 버튼. 취소는 빈 칸/우클릭.';
-  return '내 기물을 클릭하거나 드래그해 이동하세요. 어두운 칸은 안개예요.';
-}
-
-// ── SVG 지형 생성: 숲(고정 5그루 침엽수) · 부쉬(롤 스타일 뾰족 풀숲) ──
-// 색은 기물처럼 2색(잎·목제)+외곽선. 채도 A(올리브빛 차분). 랜덤 없음(숲은 좌우 반전만).
-const TPAL = { leaf:'#5f8140', line:'#34512a', wood:'#6f4d2c' };
-function _pine(cx,baseY,s){
-  const tH=6*s, b=baseY-tH;
-  const tri=(w,y0,y1)=>`<polygon points="${cx.toFixed(1)},${(b-y1).toFixed(1)} ${(cx-w).toFixed(1)},${(b-y0).toFixed(1)} ${(cx+w).toFixed(1)},${(b-y0).toFixed(1)}" fill="${TPAL.leaf}" stroke="${TPAL.line}" stroke-width="1" stroke-linejoin="round"/>`;
-  return `<rect x="${(cx-1.4*s).toFixed(1)}" y="${(baseY-tH).toFixed(1)}" width="${(2.8*s).toFixed(1)}" height="${(tH+1).toFixed(1)}" fill="${TPAL.line}"/>`
-    +`<rect x="${(cx-0.9*s).toFixed(1)}" y="${(baseY-tH).toFixed(1)}" width="${(1.8*s).toFixed(1)}" height="${tH.toFixed(1)}" fill="${TPAL.wood}"/>`
-    +tri(6.6*s,1*s,13.5*s)+tri(5.2*s,8*s,20*s)+tri(3.9*s,14.5*s,26*s);
-}
-const _COMP=[[11,27,.80],[25,28,.82],[4,39,.98],[18,40,1.08],[32,39,.98]]; // 뒤2 + 앞3(바깥은 가장자리까지)
-function _forest(flip){ return `<svg viewBox="0 0 36 40">`+_COMP.map(([x,y,s])=>_pine(flip?36-x:x,y,s)).join('')+`</svg>`; }
-const FOREST=[_forest(0),_forest(1)];
-function forestTile(flip){ return FOREST[flip?1:0]; }
-const _bushCache={};
-function bushTile(r,c){
-  const k=r*12+c; if(_bushCache[k]) return _bushCache[k];
-  let n=r*70+c*13+3; const rr=()=>{ n=(n*1103515245+12345)&0x7fffffff; return n/0x7fffffff; };
-  let s=`<svg viewBox="0 0 36 36"><ellipse cx="18" cy="30.5" rx="16" ry="5.5" fill="${TPAL.line}"/>`;  // 바닥(cy+ry)=36 → 칸 하단에 정확히 맞춤
-  for(let i=0;i<12;i++){ const x=4+i*2.6+(rr()-.5)*1.4, tip=31-(7+Math.floor(rr()*5)), lean=(rr()-.5)*2.4;
-    s+=`<polygon points="${(x-1.6).toFixed(1)},32 ${(x+1.6).toFixed(1)},32 ${(x+lean).toFixed(1)},${tip}" fill="${TPAL.leaf}" stroke="${TPAL.line}" stroke-width="0.7" stroke-linejoin="round"/>`; }
-  s+=`</svg>`; _bushCache[k]=s; return s;
-}
-
-// RPG Maker풍 오토타일: 이웃이 같은 지형이 아닌 방향에만 가장자리를 그린다(강 전용으로 축소)
-function terrainEdge(r,c,t){
-  const get=(rr,cc)=> (rr<0||rr>11||cc<0||cc>11) ? -1 : VIEW.grid[rr][cc].t;
-  const diff=(rr,cc)=> get(rr,cc)!==t;   // 보드 밖(-1)도 '다름' 취급 → 테두리 생김
-  const e=[];
-  if(t===1){ // 산: 위=밝은 윗면 / 아래=그림자 절벽 / 좌우=측면
-    if(diff(r-1,c)) e.push('inset 0 9px 0 -1px rgba(226,205,162,.95)');
-    if(diff(r+1,c)) e.push('inset 0 -8px 0 -1px rgba(50,36,22,.62)');
-    if(diff(r,c-1)) e.push('inset 8px 0 0 -1px rgba(151,120,82,.5)');
-    if(diff(r,c+1)) e.push('inset -8px 0 0 -1px rgba(82,60,38,.5)');
-  } else if(t===3){ // 부쉬: 잎 하이라이트(위 밝게, 아래 어둡게)
-    if(diff(r-1,c)) e.push('inset 0 7px 0 -1px rgba(182,228,150,.8)');
-    if(diff(r+1,c)) e.push('inset 0 -7px 0 -1px rgba(26,52,24,.6)');
-    if(diff(r,c-1)) e.push('inset 7px 0 0 -1px rgba(150,200,120,.5)');
-    if(diff(r,c+1)) e.push('inset -7px 0 0 -1px rgba(40,80,36,.5)');
-  } else { // 강: 물가 포말(밝은 테두리)
-    if(diff(r-1,c)) e.push('inset 0 6px 0 -1px rgba(210,242,255,.72)');
-    if(diff(r+1,c)) e.push('inset 0 -6px 0 -1px rgba(210,242,255,.5)');
-    if(diff(r,c-1)) e.push('inset 6px 0 0 -1px rgba(210,242,255,.6)');
-    if(diff(r,c+1)) e.push('inset -6px 0 0 -1px rgba(210,242,255,.6)');
-  }
-  return e.length ? e.join(',') : 'none';
-}
-
-function barrageLine(tr,tc){
-  if(!SEL) return [];
-  const dr0 = tr-SEL.r, dc0 = tc-SEL.c;
-  if((dr0===0)===(dc0===0)) return [];           // 상하좌우 직선만(대각 불가)
-  const dr = dr0===0?0:(dr0>0?1:-1), dc = dc0===0?0:(dc0>0?1:-1);
-  const out=[];
-  for(let d=1; d<=4; d++){                        // 사거리 4
-    const r=SEL.r+dr*d, c=SEL.c+dc*d;
-    if(r<0||r>11||c<0||c>11) break;
-    if(VIEW.grid[r][c].t===1) break;             // 숲에 막힘
-    out.push([r,c]);
-  }
-  return out;
-}
-
-function playFx(){
-  if(!VIEW.fx || VIEW.fx.seq === lastFx) return;
-  lastFx = VIEW.fx.seq;
-  const tp = VIEW.fx.type;
-  if(soundOn) (SND[tp]||SND.move)();
-  if(['capture','kill','fire','barrage'].includes(tp)){
-    VIEW.fx.cells.forEach(([r,c])=>{
-      const el = boardEl.children[r*12+c];
-      if(!el) return;
-      const b = document.createElement('div'); b.className='boom'; el.appendChild(b); setTimeout(()=>b.remove(), 520);
-      if(tp==='fire' || tp==='barrage' || tp==='kill'){
-        const fl = document.createElement('div'); fl.className='flash'; el.appendChild(fl); setTimeout(()=>fl.remove(), 320);
-      }
-    });
-    if(tp==='kill'){
-      const w = document.querySelector('.boardWrap');
-      if(w){ w.classList.add('shake'); setTimeout(()=>w.classList.remove('shake'), 400); }
-    }
-  }
-}
-
-function renderInvite(){
-  const box = document.getElementById('invite');
-  // 초대 링크는 상대가 아직 안 왔을 때만 크게 노출
-  if(VIEW && !VIEW.bothJoined && COLOR!=='spectator'){
-    box.style.display = 'block';
-    document.getElementById('inviteUrl').value = (VIEW.shareBase||'') + '#' + ROOM;
-  } else {
-    box.style.display = 'none';
-  }
-}
-function renderFeed(){
-  const feed = VIEW.feed || [];
-  const maxSeq = feed.reduce((m,e)=>Math.max(m,e.seq), feedSeen);
-  document.getElementById('feed').innerHTML = feed.slice().reverse().map(e=>{
-    const you = e.actor===COLOR, mine = e.victim===COLOR;
-    const cls = (you?'kf-you':(mine?'kf-me':'')) + (e.seq>feedSeen?' kf-new':'');
-    return `<div class="kf ${cls}">
-      <img src="${pieceSrc(e.atype,e.actor)}"><span class="nm">${PIECE_KR[e.atype]}</span>
-      <em>${METHOD_ICON[e.method]||'✖'}</em>
-      <img src="${pieceSrc(e.vtype,e.victim)}"><span class="nm">${PIECE_KR[e.vtype]}</span></div>`;
-  }).join('') || '<div style="color:#6a645c;font-size:12px;padding:4px">아직 없음</div>';
-  feedSeen = maxSeq;
-}
-function renderOverlay(){
-  const ov = document.getElementById('overlay');
-  if(VIEW.phase !== 'over'){ ov.style.display='none'; ov.innerHTML=''; overShown=null; return; }
-  ov.style.display='flex';
-  if(overShown === VIEW.winner) return;  // 이미 만들어짐 — 애니메이션/사운드 중복 방지
-  overShown = VIEW.winner;
-  ov.className='overlay';
-  const solo = VIEW.solo || COLOR==='solo';
-  let big, sub, snd;
-  if(VIEW.winner==='draw'){ big='🤝 무승부'; sub='턴 한도 도달'; snd='drawend'; }
-  else if(solo){ big=`🏳 ${VIEW.winner==='W'?'백':'흑'} 승리`; sub='혼자 테스트'; snd='victory'; }
-  else if(VIEW.winner===VIEW.yourColor){ big='🏆 승리!'; sub='적 왕 처치'; snd='victory'; }
-  else { big='💀 패배'; sub='내 왕이 당했다'; snd='defeat'; }
-  ov.innerHTML = `<div class="big">${big}</div><div class="sub">${sub}</div>`;
-  const b = document.createElement('button'); b.className='big'; b.textContent='↻ 재대결';
-  b.onclick = rematch; ov.appendChild(b);
-  ac(); if(soundOn) (SND[snd]||function(){})();
-}
-
-function renderPromo(me, solo){
-  const pm = document.getElementById('promoModal');
-  const show = VIEW && VIEW.promote && COLOR!=='spectator' && (solo || VIEW.turn===me);
-  if(!show){ pm.style.display='none'; return; }
-  if(pm.style.display!=='flex'){                 // 새로 뜰 때만 버튼 구성(깜빡임 방지)
-    const box=document.getElementById('promoBtns'); box.innerHTML='';
-    [['R','전차'],['N','나이트'],['B','비숍']].forEach(([t,name])=>{
-      const b=document.createElement('button');
-      b.style.cssText='display:flex; flex-direction:column; align-items:center; gap:4px; padding:10px 14px;';
-      b.innerHTML=`<img src="${pieceSrc(t, me)}" style="width:42px;height:42px" draggable="false"><span style="font-size:12px">${name}</span>`;
-      b.onclick=()=>doPromote(t);
-      box.appendChild(b);
-    });
-  }
-  pm.style.display='flex';
-}
-
-function render(){
-  if(!VIEW) return;
-  const me = VIEW.yourColor;                 // 조작 중인 색(솔로는 차례마다 바뀜)
-  const solo = VIEW.solo || COLOR==='solo';
-  const wi = document.getElementById('whoami');
-  if(solo) wi.textContent = `🧪 혼자 테스트 · 지금 ${me==='W'?'백':'흑'} 차례`;
-  else wi.textContent = COLOR==='spectator' ? '👀 관전자' : `당신은 ${COLOR==='W'?'백(아래)':'흑(위)'} 진영`;
-  wi.style.background = solo ? '#4a3a1e' : (COLOR==='W' ? '#22406b' : (COLOR==='B'?'#6b2222':'#333'));
-  document.getElementById('roomtag').textContent = ROOM ? `방 ${ROOM}` : '';
-
-  renderInvite();
-
-  const tEl = document.getElementById('timer');
-  tEl.textContent = (VIEW.phase==='setup' && VIEW.secondsLeft!=null && VIEW.bothJoined) ? `⏱ ${VIEW.secondsLeft}s` : '';
-
-  let s = '';
-  if(VIEW.phase==='setup'){
-    if(!VIEW.bothJoined) s = '상대 접속 대기 중… 초대 링크를 보내거나 [🧪 혼자 테스트]';
-    else {
-      s = VIEW.ready ? '준비 완료 — 상대 대기' : '👉 기물 배치 후 [준비 완료]';
-      s += VIEW.oppReady ? ' · 상대 준비됨 ✔' : ' · 상대 배치 중…';
-    }
-  } else if(VIEW.phase==='over'){
-    s = (VIEW.winner==='draw')?'무승부': solo ? `${VIEW.winner==='W'?'백':'흑'} 승리!` : (VIEW.winner===me?'승리!':'패배');
-  } else {
-    s = solo ? `🟢 ${me==='W'?'백':'흑'} 차례` : ((VIEW.turn===me) ? '🟢 당신 턴' : '⏳ 상대 턴 대기');
-    s += `  ·  ${VIEW.turnCount}/${VIEW.turnLimit}턴`;
-    if(!solo && !VIEW.oppConnected) s += '  · ⚠ 상대 접속 끊김?';
-  }
-  document.getElementById('status').textContent = s;
-
-  // 병력 수
-  const f = document.getElementById('forces');
-  if(COLOR!=='spectator' && VIEW.phase!=='setup'){
-    f.innerHTML = `<span><span class="dotc" style="background:#3d7bd6"></span>내 병력 ${VIEW.aliveMe}</span>`
-      + `<span>적 병력 ${VIEW.aliveOpp} <span class="dotc" style="background:#d64545"></span></span>`;
-  } else f.innerHTML='';
-
-  // 컨트롤
-  const ctr = document.getElementById('controls'); ctr.innerHTML = '';
-  const mkBtn = (txt, fn, cls)=>{ const b=document.createElement('button'); b.textContent=txt; if(cls) b.className=cls; b.onclick=fn; ctr.appendChild(b); return b; };
-  if(solo){
-    mkBtn(soloReveal ? '👁 전체 보기 ON' : '🌫 전체 보기 OFF(안개)',
-          ()=>{ soloReveal=!soloReveal; poll(); }, soloReveal ? 'on' : '');
-  }
-  if(!solo && VIEW.phase==='setup' && !VIEW.bothJoined && COLOR!=='spectator'){
-    mkBtn('🤖 컴퓨터와 대전', botStart, 'fire');
-    mkBtn('🧪 혼자 테스트', soloStart, 'tank');
-  }
-  if(VIEW.phase==='setup' && VIEW.bothJoined && COLOR!=='spectator'){
-    mkBtn('↩ 기본 포진', ()=>autoplace('default'));
-    mkBtn('🎲 무작위 배치', ()=>autoplace('random'));
-    mkBtn(VIEW.ready ? '✔ 준비 완료 (취소하려면 클릭)' : '준비 완료',
-          ()=>setReady(!VIEW.ready), VIEW.ready ? 'on' : '');
-    const hint = document.createElement('div');
-    hint.className='help'; hint.style.marginTop='2px';
-    hint.textContent='기물을 끌어다 놓거나(드래그) 클릭해서 배치하세요.';
-    ctr.appendChild(hint);
-  }
-  if(SEL && VIEW.phase==='play' && VIEW.turn===me){
-    if(canFire){
-      const b = document.createElement('button');
-      b.textContent = attackMode==='fire' ? '🎯 저격 ON — 표적 클릭' : '🎯 비숍 저격 (시야 내 사거리 5)';
-      b.className = attackMode==='fire' ? 'fire' : 'attn';   // 미선택이면 펄스로 유도
-      b.onclick = ()=>{ ac(); attackMode = attackMode==='fire'?null:'fire'; hoverCell=null; render(); };
-      ctr.appendChild(b);
-    }
-    if(canBarrage){
-      const b = document.createElement('button');
-      b.textContent = attackMode==='barrage' ? '🚜 돌파 사격 ON — 방향 클릭' : '🚜 돌파 사격 (십자 4칸)';
-      b.className = attackMode==='barrage' ? 'tank' : 'attn';
-      b.onclick = ()=>{ ac(); attackMode = attackMode==='barrage'?null:'barrage'; hoverCell=null; render(); };
-      ctr.appendChild(b);
-    }
-    if((canFire||canBarrage) && !attackMode){
-      const ah = document.createElement('div'); ah.className='help'; ah.style.marginTop='2px';
-      ah.textContent = canFire
-        ? '🎯 이 비숍은 저격 가능 — 위 버튼 누르고 하늘색 표적(보이는 적)을 클릭. 숨은 적은 못 맞힘'
-        : '🚜 이 전차는 십자 돌파 사격 가능 — 위 버튼 누르고 하늘색 방향(상하좌우)을 클릭';
-      ctr.appendChild(ah);
-    }
-  }
-
-  // 소리 on/off (관전자 제외 항상) + 코치 한 줄
-  if(COLOR!=='spectator'){
-    mkBtn(soundOn ? '🔊 소리 켜짐' : '🔇 소리 꺼짐',
-      ()=>{ soundOn=!soundOn; localStorage.setItem('fog_sound', soundOn?'1':'0'); if(soundOn) ac(); render(); });
-  }
-  if(COLOR!=='spectator' && VIEW.phase!=='over' && VIEW.bothJoined){
-    mkBtn('🏳 기권', doResign, 'fire');
-  }
-  if(ROOM){ mkBtn('🚪 나가기', leaveRoom); }
-  const coach = document.createElement('div'); coach.className='help'; coach.style.marginTop='6px';
-  coach.textContent = coachText(me, solo);
-  ctr.appendChild(coach);
-
-  document.getElementById('log').innerHTML = VIEW.log.map(x=>'· '+x).join('<br>');
-  renderFeed();
-  renderOverlay();
-  renderPromo(me, solo);
-
-  // 보드
-  boardEl.innerHTML = '';
-  const canSetup = VIEW.phase==='setup' && COLOR!=='spectator';
-  const [z0,z1] = VIEW.zone||[0,0];
-  const lastMove = (VIEW.fx && (VIEW.fx.type==='move'||VIEW.fx.type==='capture')) ? VIEW.fx.cells : [];
-  const fxset = new Set(lastMove.map(([r,c])=>r*12+c));
-  const myTurn = VIEW.phase==='play' && VIEW.turn===me;
-  const newPos = {};
-
-  for(let r=0;r<12;r++) for(let c=0;c<12;c++){
-    const cell = VIEW.grid[r][c];
-    const d = document.createElement('div');
-    d.className = 'cell ' + ((r+c)%2 ? 'dark':'light');
-    if(cell.t===1){ const tv=document.createElement('div'); tv.className='terrain'; tv.innerHTML=forestTile((r+c)%2); d.appendChild(tv); }
-    else if(cell.t===2){ d.className += ' river'; d.style.setProperty('--edge', terrainEdge(r, c, 2)); }
-    else if(cell.t===3){ const tv=document.createElement('div'); tv.className='terrain bushfront'; tv.innerHTML=bushTile(r, c); d.appendChild(tv); }
-    if(cell.f===1) d.className += ' fog';
-    if(fxset.has(r*12+c)) d.className += ' lastfx';
-
-    if(cell.p){
-      const img = document.createElement('img');
-      img.className = 'piece'; img.src = pieceSrc(cell.p.t, cell.p.o); img.draggable = false;
-      if(cell.p.o===me && cell.t===3) img.classList.add('concealed');   // 내 기물이 부쉬에 은신 중
-      if(cell.p.id){  // 내 기물: 직전 위치에서 미끄러지듯 이동
-        newPos[cell.p.id] = [r,c];
-        const pv = prevPos[cell.p.id];
-        if(pv && (pv[0]!==r || pv[1]!==c)){
-          const dy=(pv[0]-r)*42, dx=(pv[1]-c)*42;
-          img.style.transition='none';
-          img.style.transform=`translate(${dx}px,${dy}px)`;
-          requestAnimationFrame(()=>{ img.style.transition=''; img.style.transform=''; });
-        }
-      }
-      d.appendChild(img);
-      const mine = cell.p.o===me && cell.p.id;
-      if(mine && VIEW.phase==='play'){
-        d.classList.add('selpiece');
-        const pd={id:cell.p.id, r, c, t:cell.p.t};
-        d.onpointerdown = (ev)=>piecePointerDown(pd, ev);   // 클릭=선택 · 드래그=이동
-        if(SEL && SEL.id===cell.p.id) d.classList.add('sel');
-      }
-      if(mine && VIEW.phase==='setup'){
-        d.classList.add('selpiece');
-        const pd={id:cell.p.id, r, c, t:cell.p.t};
-        d.onclick = ()=>{ SEL = (SEL&&SEL.id===pd.id)?null:pd; render(); };
-        d.draggable = true;
-        d.ondragstart = ()=>{ SEL = pd; };
-        if(SEL && SEL.id===cell.p.id) d.classList.add('sel');
-      }
-    }
-
-    if(canSetup && r>=z0 && r<=z1 && (cell.t===0 || cell.t===3)){   // 빈 땅·부쉬 배치 가능(숲·강은 불가)
-      const rr=r, cc=c;
-      d.ondragover = (e)=>e.preventDefault();
-      d.ondrop = (e)=>{ e.preventDefault(); if(SEL) placePiece(rr, cc); };
-      if(SEL){ d.classList.add('zone'); d.onclick = ()=>placePiece(rr, cc); }
-    }
-
-    if(SEL && myTurn){
-      const rr=r, cc=c;
-      if(attackMode==='fire'){
-        if(inList(fireCells, r, c)){
-          d.classList.add('aim','fireReach');
-          d.onmouseenter = ()=>{ hoverCell=[rr,cc]; paintAim(); };
-          d.onclick = ()=>doFire(rr, cc);
-        }
-      } else if(attackMode==='barrage'){
-        if(inList(barrageCells, r, c)){
-          d.classList.add('aim','barrageReach');
-          d.onmouseenter = ()=>{ hoverCell=[rr,cc]; paintAim(); };
-          d.onclick = ()=>doBarrage(rr, cc);
-        }
-      } else if(inList(MOVES, r, c)){
-        d.classList.add(cell.p ? 'capture' : 'movable');
-        d.onclick = ()=>doMove(rr, cc);
-      }
-    }
-    // 빈 칸/사거리 밖 클릭 → 선택 취소(내 다른 기물·이동 목표는 제외)
-    if(SEL && myTurn && !d.onclick && !(cell.p && cell.p.o===me && cell.p.id)){
-      d.onclick = ()=>{ clearSel(); render(); };
-    }
-    boardEl.appendChild(d);
-  }
-  prevPos = newPos;
-  paintAim();
-  playFx();
-}
-
-function paintAim(){
-  document.querySelectorAll('.splash,.lineHit').forEach(e=>e.classList.remove('splash','lineHit'));
-  if(!SEL || !hoverCell) return;
-  if(attackMode==='fire'){
-    const [r,c]=hoverCell; const el=boardEl.children[r*12+c]; if(el) el.classList.add('splash');  // 단일 타일 저격
-  } else if(attackMode==='barrage'){
-    barrageLine(hoverCell[0], hoverCell[1]).forEach(([r,c])=>{
-      const el=boardEl.children[r*12+c]; if(el) el.classList.add('lineHit');
-    });
-  }
-}
-
-async function autoplace(mode){ await act({type:'autoplace', mode}); SEL=null; poll(); }
-
-// 좌표 라벨 (a~l 열 / 1~12 행) — 한 번만 그린다
-function renderCoords(){
-  const cols = 'abcdefghijkl';
-  const cr = document.getElementById('colLabels');
-  const rc = document.getElementById('rowLabels');
-  if(cr && !cr.childElementCount){
-    for(let c=0;c<12;c++){ const s=document.createElement('span'); s.textContent=cols[c]; cr.appendChild(s); }
-  }
-  if(rc && !rc.childElementCount){
-    for(let r=0;r<12;r++){ const s=document.createElement('span'); s.textContent=(r+1); rc.appendChild(s); }
-  }
-}
-
-// 규칙 모달
-function fillHelpPieces(){
-  const box = document.getElementById('helpPieces'); if(box.childElementCount) return;
-  const rows = [
-    ['P','폰 — 앞·좌·우·앞대각 1칸(첫수 2칸), 후퇴 불가. 수비 라인.'],
-    ['N','나이트 — 체스와 동일, 시야 2칸. 정찰의 핵심(비숍의 천적).'],
-    ['B','비숍(저격수) — 대각 2 이동 / 단일 저격(사거리 5, 시야에 든 적만·쏘면 노출).'],
-    ['R','전차(룩) — 상하좌우 3칸 이동 / 돌파 사격(십자 4칸, 숲에 막힘).'],
-    ['K','킹 — 8방향 1칸 이동, 시야 3칸(정찰). 목숨 1. 이걸 지키고, 적 것을 노려라.'],
-  ];
-  box.innerHTML = rows.map(([t,desc])=>
-    `<div class="hp"><img src="${pieceSrc(t,COLOR==='B'?'B':'W')}"><span>${desc}</span></div>`).join('');
-}
-function openHelp(){ fillHelpPieces(); document.getElementById('helpModal').style.display='flex'; }
-function closeHelp(){ document.getElementById('helpModal').style.display='none'; }
-
-document.getElementById('rematch').onclick = rematch;
-document.getElementById('helpBtn').onclick = openHelp;
-document.getElementById('helpClose').onclick = closeHelp;
-document.getElementById('helpModal').onclick = (e)=>{ if(e.target.id==='helpModal') closeHelp(); };
-boardEl.oncontextmenu = (e)=>{ e.preventDefault(); if(SEL){ clearSel(); render(); } };   // 우클릭=선택 취소
-document.getElementById('copyBtn').onclick = ()=>{
-  const el = document.getElementById('inviteUrl'); el.select();
-  navigator.clipboard?.writeText(el.value); showMsg('링크 복사됨!');
-};
-
-(async function main(){
-  ROOM = (location.hash || '').replace('#','') || null;
-  renderCoords();
-  await join(); await poll(); setInterval(poll, 900);
-  if(!localStorage.getItem('fog_help_seen')){ openHelp(); localStorage.setItem('fog_help_seen','1'); }
-})();
-</script>
+<script src="/game.js"></script>
 </body>
 </html>

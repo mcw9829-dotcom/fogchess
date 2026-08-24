@@ -11,18 +11,24 @@ import http.server
 import socketserver
 import json
 import os
+import sys
+import re
 import socket
+import shutil
+import subprocess
 import uuid
 import time
 import random
 import threading
 from urllib.parse import urlparse, parse_qs
 
-from config import (PORT, CODE_ALPHABET, SEAT_TIMEOUT, SETUP_SECONDS, USE_PERLIN, ROOM_TTL)
+from config import (PORT, CODE_ALPHABET, SEAT_TIMEOUT, SETUP_SECONDS, USE_PERLIN, ROOM_TTL,
+                    TURN_SECONDS, MAX_MISSES, BOT_MIN_THINK)
 from game_map import FORESTS, RIVERS, BUSHES, terrain_to_ascii
-from pieces import (new_game, legal_moves, fire_cells, barrage_reach,
+from pieces import (new_game, legal_moves, fire_cells, fire_range, barrage_reach,
                     apply_move, apply_fire, apply_barrage, apply_place, autoplace,
-                    player_view, advance_turn, apply_promote, apply_resign)
+                    player_view, advance_turn, apply_promote, apply_resign,
+                    scan_cells, apply_scan, time_out)
 import bot
 
 BOT_TOKEN = '__bot__'   # 컴퓨터(봇) 좌석 토큰
@@ -108,12 +114,35 @@ def maybe_start(st):
     if (st['ready']['W'] and st['ready']['B']) or time.time() > st['deadline']:
         st['phase'] = 'play'
         st['turn'] = 'W'
+        st['turn_deadline'] = time.time() + TURN_SECONDS   # 첫 턴(백) 제한시간 시작
         st['log'].append('배치 완료 — 전투 시작! (백 선공)')
+
+
+def enforce_clock(room, now):
+    """플레이 중 턴 제한시간을 넘겼으면 자동으로 상대 턴으로 넘긴다(time_out).
+    솔로(핫시트)는 제외. 봇 차례는 자동 응수가 처리하므로 사람 차례만 검사한다."""
+    st = room['state']
+    if room.get('solo'):
+        return
+    if st['phase'] != 'play' or not st.get('turn_deadline'):
+        return
+    if room.get('bot') and st['turn'] == room['bot']:
+        return
+    if now <= st['turn_deadline']:
+        return
+    time_out(st)                                           # 미행동 1회(또는 3회째면 패배)
+    if st['phase'] == 'play' and room.get('bot'):          # 넘긴 뒤 봇 차례면 봇이 응수
+        guard = 0
+        while st['phase'] == 'play' and st['turn'] == room['bot'] and guard < 8:
+            if not bot.act(st, room['bot'], room.get('botlevel', 'normal')):
+                advance_turn(st); break
+            guard += 1
 
 
 def state_response(room, color, now, reveal=False):
     """pieces.player_view + 방/네트워크 필드."""
-    v = player_view(room['state'], color, reveal)
+    st = room['state']
+    v = player_view(st, color, reveal)
     v['solo'] = room.get('solo', False)
     v['room'] = room['code']
     v['shareBase'] = LAN_URL
@@ -121,6 +150,14 @@ def state_response(room, color, now, reveal=False):
     opp = 'B' if color == 'W' else 'W'
     opp_tok = room['seats'].get(opp) if color in ('W', 'B') else None
     v['oppConnected'] = bool(opp_tok) and (now - room['seen'].get(opp_tok, 0) < 5)
+    # 턴 제한시간(모래시계) — 솔로/봇차례엔 표시 안 함
+    show_clock = (st['phase'] == 'play' and st.get('turn_deadline')
+                  and not room.get('solo')
+                  and not (room.get('bot') and st['turn'] == room.get('bot')))
+    v['turnSecondsLeft'] = max(0, int(round(st['turn_deadline'] - now))) if show_clock else None
+    v['turnSeconds'] = TURN_SECONDS
+    v['maxMisses'] = MAX_MISSES
+    v['misses'] = dict(st.get('misses', {'W': 0, 'B': 0}))
     return v
 
 
@@ -161,8 +198,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if u.path in ('/', '/index.html'):
             self._file('client.html', 'text/html; charset=utf-8')
             return
-        if u.path == '/sound.js':
-            self._file('sound.js', 'application/javascript; charset=utf-8')
+        if u.path == '/style.css':
+            self._file('style.css', 'text/css; charset=utf-8')
+            return
+        if u.path in ('/sound.js', '/game.js'):
+            self._file(u.path.lstrip('/'), 'application/javascript; charset=utf-8')
             return
         if u.path.startswith('/img/'):
             name = os.path.basename(u.path)
@@ -186,6 +226,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if u.path == '/state':
                 maybe_setup_timer(room)
                 maybe_start(room['state'])
+                enforce_clock(room, now)            # 턴 제한시간 초과 시 자동으로 상대 턴으로
                 reveal = room.get('solo') and q.get('reveal', ['0'])[0] == '1'
                 self._json(state_response(room, color, now, reveal))
                 return
@@ -194,15 +235,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 st = room['state']
                 p = st['pieces'].get(pid)
                 if st['phase'] != 'play' or st['turn'] != color or not p or p['o'] != color:
-                    self._json({'moves': [], 'canFire': False, 'fireCells': [],
-                                'canBarrage': False, 'barrageCells': []})
+                    self._json({'moves': [], 'canFire': False, 'fireCells': [], 'fireRange': [],
+                                'canBarrage': False, 'barrageCells': [],
+                                'canScan': False, 'scanCells': []})
                     return
                 self._json({
                     'moves': legal_moves(st, pid),
                     'canFire': p['t'] == 'B',
                     'fireCells': fire_cells(st, pid) if p['t'] == 'B' else [],
+                    'fireRange': fire_range(st, pid) if p['t'] == 'B' else [],
                     'canBarrage': p['t'] == 'R',
                     'barrageCells': barrage_reach(st, pid) if p['t'] == 'R' else [],
+                    'canScan': p['t'] == 'Q',
+                    'scanCells': scan_cells(st, pid) if p['t'] == 'Q' else [],
                 })
                 return
         self._json({'error': 'not found'}, 404)
@@ -238,6 +283,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     code = gen_code()
                     room = new_room(code)
                     room['bot'] = 'B'
+                    lv = data.get('level')
+                    room['botlevel'] = lv if lv in ('easy', 'normal', 'hard') else 'normal'
                     htok = uuid.uuid4().hex
                     room['seats']['W'] = htok
                     room['seats']['B'] = BOT_TOKEN
@@ -285,6 +332,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if color not in ('W', 'B'):
                     self._json({'ok': False, 'msg': '관전자는 조작할 수 없습니다.'})
                     return
+                if act not in ('rematch', 'resign'):
+                    enforce_clock(room, now)        # 마감 지난 턴은 먼저 자동으로 넘김
                 if act == 'rematch':
                     room['state'] = new_game()
                     if room.get('solo'):
@@ -324,18 +373,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     ok, msg = apply_fire(st, color, data['pid'], data['r'], data['c'])
                 elif act == 'barrage':
                     ok, msg = apply_barrage(st, color, data['pid'], data['r'], data['c'])
+                elif act == 'scan':
+                    ok, msg = apply_scan(st, color, data['pid'], data['r'], data['c'])
                 elif act == 'promote':
                     ok, msg = apply_promote(st, color, data.get('choice'))
                 else:
                     ok, msg = False, '알 수 없는 동작.'
+                bot_moved, bot_spent, bot_lvl = False, 0.0, room.get('botlevel', 'normal')
                 if ok and room.get('bot'):
-                    guard = 0                      # 봇 차례면 즉시 응수(교착 방지 상한)
+                    t0 = time.time()
+                    guard = 0                      # 봇 차례면 응수(교착 방지 상한)
                     while st['phase'] == 'play' and st['turn'] == room['bot'] and guard < 8:
-                        if not bot.act(st, room['bot']):
+                        bot_moved = True
+                        if not bot.act(st, room['bot'], bot_lvl):
                             advance_turn(st)       # 봇이 둘 수 없으면 패스
                             break
                         guard += 1
-                self._json({'ok': ok, 'msg': msg})
+                    bot_spent = time.time() - t0
+                resp = {'ok': ok, 'msg': msg}
+            # ── 락 해제 후 ── 봇이 실제로 뒀으면 '최소 생각시간'까지 대기(다른 방/배치 안 막음)
+            if bot_moved:
+                delay = BOT_MIN_THINK.get(bot_lvl, 1.0) - bot_spent
+                if delay > 0:
+                    time.sleep(delay)
+            self._json(resp)
             return
 
         self._json({'error': 'not found'}, 404)
@@ -356,6 +417,52 @@ def lan_ip():
         return None
 
 
+def start_tunnel(port):
+    """--share: cloudflared '빠른 터널'로 서버를 인터넷에 공개(무료·계정 불필요).
+    cloudflared가 있으면 실행해 공개 URL을 크게 출력하고, 없으면 설치법을 안내한다.
+    (원격으로 할 땐 '나도' 이 공개 주소로 접속해 로비를 만들어야 초대 링크가 그 주소가 된다.)"""
+    exe = shutil.which('cloudflared')
+    if not exe:
+        print('-' * 54)
+        print('  [원격 공유] cloudflared 가 없습니다 (무료, 계정 불필요 터널).')
+        print('  설치(택1):')
+        print('    - winget install --id Cloudflare.cloudflared')
+        print('    - https://github.com/cloudflare/cloudflared/releases (cloudflared.exe)')
+        print('  설치 후:  python server.py --share')
+        print(f'  (또는 다른 터미널에서 직접:  cloudflared tunnel --url http://localhost:{port} )')
+        print('-' * 54)
+        return
+    print('-' * 54)
+    print('  [원격 공유] cloudflared 터널 여는 중... 공개 주소가 곧 아래에 뜹니다.')
+    try:
+        proc = subprocess.Popen(
+            [exe, 'tunnel', '--url', f'http://localhost:{port}'],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    except Exception as e:
+        print(f'  터널 실행 실패: {e}')
+        print('-' * 54)
+        return
+
+    def relay():
+        seen = False
+        for line in proc.stdout:
+            m = re.search(r'https://[a-z0-9-]+\.trycloudflare\.com', line)
+            if m and not seen:
+                seen = True
+                url = m.group(0)
+                print('=' * 54)
+                print('  [원격 접속 주소] 인터넷 어디서나 접속 가능:')
+                print(f'     {url}')
+                print('  -> 나도 이 주소로 접속해 [로비 게임 만들기] 후,')
+                print('     화면의 "친구 초대 링크"를 친구에게 보내면 됩니다.')
+                print('  (이 서버를 끄면 주소도 사라집니다. Ctrl+C 로 종료)')
+                print('=' * 54)
+            elif ('ERR' in line or 'error' in line.lower()) and 'trycloudflare' not in line:
+                print('  [cloudflared] ' + line.rstrip())
+
+    threading.Thread(target=relay, daemon=True).start()
+
+
 if __name__ == '__main__':
     ip = lan_ip()
     if ip:
@@ -368,6 +475,7 @@ if __name__ == '__main__':
         print(f'  친구 접속용:  http://{ip}:{PORT}   <- 같은 와이파이')
     print('  브라우저에서 접속하면 방이 자동 생성되고, 화면의')
     print('  "친구 초대 링크"를 복사해 친구에게 보내면 됩니다.')
+    print(f'  먼 곳의 친구와(다른 와이파이):  python server.py --share')
     print('-' * 54)
     src = '펄린 노이즈 자동생성' if USE_PERLIN else '수동 MAP_ROWS'
     print(f'  지형({src}, #=숲{len(FORESTS)} ~=강{len(RIVERS)} "=부쉬{len(BUSHES)}):')
@@ -377,6 +485,8 @@ if __name__ == '__main__':
         print('  ↑ 마음에 들면 이 그림을 config.py의 MAP_ROWS에 붙여넣고 USE_PERLIN=False 하면 고정.')
     print('  종료: Ctrl+C')
     print('=' * 54)
+    if '--share' in sys.argv:
+        start_tunnel(PORT)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
