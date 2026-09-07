@@ -94,11 +94,11 @@ def visible_cells(st, color):
     for p in st['pieces'].values():
         if p['alive'] and p['o'] == color:
             srcs.append((p['r'], p['c'], VISION[p['t']]))
-    for rv in st['reveals']:
-        if rv['viewer'] == color and st['turnCount'] < rv['until']:
+    for rv in st['reveals']:                   # 공격으로 노출된 적: 그 기물 '칸'만 보인다(반경 0).
+        if rv['viewer'] == color and st['turnCount'] < rv['until']:   #  예전엔 반경 1이라 적 주변 칸·숲 뒤까지 밝아져 '시야 버그'처럼 보였음
             q = st['pieces'].get(rv['pid'])
             if q and q['alive']:
-                srcs.append((q['r'], q['c'], 1))
+                srcs.append((q['r'], q['c'], 0))
     for (pr, pc, rad) in srcs:
         for dr in range(-rad, rad + 1):
             for dc in range(-rad, rad + 1):

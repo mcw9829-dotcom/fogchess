@@ -488,12 +488,17 @@ function renderPlayers(me, solo){
     const tier = rating!=null ? tierOf(rating) : null;
     const avatar = tier ? `<img class="ptier" src="${pieceSrc(tier,'W')}" alt="${TIER_KR[tier]}" title="${TIER_KR[tier]}" draggable="false">`
                         : `<span class="ptier em">${isMe?'🙂':'👤'}</span>`;
-    const caps = captured.map(t=>`<img src="${pieceSrc(t, who==='W'?'B':'W')}" alt="${t}" title="잡은 ${TIER_KR[t]||t}" draggable="false">`).join('');
+    // 잡은 기물: 종류별로 묶어 큰 아이콘 + ×N, 총 개수 — 한눈에 '몇 개 잡았나'가 보이게
+    const groups=[]; captured.forEach(t=>{ const g=groups.find(x=>x.t===t); if(g) g.n++; else groups.push({t, n:1}); });
+    const caps = groups.length
+      ? groups.map(g=>`<span class="cg"><img src="${pieceSrc(g.t, who==='W'?'B':'W')}" alt="${g.t}" title="잡은 ${TIER_KR[g.t]||g.t}${g.n>1?' ×'+g.n:''}" draggable="false">${g.n>1?`<b>×${g.n}</b>`:''}</span>`).join('')
+        + `<span class="ctotal">잡음 ${captured.length}</span>`
+      : `<span class="none">잡은 기물 없음</span>`;
     const adv = captured.length - lost.length;
     el.className = 'pbox' + (isMe?' me':'') + (active?' active':'');
     el.innerHTML = avatar
-      + `<div class="pinfo"><div class="pname">${escapeHtml(name)}${rating!=null?` <small>${rating}</small>`:''}<span class="pcol">${who==='W'?'백':'흑'}${isMe?' · 나':''}</span></div>`
-      + `<div class="pcap">${caps}${adv>0?`<span class="adv">+${adv}</span>`:''}<span class="alive">병력 ${who===me ? VIEW.aliveMe : VIEW.aliveOpp}</span></div></div>`
+      + `<div class="pinfo"><div class="pname"><span class="nm">${escapeHtml(name)}${rating!=null?` <small>${rating}</small>`:''}</span><span class="pcol">${who==='W'?'백':'흑'}${isMe?' · 나':''}</span><span class="palive">병력 ${who===me ? VIEW.aliveMe : VIEW.aliveOpp}</span></div>`
+      + `<div class="pcap">${caps}${adv>0?`<span class="adv">+${adv}</span>`:''}</div></div>`
       + `<div class="pclock ${active ? (secs!=null && secs<=6 ? 'low' : 'active') : 'idle'}">${play && secs!=null ? secs+'s' : (VIEW.phase==='over' ? '—' : '')}</div>`;
   };
   const oppName = solo ? (opp==='W'?'백':'흑') : (VIEW.oppName || '상대');

@@ -986,6 +986,25 @@ def test_rematch_needs_both_players(tmp_db):
     assert server.rematch_request(solo, 'W') == {'ok': True} and solo['state']['phase'] == 'play'  # 솔로: 즉시(진행 중에도)
 
 
+
+def test_reveal_shows_only_that_cell():
+    """공격으로 노출된 적 기물: 그 기물 칸만 보이고(저격 가능), 이웃 칸·숲 뒤는 밝아지지 않는다(예전 반경 1 시야 버그)."""
+    _set_terrain(forests={(3, 4)})
+    st = bare()
+    put(st, 'W_K1', 'W', 'K', 11, 5)                        # 내 킹은 멀리(시야 반경 3 밖)
+    put(st, 'B_B1', 'B', 'B', 3, 5)                         # 적 비숍이 쏴서 노출됨
+    pieces.add_reveal(st, 'B_B1', 'W', 4)
+    vis = pieces.visible_cells(st, 'W')
+    assert (3, 5) in vis                                    # 노출된 기물 칸
+    for rc in ((2, 5), (4, 5), (3, 6), (2, 4), (4, 6), (3, 3)):
+        assert rc not in vis, rc                            # 이웃 칸(숲 뒤 (3,3) 포함)은 안 보임
+    v = pieces.player_view(st, 'W')
+    assert v['grid'][3][5]['p'] and v['grid'][3][5]['f'] == 0 and v['grid'][2][5]['f'] == 1
+    assert pieces.enemy_visible_at(st, 'W', 3, 5) is not None   # 노출된 적은 저격 표적
+    st['turnCount'] += 4                                    # 노출 만료 → 다시 안개
+    assert (3, 5) not in pieces.visible_cells(st, 'W')
+
+
 # ------------------------- 신규 규칙 -------------------------
 def test_king_vision_3():
     st = bare()

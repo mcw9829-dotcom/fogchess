@@ -193,21 +193,28 @@
   details.logbox[open] > summary::before { content: '▾ '; }
   #status { font-size: 15px; font-weight: 700; margin: 6px 0; min-height: 22px; }
   /* 플레이어 패널(리체스식): 아바타(티어 기물) · 이름/레이팅 · 잡은 기물 · 턴 시계 */
-  .pbox { display: grid; grid-template-columns: 36px 1fr auto; gap: 8px; align-items: center; padding: 8px 10px;
-    border-radius: 12px; background: var(--panel-2); border: 1px solid var(--border); margin-bottom: 6px; min-height: 54px; }
+  .pbox { display: grid; grid-template-columns: 38px 1fr auto; gap: 10px; align-items: center; padding: 11px 12px;
+    border-radius: 12px; background: var(--panel-2); border: 1px solid var(--border); margin-bottom: 8px; min-height: 72px; }
   .pbox:empty { display: none; }
   .pbox.active { border-color: rgba(var(--sig-turn), .75); box-shadow: 0 0 0 1px rgba(var(--sig-turn), .35), 0 0 14px rgba(var(--sig-turn), .15); }
   .ptier { width: 34px; height: 34px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.4)); }
   .ptier.em { display: grid; place-items: center; font-size: 22px; }
   .pinfo { min-width: 0; }
-  .pname { font-weight: 800; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pname { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-weight: 800; font-size: 14px; }   /* 길면 칩이 다음 줄로(잘리지 않게) */
+  .pname .nm { min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pname small { color: var(--accent); font-weight: 800; margin-left: 3px; }
-  .pcol { display: inline-block; margin-left: 6px; font-size: 10.5px; padding: 1px 6px; border-radius: 999px;
-    border: 1px solid var(--border-2); color: var(--text-dim); vertical-align: middle; }
-  .pcap { display: flex; align-items: center; min-height: 18px; margin-top: 2px; }
-  .pcap img { width: 17px; height: 17px; margin-right: -5px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); }
-  .pcap .adv { margin-left: 10px; font-size: 12px; font-weight: 800; color: rgb(var(--sig-move)); }
-  .pcap .alive { margin-left: auto; font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+  .pcol { display: inline-block; font-size: 10.5px; padding: 1px 6px; border-radius: 999px;
+    border: 1px solid var(--border-2); color: var(--text-dim); font-weight: 600; }
+  .pinfo { overflow: hidden; }
+  .palive { display: inline-block; font-size: 10.5px; color: var(--text-dim); white-space: nowrap; font-weight: 600; }
+  /* 잡은 기물: 종류별 큰 아이콘 + ×N + 총 개수. 넘치면 다음 줄로(글자를 덮지 않게) */
+  .pcap { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 9px; min-height: 28px; margin-top: 5px; padding-right: 4px; }
+  .pcap .cg { display: inline-flex; align-items: center; gap: 1px; }
+  .pcap .cg img { width: 24px; height: 24px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); }
+  .pcap .cg b { font-size: 12.5px; font-weight: 800; color: var(--text); }
+  .pcap .ctotal { font-size: 11.5px; font-weight: 700; color: var(--text-dim); white-space: nowrap; }
+  .pcap .none { font-size: 11px; color: var(--text-dim); }
+  .pcap .adv { font-size: 12.5px; font-weight: 800; color: rgb(var(--sig-move)); white-space: nowrap; }
   .pclock { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; min-width: 58px; text-align: right; color: var(--text-dim); }
   .pclock.active { color: rgb(var(--sig-turn)); }
   .pclock.low { color: rgb(var(--sig-impact)); animation: clocklow .7s ease-in-out infinite; }
