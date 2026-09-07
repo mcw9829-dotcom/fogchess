@@ -961,6 +961,31 @@ def test_game_history_recorded(tmp_db):
     st['log'].append('⏳ 흑 연속 3회 미행동 — 백 승리'); assert server.game_reason(st) == 'timeout'
 
 
+
+def test_rematch_needs_both_players(tmp_db):
+    """사람끼리 방: 재대결은 게임 종료 뒤 제안 → 둘 다 눌러야 새 판. 거절하면 제안 초기화. 진행 중·관전자는 거부. 봇·솔로는 즉시."""
+    import server
+    room = server.new_room('RM1'); room['seats'] = {'W': 'tw', 'B': 'tb'}; room['tokens'] = {'tw': 'W', 'tb': 'B'}
+    st = room['state']
+    assert server.rematch_request(room, 'W')['ok'] is False                        # 진행 중(배치 단계) → 거부
+    st['phase'] = 'over'; st['winner'] = 'W'
+    assert server.rematch_request(room, 'spec')['ok'] is False                     # 관전자 → 거부
+    r = server.rematch_request(room, 'W')
+    assert r == {'ok': True, 'pending': True} and room['rematch'] == {'W': True} and room['state']['phase'] == 'over'
+    v = server.state_response(room, 'B', 0); assert v['rematch'] == {'me': False, 'opp': True}
+    v = server.state_response(room, 'W', 0); assert v['rematch'] == {'me': True, 'opp': False}
+    assert server.rematch_request(room, 'W')['pending'] is True                    # 다시 눌러도 제안 하나
+    server.rematch_decline(room, 'B')
+    assert room['rematch'] == {} and any('원하지 않음' in x for x in room['state']['log'])
+    server.rematch_request(room, 'B')
+    r = server.rematch_request(room, 'W')                                          # 둘 다 → 새 판
+    assert r == {'ok': True} and room['state']['phase'] == 'setup' and room['rematch'] == {} and room['rated_done'] is False
+    bot = server.new_room('RM2'); bot['bot'] = 'B'; bot['state']['phase'] = 'over'; bot['state']['winner'] = 'B'
+    assert server.rematch_request(bot, 'W') == {'ok': True} and bot['state']['phase'] == 'setup'   # 봇: 즉시
+    solo = server.new_room('RM3'); solo['solo'] = True
+    assert server.rematch_request(solo, 'W') == {'ok': True} and solo['state']['phase'] == 'play'  # 솔로: 즉시(진행 중에도)
+
+
 # ------------------------- 신규 규칙 -------------------------
 def test_king_vision_3():
     st = bare()

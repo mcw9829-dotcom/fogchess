@@ -238,21 +238,23 @@ class FxLayer {
       this.after(delay, hit);
     } else hit();
   }
-  _barrage(F, C){
-    if(!C.length) return;
-    if(F){ this.flash(F[0], F[1], this.cw * 0.9, 0.16, 'rgba(255,230,160,.95)'); this.dust(F[0], F[1], 6); }
+  _barrage(F, C){                                  // 전차 돌파 사격: 포구 화염 → 굵은 탄도가 칸마다 착탄(연쇄 폭발) → 마지막 칸 충격파
+    if(!C.length) return;                            //   저격(한 점 착탄)과 달리 경로 전체가 폭발하고, 진동은 모든 공격 중 가장 강함(킹 처치 다음)
+    const n = C.length;
+    if(F){ this.flash(F[0], F[1], this.cw * 1.1, 0.18, 'rgba(255,230,160,.98)'); this.smoke(F[0], F[1], 6); this.dust(F[0], F[1], 8); }
+    this.shakeBy(0.45);                                                      // 발사 반동
     let prev = F || C[0];
     C.forEach((pt, i) => {
       const from = prev; prev = pt;
-      this.after(0.07 * i + (F ? 0.05 : 0), () => {
-        if(from !== pt) this.tracer(from[0], from[1], pt[0], pt[1], 0.09, '#ffd88a', 3, 0.6);
-        this.flash(pt[0], pt[1], this.cw * 0.8, 0.16);
-        this.sparks(pt[0], pt[1], 10, this.cw * 7);
-        this.dust(pt[0], pt[1], 5);
-        if(i === C.length - 1){ this.ring(pt[0], pt[1], this.cw * 0.2, this.cw * 1.6, 0.5, 'rgba(255,220,140,.9)', 3); this.smoke(pt[0], pt[1], 10); }
+      const last = i === n - 1, s = last ? 1.1 : 0.8;
+      this.after(0.09 * i + (F ? 0.05 : 0), () => {
+        if(from !== pt) this.tracer(from[0], from[1], pt[0], pt[1], 0.08, '#ffd88a', 4, 0.9);   // 굵은 탄도(포탄)
+        this._impact(pt[0], pt[1], s);                                       // 칸마다 진짜 폭발: 섬광·링·불꽃·먼지·파편
+        this.smoke(pt[0], pt[1], last ? 12 : 5);
+        this.shakeBy(last ? 0.55 : 0.4);                                     // 연쇄 폭발마다 흔들림을 이어감(전차 컨셉)
+        if(last) this.ring(pt[0], pt[1], this.cw * 0.3, this.cw * 2.4, 0.6, 'rgba(255,200,120,.85)', 4);   // 마지막 칸 큰 충격파
       });
     });
-    this.shakeBy(0.3);
   }
   _scan(C, found){
     if(!C.length) return;

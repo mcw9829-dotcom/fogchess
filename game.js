@@ -135,7 +135,13 @@ async function doBarrage(r,c){ FX_LAST={type:'barrage', from:[SEL.r,SEL.c]}; con
 async function doScan(r,c){ await act({type:'scan', pid:SEL.id, r, c}); clearSel(); poll(); }
 async function placePiece(r,c){ ac(); await act({type:'place', pid:SEL.id, r, c}); if(soundOn) SND.place(); SEL=null; poll(); }
 async function setReady(v){ await act({type:'ready', value:v}); poll(); }
-async function rematch(){ await act({type:'rematch'}); clearSel(); clearAnnotations(); lastFx=0; PENDING_FX=null; feedSeen=0; prevPos={}; prevFog=null; overShown=null; poll(); }
+async function rematch(){
+  const r = await act({type:'rematch'});
+  if(r && r.pending){ poll(); return; }            // 사람끼리: 제안만 등록 → 종료 화면이 '상대 응답 대기'를 보여줌
+  if(!r || !r.ok) return;
+  clearSel(); clearAnnotations(); lastFx=0; PENDING_FX=null; feedSeen=0; prevPos={}; prevFog=null; overShown=null; poll();
+}
+async function rematchDecline(){ await act({type:'rematch_decline'}); poll(); }
 async function doPromote(t){ await act({type:'promote', choice:t}); document.getElementById('promoModal').style.display='none'; poll(); }
 async function doResign(){ if(!confirm('정말 기권할까요? 상대가 승리합니다.')) return; await act({type:'resign'}); clearSel(); poll(); }
 async function leaveRoom(){
@@ -147,7 +153,10 @@ async function leaveRoom(){
     const why = VIEW.rated ? (VIEW.bot ? '전적에 패배가 기록돼요.' : '레이팅이 내려갑니다.') : '상대에게 승리가 돌아가요.';
     if(!confirm('지금 나가면 기권 패배로 처리돼요.\n' + why + '\n그래도 나갈까요?')) return;
     try{ await act({type:'resign'}); }catch(e){}
-  } else if(!confirm('이 방에서 나가 홈으로 갈까요?')) return;
+  } else {
+    if(!confirm('이 방에서 나가 홈으로 갈까요?')) return;
+    if(VIEW && VIEW.phase==='over' && !solo && !VIEW.bot && COLOR!=='spectator'){ try{ post('/action', {room:ROOM, token:TOKEN, type:'rematch_decline'}); }catch(e){} }   // 상대가 재대결을 기다리지 않게
+  }
   if(ROOM) localStorage.removeItem('fog_'+ROOM);
   ROOM=null; TOKEN=''; COLOR=null; VIEW=null; location.hash='';
   clearSel(); clearAnnotations(); prevPos={}; prevFog=null; overShown=null; lastFx=0; PENDING_FX=null; feedSeen=0;
@@ -315,7 +324,7 @@ function coachText(me, solo){
   if(VIEW.phase==='setup') return VIEW.bothJoined
     ? '① 기물을 드래그/클릭해 내 3줄 안에 배치 → ② [준비 완료].'
     : '상대 접속 대기 중 — 위 [🔗 초대 링크]를 친구에게 보내세요.';
-  if(VIEW.phase==='over') return '게임 종료 — [↻ 재대결]로 다시 시작할 수 있어요.';
+  if(VIEW.phase==='over') return (VIEW.solo||VIEW.bot) ? '게임 종료 — [↻ 새 게임 / 재대결]로 다시 시작할 수 있어요.' : '게임 종료 — 재대결은 둘 다 [재대결 제안]을 눌러야 시작돼요. 나가도 이번 결과는 그대로.';
   if(!solo && VIEW.turn!==me) return '⏳ 상대 턴 — 잠시 기다려 주세요.';
   if(SEL) return '초록=이동(드래그하거나 클릭). 비숍·전차는 위 공격 버튼. 취소는 빈 칸/우클릭.';
   return '내 기물을 클릭하거나 드래그해 이동하세요. 어두운 칸은 안개예요.';
@@ -536,11 +545,29 @@ function overReason(won){                 // 종료 사유(최근 로그로 판�
   if(/기권/.test(logs)) return won ? '상대 기권' : '기권';
   return won ? '적 왕 처치' : '내 왕이 당했다';
 }
+// 종료 화면의 재대결 상자: 솔로·봇=바로 새 판 / 사람끼리=제안 → 상대 수락(둘 다 눌러야 새 판) · 나가기는 결과 그대로
+function renderRematchBox(box){
+  if(!box || !VIEW) return;
+  const solo = VIEW.solo || COLOR==='solo', pvp = !solo && !VIEW.bot && COLOR!=='spectator';
+  const rm = VIEW.rematch || {};
+  const btn=(id,txt,cls)=>`<button class="big ${cls||''}" data-act="${id}">${txt}</button>`;
+  let html='';
+  if(COLOR==='spectator') html = '';
+  else if(!pvp) html = btn('rematch','↻ 새 게임 / 재대결');
+  else if(!VIEW.oppConnected) html = `<div class="rmnote">상대가 나갔어요</div>` + btn('leave','🚪 나가기','ghost');
+  else if(rm.me && !rm.opp) html = `<div class="rmnote">🔁 재대결을 제안했어요 · 상대 응답 대기 중…</div>` + btn('decline','제안 취소','ghost') + btn('leave','🚪 나가기','ghost');
+  else if(rm.opp && !rm.me) html = `<div class="rmnote">🔁 상대가 재대결을 제안했어요${VIEW.rated ? ' · 수락하면 같은 상대와 새 레이팅전(배치부터)' : ''}</div>` + btn('rematch','✅ 수락 · 재대결') + btn('decline','✕ 거절','ghost');
+  else html = btn('rematch','🔁 재대결 제안') + btn('leave','🚪 나가기','ghost') + `<div class="rmnote">나가도 이번 판 결과는 그대로예요${VIEW.rated ? ' · 추가 레이팅 변동 없음' : ''}</div>`;
+  if(box.dataset.html === html) return;
+  box.innerHTML = html; box.dataset.html = html;
+  const fns = {rematch, decline: rematchDecline, leave: leaveRoom};
+  box.querySelectorAll('button[data-act]').forEach(b=>{ b.onclick = ()=>fns[b.dataset.act](); });
+}
 function renderOverlay(){
   const ov = document.getElementById('overlay');
   if(VIEW.phase !== 'over'){ ov.style.display='none'; ov.innerHTML=''; overShown=null; return; }
   ov.style.display='flex';
-  if(overShown === VIEW.winner) return;  // 이미 만들어짐 — 애니메이션/사운드 중복 방지
+  if(overShown === VIEW.winner){ renderRematchBox(ov.querySelector('.rmbox')); return; }  // 이미 만들어짐 — 재대결 상자만 갱신
   overShown = VIEW.winner;
   ov.className='overlay';
   const solo = VIEW.solo || COLOR==='solo';
@@ -554,9 +581,8 @@ function renderOverlay(){
     sub += d===0 ? ` · 🏅 레이팅 변동 없음(${VIEW.ratingDelta.rating})` : ` · 🏅 레이팅 ${d>0?'+':''}${d} → ${VIEW.ratingDelta.rating}`;
     fetchMe();                                           // 레일 프로필의 레이팅·티어 갱신
   }
-  ov.innerHTML = `<div class="big">${big}</div><div class="sub">${sub}</div>`;
-  const b = document.createElement('button'); b.className='big'; b.textContent='↻ 재대결';
-  b.onclick = rematch; ov.appendChild(b);
+  ov.innerHTML = `<div class="big">${big}</div><div class="sub">${sub}</div><div class="rmbox"></div>`;
+  renderRematchBox(ov.querySelector('.rmbox'));
   ac(); if(soundOn) (SND[snd]||function(){})();
   if(fxOn() && FXMAIN){ FXMAIN.resize(); if(snd==='victory') FXMAIN.victory(); else if(snd==='defeat') FXMAIN.defeat(); else FXMAIN.drawend(); }
 }
@@ -698,6 +724,9 @@ function render(){
     mkBtn('🏳 기권', doResign, 'fire');
   }
   if(ROOM){ mkBtn('🚪 나가기', leaveRoom); }
+  { const rb=document.getElementById('rematch'); const pvp = !solo && !VIEW.bot && COLOR!=='spectator';
+    rb.style.display = (pvp && VIEW.phase!=='over') || COLOR==='spectator' ? 'none' : '';
+    rb.textContent = pvp ? ((VIEW.rematch||{}).opp && !(VIEW.rematch||{}).me ? '✅ 수락 · 재대결' : ((VIEW.rematch||{}).me ? '🔁 제안함 · 상대 대기 중' : '🔁 재대결 제안')) : '↻ 새 게임 / 재대결'; }
   const coach = document.createElement('div'); coach.className='help'; coach.style.marginTop='6px';
   coach.textContent = coachText(me, solo);
   ctr.appendChild(coach);

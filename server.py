@@ -122,6 +122,7 @@ def new_room(code):
             'users': {},                        # color -> 회원 id(로그인한 좌석만 — 레이팅 대상)
             'ratings': {},                      # color -> 현재 레이팅(표시용 캐시)
             'rated_done': False,                # 이 판의 레이팅 정산을 마쳤나(한 번만)
+            'rematch': {},                      # 재대결 제안 {color: True} — 사람끼리는 둘 다 눌러야 새 판
             'rating_result': {},                # color -> {'delta', 'rating'} 정산 결과
             'solo': False,                      # 혼자 연습(핫시트) 방인가
             'terrain': game_map.generate_terrain(PERLIN_SEED),   # 이 방만의 지형(숲·부쉬·강 + 시드)
@@ -275,6 +276,60 @@ def bot_rating_note(room):
         return f'📈 레이팅 {r}: 이 난이도의 상한({bot_gain_cap(room)})에 닿아 더 오르지 않아요 - 더 어려운 난이도나 랭크 매칭으로!'
     tail = '져도 내려가지 않아요.' if loss == 0 else f'지면 {loss}.'
     return f'📈 레이팅 {r}: 이기면 +{gain}, {tail}'
+
+
+def start_rematch(room):
+    """새 판 시작(같은 방·같은 좌석). 레이팅 정산 상태와 재대결 제안 초기화, 필요하면 새 맵."""
+    room['state'] = new_game()
+    room['rated_done'] = False; room['rating_result'] = {}; room['rematch'] = {}   # 새 판 = 새 정산
+    if NEW_MAP_ON_REMATCH:                                                       # 새 판 = 새 맵
+        room['terrain'] = game_map.generate_terrain(PERLIN_SEED); use_terrain(room)
+    st = room['state']
+    if room.get('solo'):
+        st['phase'] = 'play'
+        st['turn'] = 'W'
+        st['log'] = ['🎯 혼자 연습 - 재시작.']
+    elif room.get('bot'):
+        bot.setup_and_ready(st, 'B')
+        st['deadline'] = time.time() + SETUP_SECONDS
+        st['log'] = ['🤖 컴퓨터와 대전 — 재대결! 백 배치 후 [준비 완료].']
+        note = bot_rating_note(room)
+        if note:
+            st['log'].append(note)
+    else:
+        st['log'] = ['🔁 재대결! 둘 다 수락 — 기물을 배치하고 [준비 완료]']
+        maybe_setup_timer(room)
+
+
+def rematch_request(room, color):
+    """재대결 요청. 솔로·봇 방은 즉시 새 판. 사람끼리는 게임이 끝난 뒤 제안으로 기록하고, 양쪽이 다 누르면 새 판.
+    → {'ok', 'pending'(상대 대기), 'msg'}"""
+    st = room['state']
+    if room.get('solo'):
+        start_rematch(room); return {'ok': True}
+    if color not in ('W', 'B'):
+        return {'ok': False, 'msg': '관전자는 재대결을 시작할 수 없어요.'}
+    if room.get('bot'):
+        start_rematch(room); return {'ok': True}
+    if st['phase'] != 'over':
+        return {'ok': False, 'msg': '재대결은 게임이 끝난 뒤에 제안할 수 있어요.'}
+    offers = room.setdefault('rematch', {})
+    opp = 'B' if color == 'W' else 'W'
+    if not offers.get(color):
+        offers[color] = True
+        st['log'].append(f"🔁 {SIDE_KR[color]} 재대결 제안 - 상대의 수락을 기다리는 중")
+    if not offers.get(opp):
+        return {'ok': True, 'pending': True}
+    start_rematch(room)
+    return {'ok': True}
+
+
+def rematch_decline(room, color):
+    """재대결 제안 거절/취소 — 제안이 있었으면 지우고 로그로 알린다."""
+    if color in ('W', 'B') and room.get('rematch'):
+        room['rematch'] = {}
+        room['state']['log'].append(f"✋ {SIDE_KR[color]} 재대결을 원하지 않음")
+    return {'ok': True}
 
 
 def effective_color(room, token):
@@ -431,6 +486,8 @@ def state_response(room, color, now, reveal=False):
     opp = 'B' if color == 'W' else 'W'
     opp_tok = room['seats'].get(opp) if color in ('W', 'B') else None
     v['oppConnected'] = bool(opp_tok) and (now - room['seen'].get(opp_tok, 0) < 5)
+    rm = room.get('rematch') or {}
+    v['rematch'] = {'me': bool(rm.get(color)), 'opp': bool(rm.get(opp))} if color in ('W', 'B') else {'me': False, 'opp': False}
     # 턴 제한시간(모래시계) — 솔로/봇차례엔 표시 안 함
     show_clock = (st['phase'] == 'play' and st.get('turn_deadline')
                   and not room.get('solo')
@@ -802,25 +859,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 if act not in ('rematch', 'resign'):
                     enforce_clock(room, now)        # 마감 지난 턴은 먼저 자동으로 넘김
-                if act == 'rematch':
-                    room['state'] = new_game()
-                    room['rated_done'] = False; room['rating_result'] = {}   # 새 판 = 새 정산
-                    if NEW_MAP_ON_REMATCH:                                    # 새 판 = 새 맵
-                        room['terrain'] = game_map.generate_terrain(PERLIN_SEED); use_terrain(room)
-                    if room.get('solo'):
-                        room['state']['phase'] = 'play'
-                        room['state']['turn'] = 'W'
-                        room['state']['log'] = ['🎯 혼자 연습 - 재시작.']
-                    elif room.get('bot'):
-                        bot.setup_and_ready(room['state'], 'B')
-                        room['state']['deadline'] = time.time() + SETUP_SECONDS
-                        room['state']['log'] = ['🤖 컴퓨터와 대전 — 재대결! 백 배치 후 [준비 완료].']
-                        note = bot_rating_note(room)
-                        if note:
-                            room['state']['log'].append(note)
-                    else:
-                        maybe_setup_timer(room)
-                    self._json({'ok': True})
+                if act == 'rematch':                                  # 솔로·봇: 즉시 새 판 / 사람끼리: 제안 → 둘 다 누르면 새 판
+                    self._json(rematch_request(room, color))
+                    return
+                if act == 'rematch_decline':
+                    self._json(rematch_decline(room, color))
                     return
                 if act == 'resign':
                     ok, msg = apply_resign(st, color)

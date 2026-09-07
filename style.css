@@ -810,3 +810,10 @@ body { display: flex; flex-wrap: nowrap; gap: 0; padding: 0; align-items: stretc
 .hrow .hdate { color: var(--text-dim); font-size: 11px; white-space: nowrap; }
 .histSum { font-size: 12px; color: var(--text-dim); margin: 0 0 6px; }
 .histSum b { color: var(--text); }
+
+/* 종료 화면 재대결 상자 */
+.overlay .rmbox { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; margin-top: 12px; max-width: 92%; }
+.overlay .rmnote { width: 100%; text-align: center; font-size: 13px; color: #cdc7bd; }
+.overlay button.big.ghost { background: transparent; border: 1px solid rgba(255,255,255,.4); color: #f1ede6; box-shadow: none; }
+.overlay button.big.ghost:hover { background: rgba(255,255,255,.1); }
+:root[data-theme="light"] .overlay .rmnote { color: var(--text-dim); }
