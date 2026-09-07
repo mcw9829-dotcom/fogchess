@@ -606,27 +606,38 @@ body { display: flex; flex-wrap: nowrap; gap: 0; padding: 0; align-items: stretc
 }
 
 /* ============================================================
-   홈 랜딩: 장식 보드 + 모드 카드 (chess.com식)
+   홈 랜딩: 리더보드 패널 + 모드 카드
    ============================================================ */
-.home-land { display: flex; gap: 40px; align-items: flex-end; justify-content: center; flex-wrap: wrap; width: 100%; }
-.home-board { flex: none; display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.home-cap { font-size: 12px; letter-spacing: 2px; font-weight: 600; color: var(--text-dim); }
-#homeBoard { display: grid; grid-template-columns: repeat(12, 1fr); grid-template-rows: repeat(12, 1fr);
-  width: min(38vw, 360px); aspect-ratio: 1;
-  border-radius: 10px; overflow: hidden; border: 2px solid var(--border-2); box-shadow: 0 10px 34px rgba(0,0,0,.4); }
-#homeBoard .hc { position: relative; display: grid; place-items: center; }
-#homeBoard .hc.l { background: var(--light); }
-#homeBoard .hc.d { background: var(--dark); }
-#homeBoard .hc.fog { box-shadow: inset 0 0 0 60px rgba(14,18,22,.82); }
-#homeBoard .hc.fog .terrain { filter: brightness(.4); }   /* 안개 속 지형은 어둡게(게임과 동일) */
-#homeBoard .hc.mv { box-shadow: inset 0 0 0 3px rgba(var(--sig-turn),.7); }   /* 최근 이동(정찰) */
-#homeBoard .hc .terrain { position: absolute; inset: 0; }
-#homeBoard .hc img { width: 84%; height: 84%; filter: drop-shadow(0 1px 1px rgba(0,0,0,.4)); }
-#homeBoard .hc .t { font-size: min(2.4vw, 16px); }
+.home-land { display: flex; gap: 40px; align-items: stretch; justify-content: center; flex-wrap: wrap; width: 100%; }
+.home-lb { flex: none; width: min(38vw, 380px); display: flex; flex-direction: column; gap: 8px;
+  background: var(--panel); border: 1px solid var(--border-2); border-radius: 16px; padding: 16px 16px 14px;
+  box-shadow: 0 10px 34px rgba(0,0,0,.35); }
+.hlb-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 0 4px 8px; border-bottom: 1px solid var(--border); }
+.hlb-title { font-size: 17px; font-weight: 800; }
+.hlb-sub { font-size: 12px; color: var(--text-dim); text-align: right; }
+.hlb-list { flex: 1; display: flex; flex-direction: column; gap: 2px; min-height: 140px; }
+.hlb-row { display: grid; grid-template-columns: 30px 24px 1fr auto auto; align-items: center; gap: 8px;
+  padding: 6px 8px; border-radius: 10px; font-size: 13.5px; }
+.hlb-row:nth-child(even) { background: rgba(127,127,127,.08); }
+.hlb-row.me { background: rgba(var(--sig-turn), .14); box-shadow: inset 0 0 0 1px rgba(var(--sig-turn), .55); }
+.hlb-rank { text-align: center; font-weight: 700; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.hlb-row.top .hlb-rank { font-size: 16px; }
+.hlb-tier { width: 22px; height: 22px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.4)); }
+.hlb-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.hlb-name small { color: var(--text-dim); font-weight: 500; }
+.hlb-rec { font-size: 11.5px; color: var(--text-dim); white-space: nowrap; }
+.hlb-rating { font-weight: 800; font-variant-numeric: tabular-nums; min-width: 40px; text-align: right; }
+.hlb-empty { color: var(--text-dim); text-align: center; padding: 28px 8px; font-size: 13px; line-height: 1.6; }
+.hlb-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-top: 8px;
+  border-top: 1px solid var(--border); font-size: 12.5px; color: var(--text-dim); }
+.hlb-foot b { color: var(--text); }
+.hlb-more { flex: none; font-size: 12px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--border-2);
+  background: transparent; color: var(--text); cursor: pointer; }
+.hlb-more:hover { border-color: var(--accent); color: var(--accent); }
 #home .menu { margin: 0; }
 @media (max-width: 820px){
   .home-land { gap: 20px; }
-  #homeBoard { width: min(82vw, 340px); }
+  .home-lb { width: min(92vw, 420px); order: 2; }   /* 모바일: 모드 카드 아래에 */
 }
 
 /* ============================================================
@@ -634,7 +645,7 @@ body { display: flex; flex-wrap: nowrap; gap: 0; padding: 0; align-items: stretc
    ============================================================ */
 .dragclone.touch { width: calc(var(--cell) * 1.35); height: calc(var(--cell) * 1.35); }   /* 손가락 위에 띄운 기물은 조금 크게 */
 .cell.dragover { box-shadow: inset 0 0 0 4px rgba(var(--sig-turn), .95); }                /* 놓일 칸 미리보기(골드) */
-#board, #board .piece, .dragclone, #homeBoard { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+#board, #board .piece, .dragclone { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 
 /* 티어 사다리(프로필 카드) */
 .tierHead { display: flex; justify-content: space-between; align-items: baseline; margin: 14px 0 6px; font-size: 12.5px; font-weight: 700; }

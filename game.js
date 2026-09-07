@@ -50,6 +50,7 @@ const SCREENS = ['home','botMenu','joinMenu','settings'];
 function showScreen(id){
   document.getElementById('game').style.display = 'none';
   SCREENS.forEach(s=>{ document.getElementById(s).style.display = (s===id)?'flex':'none'; });
+  if(id==='home' && typeof loadHomeLb==='function') loadHomeLb();   // 홈 리더보드 패널 최신화
 }
 function showGame(){
   SCREENS.forEach(s=>{ document.getElementById(s).style.display = 'none'; });
@@ -817,30 +818,6 @@ function renderCoords(){
 
 // 홈 랜딩용 장식 보드(정적·비상호작용) — '한 판 진행 중' 스냅샷:
 // 백 군대가 전진(나이트 정찰), 안개 가장자리에 적 2기 포착, 위쪽은 안개, 지형 몇 개.
-function renderHomeBoard(){
-  const el = document.getElementById('homeBoard'); if(!el || el.childElementCount) return;
-  const W = { '11_2':'R','11_4':'Q','11_6':'K','11_7':'B','11_9':'R',   // 뒤쪽(킹 포함)
-              '9_3':'P','9_6':'P','8_2':'P','8_5':'P','7_8':'P',        // 전진한 폰
-              '7_4':'N','6_7':'N','9_8':'B' };                          // 정찰 나이트·비숍
-  const B = { '5_5':'N','6_3':'P' };                                    // 안개 밖으로 포착된 적 2기
-  const forest = new Set(['3_9','4_10','2_3','8_1']);
-  const bush = new Set(['10_5','2_7']);
-  const mv = new Set(['6_7','7_4']);                                    // 최근 이동(정찰) 강조
-  let html='';
-  for(let r=0;r<12;r++) for(let c=0;c<12;c++){
-    const dark=(r+c)%2; let cls='hc '+(dark?'d':'l'); let inner=''; const k=r+'_'+c;
-    // 실제 게임과 동일한 지형 아트(SVG) + 기물 스타일
-    if(forest.has(k)) inner='<div class="terrain">'+forestTile((r+c)%2)+'</div>';
-    else if(bush.has(k)) inner='<div class="terrain bushfront">'+bushTile(r,c)+'</div>';
-    if(W[k]) inner+='<img class="piece" src="'+pieceSrc(W[k],'W')+'">';
-    else if(B[k]) inner+='<img class="piece" src="'+pieceSrc(B[k],'B')+'">';
-    if(r<=4) cls+=' fog';                                               // 위쪽 안개(적 진영·지형은 어둡게 보임)
-    if(mv.has(k)) cls+=' mv';
-    html+='<div class="'+cls+'">'+inner+'</div>';
-  }
-  el.innerHTML = html;
-}
-
 // 규칙 요약 모달(입장 시 1회 자동 + 상단 ❔규칙)
 function openHelp(){ document.getElementById('helpModal').style.display='flex'; }
 function closeHelp(){ document.getElementById('helpModal').style.display='none'; }
@@ -1006,6 +983,7 @@ $('mJoin').onclick     = ()=>{ showScreen('joinMenu'); $('joinCode').value=''; $
 $('mBot').onclick      = ()=> showScreen('botMenu');        // 컴퓨터와 대국(난이도 선택)
 $('mSolo').onclick     = soloStart;                         // 혼자 연습(핫시트)
 $('mSettings').onclick = ()=> openSettings('home');         // 홈에서 연 설정 → 뒤로=홈
+$('hlbMore').onclick   = openLeaderboard;                     // 홈 리더보드 → 전체 순위·티어 사다리·규칙 모달
 $('setBtn').onclick    = ()=> openSettings('game');         // 게임 중 ⚙설정 → 뒤로=게임
 $('lvEasy').onclick    = ()=> botStart('easy');
 $('lvNormal').onclick  = ()=> botStart('normal');
@@ -1041,6 +1019,7 @@ $('railSettings').onclick = ()=>{ setRailActive('settings'); openSettings(ROOM ?
 // ---------- 계정 · 레이팅 (레일 하단 프로필) ----------
 // 회원이면 티어 기물 + 닉네임 + 레이팅, 게스트면 로그인 안내. 세션 토큰은 localStorage 'fog_session'.
 function renderProfile(){
+  if(typeof HLB!=='undefined' && HLB.rows) renderHomeLb();   // 홈 리더보드의 '(나)' 강조·내 순위 갱신
   const ava=$('railAva'), nk=$('railNick'), sub=$('railNickSub');
   if(ME){
     ava.innerHTML = `<img src="${pieceSrc(ME.tier,'W')}" alt="${TIER_KR[ME.tier]}" draggable="false">`;
@@ -1142,6 +1121,38 @@ async function openLeaderboard(){
     + '</tbody></table>';
 }
 function closeLeaderboard(){ $('lbModal').style.display='none'; }
+// ---------- 메인 화면 리더보드 패널(상위 10명 · 내 순위) ----------
+const HLB_TOP = 10;
+let HLB = { rows: null, total: 0, loading: false, ok: true };
+async function loadHomeLb(){                                    // 홈에 올 때마다 새로 받아 레이팅 변동을 바로 반영
+  if(HLB.loading) return;
+  HLB.loading = true;
+  try{ const d = await api('/leaderboard'); HLB.rows = d.rows || []; HLB.total = d.total || HLB.rows.length; HLB.ok = true; }
+  catch(e){ HLB.ok = false; }
+  HLB.loading = false;
+  renderHomeLb();
+}
+function renderHomeLb(){
+  const list=$('hlbList'), meBox=$('hlbMe'), sub=$('hlbSub'); if(!list) return;
+  if(!HLB.ok || !HLB.rows){ list.innerHTML='<div class="hlb-empty">리더보드를 불러오지 못했어요.</div>'; meBox.textContent=''; return; }
+  const rows=HLB.rows, me=ME ? ME.name : null, medal=['🥇','🥈','🥉'];
+  if(!rows.length){
+    list.innerHTML='<div class="hlb-empty">아직 아무도 없어요.<br>첫 회원이 되어 1위를 차지해 보세요!</div>';
+    sub.textContent='레이팅 순'; meBox.innerHTML = me ? '' : '로그인하면 순위에 오를 수 있어요'; return;
+  }
+  sub.textContent = '상위 '+Math.min(HLB_TOP, rows.length)+'명 · 전체 회원 '+HLB.total+'명';
+  list.innerHTML = rows.slice(0, HLB_TOP).map((u,i)=>
+    '<div class="hlb-row'+(u.name===me?' me':'')+(i<3?' top':'')+'">'
+    + '<span class="hlb-rank">'+(i<3 ? medal[i] : u.rank)+'</span>'
+    + '<img class="hlb-tier" src="'+pieceSrc(u.tier,'W')+'" alt="'+TIER_KR[u.tier]+'" title="'+TIER_KR[u.tier]+'" draggable="false">'
+    + '<span class="hlb-name">'+escapeHtml(u.name)+(u.name===me?' <small>(나)</small>':'')+'</span>'
+    + '<span class="hlb-rec">'+u.wins+'승 '+u.losses+'패</span>'
+    + '<span class="hlb-rating">'+u.rating+'</span></div>').join('');
+  if(!me){ meBox.innerHTML = '로그인하면 내 순위가 여기에 표시돼요'; return; }
+  const mine = rows.find(u=>u.name===me);
+  meBox.innerHTML = mine ? ('내 순위 <b>'+mine.rank+'위</b> · '+TIER_KR[mine.tier]+' · <b>'+mine.rating+'</b>')
+                         : ('내 순위 <b>'+rows.length+'위 밖</b> · '+TIER_KR[ME.tier]+' · <b>'+ME.rating+'</b>');
+}
 // 레이팅 규칙(서버 config 값으로 계산해 그림 — 실제 정산 공식과 항상 동일)
 function renderRatingRules(r){
   const exp=(a,b)=>1/(1+Math.pow(10,(b-a)/400));
@@ -1292,7 +1303,6 @@ document.addEventListener('pointerdown', (e)=>{
   fetchMe();                                                // 로그인 세션이 있으면 레일 프로필(레이팅·티어) 표시
   api('/version').then(v=>{ if(v && v.version) $('verBadge').textContent = 'WW1 Fog Chess · v' + v.version; }).catch(()=>{});
   renderCoords();
-  renderHomeBoard();
   setInterval(poll, 900);
   const hash = (location.hash || '').replace('#','');
   if(hash){                                                 // 초대 링크로 들어온 경우 → 바로 그 방

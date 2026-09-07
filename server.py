@@ -467,7 +467,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._json({'version': APP_VERSION})
             return
         if u.path == '/leaderboard':                           # 레이팅 순위(공개)
-            self._json({'rows': accounts.leaderboard(),
+            self._json({'rows': accounts.leaderboard(), 'total': accounts.user_count(),
                         'rules': {'default': RATING_DEFAULT, 'floor': RATING_FLOOR, 'k': ELO_K, 'botRated': BOT_RATED,
                                   'botNoLoss': BOT_NO_LOSS, 'botCap': BOT_GAIN_CAP,
                                   'bot': BOT_RATING, 'tiers': [[f, t] for f, t in RATING_TIERS]}})   # 규칙 공개(클라가 그림)

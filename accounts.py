@@ -273,6 +273,11 @@ def feedback_delete(fid):
         return c.execute('DELETE FROM feedback WHERE id=?', (int(fid),)).rowcount == 1
 
 
+def user_count():
+    with _db() as c:
+        return c.execute('SELECT COUNT(*) FROM users').fetchone()[0]
+
+
 def users_list():
     """관리자용 전체 회원 목록(레이팅순) [{id, name, rating, tier, wins, losses, draws, created}]"""
     with _db() as c:

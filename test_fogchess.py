@@ -664,6 +664,7 @@ def test_leaderboard_order(tmp_db):
     lb = accounts.leaderboard()
     assert [u['name'] for u in lb] == ['lb_b', 'lb_c', 'lb_a'] and [u['rank'] for u in lb] == [1, 2, 3]
     assert 'id' not in lb[0] and lb[0]['tier'] == 'N'
+    assert accounts.user_count() == 3
 
 
 def test_session_expires_after_ttl(tmp_db):
