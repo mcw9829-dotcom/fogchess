@@ -538,6 +538,7 @@ function render(){
   if(!solo && COLOR!=='spectator' && VIEW.oppName && (VIEW.bothJoined || VIEW.oppName!=='상대'))
     rttxt += (rttxt?' · ':'') + `vs ${VIEW.oppName}${VIEW.oppRating!=null?` (${VIEW.oppRating})`:''}`;
   if(VIEW.rated) rttxt += ' · 🏅 레이팅전';
+  if(VIEW.mapSeed) rttxt += ' · 🗺 맵 #' + VIEW.mapSeed;
   document.getElementById('roomtag').textContent = rttxt;
 
   renderInvite();

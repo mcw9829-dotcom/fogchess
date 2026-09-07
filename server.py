@@ -23,7 +23,8 @@ import threading
 from urllib.parse import urlparse, parse_qs
 
 from config import (PORT, CODE_ALPHABET, SEAT_TIMEOUT, SETUP_SECONDS, USE_PERLIN, ROOM_TTL,
-                    TURN_SECONDS, MAX_MISSES, BOT_MIN_THINK, BOT_RATED, BOT_RATING, DISCONNECT_FORFEIT)
+                    TURN_SECONDS, MAX_MISSES, BOT_MIN_THINK, BOT_RATED, BOT_RATING, DISCONNECT_FORFEIT,
+                    PERLIN_SEED, NEW_MAP_ON_REMATCH)
 from game_map import FORESTS, RIVERS, BUSHES, terrain_to_ascii
 from pieces import (new_game, legal_moves, fire_cells, fire_range, barrage_reach,
                     apply_move, apply_fire, apply_barrage, apply_place, autoplace,
@@ -31,6 +32,8 @@ from pieces import (new_game, legal_moves, fire_cells, fire_range, barrage_reach
                     scan_cells, apply_scan, time_out, SIDE_KR)
 import bot
 import accounts
+import game_map
+import pieces
 
 BOT_TOKEN = '__bot__'   # 컴퓨터(봇) 좌석 토큰
 MAX_BODY = 64 * 1024    # 요청 본문 상한(바이트) — 게임 액션은 수백 바이트면 충분
@@ -56,7 +59,13 @@ def new_room(code):
             'rated_done': False,                # 이 판의 레이팅 정산을 마쳤나(한 번만)
             'rating_result': {},                # color -> {'delta', 'rating'} 정산 결과
             'solo': False,                      # 혼자 테스트(핫시트) 방인가
+            'terrain': game_map.generate_terrain(PERLIN_SEED),   # 이 방만의 지형(숲·부쉬·강 + 시드)
             'created': time.time()}
+
+
+def use_terrain(room):
+    """이 방의 지형을 규칙/봇 코드가 읽는 전역에 꽂아 넣는다 — 방을 다루는 모든 락 구간의 첫 줄에서 호출."""
+    game_map.apply_terrain(room['terrain'], pieces, bot)
 
 
 def clean_name(s, fallback):
@@ -212,6 +221,7 @@ def sweep_rooms(now):
         st = room['state']
         if st['phase'] != 'play' or room.get('solo'):
             continue
+        use_terrain(room)
         enforce_clock(room, now)                                # 미행동 3회 패배가 폴링 없이도 진행
         if st['phase'] != 'play':
             settle_rating(room)
@@ -247,6 +257,7 @@ def state_response(room, color, now, reveal=False):
     v = player_view(st, color, reveal)
     v['solo'] = room.get('solo', False)
     v['room'] = room['code']
+    v['mapSeed'] = room['terrain']['seed']       # 이 방의 맵 시드(방 태그 표시·공유용)
     v['shareBase'] = LAN_URL
     v['bothJoined'] = both_joined(room)
     opp = 'B' if color == 'W' else 'W'
@@ -369,6 +380,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not room:
                 self._json({'gone': True})
                 return
+            use_terrain(room)
             color = effective_color(room, token)
             now = time.time()
             room['seen'][token] = now
@@ -454,6 +466,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if data.get('solo'):   # 혼자 테스트(핫시트) 방
                     code = gen_code()
                     room = new_room(code)
+                    use_terrain(room)
                     room['solo'] = True
                     ntok = uuid.uuid4().hex
                     room['seats']['W'] = room['seats']['B'] = ntok
@@ -470,6 +483,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if data.get('vs_bot'):   # 컴퓨터(봇)와 대전 — 사람=백, 봇=흑
                     code = gen_code()
                     room = new_room(code)
+                    use_terrain(room)
                     room['bot'] = 'B'
                     lv = data.get('level')
                     room['botlevel'] = lv if lv in ('easy', 'normal', 'hard') else 'normal'
@@ -519,6 +533,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not room:
                     self._json({'ok': False, 'msg': '방을 찾을 수 없습니다. 새로고침하세요.', 'gone': True})
                     return
+                use_terrain(room)
                 token = data.get('token')
                 room['seen'][token] = now
                 color = effective_color(room, token)
@@ -532,6 +547,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if act == 'rematch':
                     room['state'] = new_game()
                     room['rated_done'] = False; room['rating_result'] = {}   # 새 판 = 새 정산
+                    if NEW_MAP_ON_REMATCH:                                    # 새 판 = 새 맵
+                        room['terrain'] = game_map.generate_terrain(PERLIN_SEED); use_terrain(room)
                     if room.get('solo'):
                         room['state']['phase'] = 'play'
                         room['state']['turn'] = 'W'
@@ -683,11 +700,11 @@ if __name__ == '__main__':
     print(f'  먼 곳의 친구와(다른 와이파이):  python server.py --share')
     print('-' * 54)
     src = '펄린 노이즈 자동생성' if USE_PERLIN else '수동 MAP_ROWS'
-    print(f'  지형({src}, #=숲{len(FORESTS)} ~=강{len(RIVERS)} "=부쉬{len(BUSHES)}):')
+    print(f'  지형 예시({src}, #=숲{len(FORESTS)} ~=강{len(RIVERS)} "=부쉬{len(BUSHES)}) / 실제 맵은 방마다 새로 생성(방 태그의 맵 #시드):')
     for row in terrain_to_ascii(FORESTS, RIVERS, BUSHES):
         print('    ' + row)
     if USE_PERLIN:
-        print('  ↑ 마음에 들면 이 그림을 config.py의 MAP_ROWS에 붙여넣고 USE_PERLIN=False 하면 고정.')
+        print('  ↑ 모든 방을 같은 맵으로 고정하려면 config.PERLIN_SEED를 정수로(또는 MAP_ROWS + USE_PERLIN=False).')
     print('  종료: Ctrl+C')
     print('=' * 54)
     if '--share' in sys.argv:

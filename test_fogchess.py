@@ -467,6 +467,46 @@ def test_feedback_store_and_validate(tmp_db):
     assert rows[0]['room'] == 'AB12' and len(rows[0]['ua']) <= 200       # 컨텍스트는 길이 제한
 
 
+def test_terrain_generation_seeded_and_varied():
+    import game_map
+    a = game_map.generate_terrain(seed=123); b = game_map.generate_terrain(seed=123); c = game_map.generate_terrain(seed=456)
+    assert a['forests'] == b['forests'] and a['bushes'] == b['bushes']            # 같은 시드 = 같은 맵
+    assert a['forests'] != c['forests'] or a['bushes'] != c['bushes']             # 다른 시드 = 다른 맵
+    assert a['impassable'] == (a['forests'] | a['rivers']) and not (a['forests'] & a['bushes'])
+    both = game_map.generate_terrain(seed=7, extra='both')
+    assert both['rivers'] and both['bushes']                                       # 강+부쉬 동시
+    assert not (both['rivers'] & both['bushes']) and not (both['forests'] & both['rivers'])
+    r = game_map.generate_terrain()
+    assert 1000 <= r['seed'] <= 999999                                             # 무작위 시드
+
+
+def test_rooms_have_own_terrain_and_use_terrain_switches_globals():
+    import server, pieces as P, bot as B, game_map as G
+    r1 = server.new_room('MT1'); r2 = server.new_room('MT2')
+    assert 'seed' in r1['terrain'] and 'seed' in r2['terrain']
+    server.use_terrain(r1)
+    assert P.FORESTS is r1['terrain']['forests'] and B.BUSHES is r1['terrain']['bushes']
+    assert G.FORESTS is r1['terrain']['forests'] and P.IMPASSABLE is r1['terrain']['impassable']
+    server.use_terrain(r2)
+    assert P.FORESTS is r2['terrain']['forests']
+
+
+def test_server_console_prints_are_cp949_safe():
+    """Windows 콘솔(cp949)에서 서버 시작 print가 UnicodeEncodeError로 죽지 않게 — em dash·이모지 금지(주석은 무관)."""
+    import io as _io, re
+    src = _io.open('server.py', encoding='utf-8').read().splitlines()
+    bad = [(i + 1, ln.strip()[:60]) for i, ln in enumerate(src)
+           if re.match(r"\s*print\(", ln) and not _cp949_ok(ln)]
+    assert not bad, f'cp949로 출력 불가한 print 줄: {bad}'
+
+
+def _cp949_ok(text):
+    try:
+        text.encode('cp949'); return True
+    except UnicodeEncodeError:
+        return False
+
+
 def test_server_settles_bot_game_once(tmp_db):
     import server
     u = accounts.signup('bot_beater', '1234')[0]['user']
