@@ -909,6 +909,8 @@ function pieceDemo(stage, spec, host){                  // host: 마우스/탭 �
   const SZ=7, C=3, CELL=24;
   stage.classList.add('gd');
   const grid = obMiniGrid(SZ, SZ, CELL); grid.classList.add('obDemo','pdemo'); stage.appendChild(grid);
+  const fx = window.FxLayer ? new FxLayer(stage, grid, {border:2, cols:SZ}) : null;   // 공격·능력 장면에 게임과 같은 파티클 이펙트
+  stage._fx = fx;
   const cellAt=(r,c)=> (r>=0&&r<SZ&&c>=0&&c<SZ) ? grid.querySelector(`[data-rc="${r}_${c}"]`) : null;
   const p=document.createElement('img'); p.className='demop'; p.src=pieceSrc(spec.t,'W');
   p.style.width=p.style.height=CELL+'px'; grid.appendChild(p);
@@ -931,19 +933,20 @@ function pieceDemo(stage, spec, host){                  // host: 마우스/탭 �
     if(ph.mode==='move'){
       const e=A(ph.enemy);
       frames.push({p:HOME, foes:[e]});                     // 적 등장
-      frames.push({p:e, foes:[e], hit:[e]});               // 적 위로 이동(겹침)=잡기
+      frames.push({p:e, foes:[e], hit:[e], fx:{type:'capture', cells:[e]}, snd:'capture'});   // 적 위로 이동=잡기(섬광·링 + 효과음)
       frames.push({p:e, foes:[]});                         // 적 제거(포획 완료)
       frames.push({p:HOME});                               // 리셋
     } else if(ph.mode==='shot'){
       const es=(ph.enemies||[]).map(A), path=(ph.path||[]).map(A);
+      const shotFx = spec.t==='R' ? {type:'barrage', cells:path, from:HOME} : {type:'fire', cells:es, from:HOME};   // 전차=경로 연쇄 폭발 / 비숍=탄도선→착탄
       frames.push({p:HOME, foes:es});                          // 적 포착
       frames.push({p:HOME, foes:es, beam:path});               // 조준·발사선
-      frames.push({p:HOME, foes:[], hit:es, exposed:true});    // 명중=적 제거 + 내 위치 노출
+      frames.push({p:HOME, foes:[], hit:es, exposed:true, fx:shotFx, snd: spec.t==='R' ? 'barrage' : 'fire'});   // 명중=적 제거 + 내 위치 노출(이펙트·효과음)
       frames.push({p:HOME});                                   // 리셋
     } else if(ph.mode==='scan'){
       const area=(ph.area||[]).map(A), hidden=A(ph.hidden);
       frames.push({p:HOME, fog:area});                     // 안개에 가려진 2×2(적 안 보임)
-      frames.push({p:HOME, scan:area, foes:[hidden]});     // 스캔 발동 → 숨은 적 발각
+      frames.push({p:HOME, scan:area, foes:[hidden], fx:{type:'scan', cells:area, extra:[hidden]}, snd:'scan'});   // 스캔 발동 → 숨은 적 발각(레이더 이펙트·핑)
       frames.push({p:HOME, scan:area, foes:[hidden]});     // 감시 유지(내 위치 노출 없음)
       frames.push({p:HOME});                               // 리셋
     }
@@ -963,12 +966,15 @@ function pieceDemo(stage, spec, host){                  // host: 마우스/탭 �
     (f.fog ||[]).forEach(rc=>{const el=cellAt(rc[0],rc[1]); if(el)el.classList.add('fog');});
     foes.forEach(e=>e.style.display='none');
     (f.foes||[]).forEach((rc,idx)=>{const e=foeAt(idx); place(e,rc[0],rc[1]); e.style.display='';});
+    if(f.fx && fx && fxOn()){ fx.resize(); fx.play(f.fx.type, f.fx.cells, f.fx.from||null, f.fx.extra||null); }   // 게임과 같은 파티클(설정 따름)
+    if(f.snd && soundOn){ try{ ac(); (SND[f.snd]||function(){})(); }catch(e){} }                            // 게임과 같은 효과음(설정 따름)
   };
   const rest=()=>apply(frames[0]);
   rest();
 
   let iv=null, idx=0;
   const stop=()=>{ if(iv){clearInterval(iv); iv=null;} stage.classList.remove('playing'); if(host!==stage) host.classList.remove('playing');
+    if(fx) fx.clear();
     if(guideActive===stop) guideActive=null; rest(); };
   const start=()=>{ if(iv) return;
     if(guideActive && guideActive!==stop) guideActive();     // 다른 카드 재생 중이면 정지
