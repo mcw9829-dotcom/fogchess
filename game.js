@@ -166,12 +166,15 @@ function piecePointerDown(pd, ev){
   const setup = VIEW.phase==='setup';
   if(!setup && (VIEW.phase!=='play' || VIEW.turn!==VIEW.yourColor)) return;
   ev.preventDefault();
-  if(setup){ SEL = pd; render(); }                   // 배치: 선택
+  // 배치: 다른 내 기물이 선택된 채 이 기물을 누르면 → 탭이면 자리 교환, 끌면 이 기물을 잡은 것(선택이 옮겨감)
+  const swapFrom = (setup && SEL && SEL.id!==pd.id) ? SEL : null;
+  const toggleOff = !!(setup && SEL && SEL.id===pd.id);
+  if(setup){ if(!swapFrom){ SEL = pd; render(); } }  // 배치: 선택(교환 대기 중이면 기존 선택 유지)
   else if(!(SEL && SEL.id===pd.id)) selectPiece(pd); // 플레이: 선택(+행마 조회)
   const touch = ev.pointerType === 'touch';
   // 터치: 손가락 떨림 허용치를 키우고(탭이 드래그로 오인되지 않게), 기물을 손가락 위로 띄워 목표 칸이 가려지지 않게
   dragState = { pd, moved:false, x:ev.clientX, y:ev.clientY, clone:null, setup, touch,
-                thr: touch ? 12 : 5, lift: touch ? 40 : 0, over:null };
+                thr: touch ? 12 : 5, lift: touch ? 40 : 0, over:null, swapFrom, toggleOff };
   window.addEventListener('pointermove', piecePointerMove);
   window.addEventListener('pointerup', piecePointerUp);
   window.addEventListener('pointercancel', piecePointerCancel);   // 브라우저가 터치를 가로채면(스크롤·제스처) 정리
@@ -201,6 +204,7 @@ function piecePointerMove(ev){
   if(!dragState) return;
   if(!dragState.moved && Math.hypot(ev.clientX-dragState.x, ev.clientY-dragState.y) < dragState.thr) return;
   dragState.moved = true;
+  if(dragState.swapFrom){ SEL = dragState.pd; dragState.swapFrom = null; render(); }   // 교환 대기였지만 끌었다 → 이 기물을 잡은 것
   if(!dragState.clone){                            // 커서/손가락을 따라오는 반투명 클론
     const img = document.createElement('img');
     img.className = 'dragclone' + (dragState.touch ? ' touch' : '');
@@ -225,10 +229,15 @@ function piecePointerMove(ev){
 function piecePointerUp(ev){
   const ds = dragState, pt = dropPoint(ev);
   dragEnd();
-  if(!ds || !ds.moved) return;                     // 움직임 없으면 그냥 클릭(선택 유지)
+  if(!ds) return;
+  if(!ds.moved){                                   // 움직임 없음 = 탭/클릭
+    if(ds.swapFrom) placePiece(ds.pd.r, ds.pd.c);  // 배치: 선택된 기물과 자리 교환(서버 apply_place가 두 기물 위치를 맞바꿈)
+    else if(ds.toggleOff){ SEL = null; render(); } // 배치: 선택된 기물을 다시 탭 → 선택 해제
+    return;                                        // 그 외엔 선택 유지
+  }
   const cell = boardCellFromEvent(pt); if(!cell || !dropOk(ds, cell)) return;   // 못 놓는 칸이면 제자리(선택 유지)
   const [r,c] = cell;
-  if(ds.setup) placePiece(r, c);                   // 배치: 내 진영 빈 땅·부쉬에 놓기
+  if(ds.setup) placePiece(r, c);                   // 배치: 내 진영 빈 땅·부쉬에 놓기 · 내 기물 위면 자리 교환
   else doMove(r, c);                               // 플레이: 합법 이동칸에 놓으면 이동
 }
 
@@ -616,7 +625,7 @@ function render(){
           ()=>setReady(!VIEW.ready), VIEW.ready ? 'on' : '');
     const hint = document.createElement('div');
     hint.className='help'; hint.style.marginTop='2px';
-    hint.textContent='기물을 끌어다 놓거나(드래그) 클릭해서 배치하세요.';
+    hint.textContent='드래그 또는 클릭→칸 클릭으로 배치 · 내 기물 위에 놓거나 탭하면 자리 교환(⇄)';
     ctr.appendChild(hint);
   }
   if(SEL && VIEW.phase==='play' && VIEW.turn===me){
@@ -724,12 +733,13 @@ function render(){
         const pd={id:cell.p.id, r, c, t:cell.p.t};
         d.onpointerdown = (ev)=>piecePointerDown(pd, ev);   // 기물만 복제 드래그(타일 안 딸려옴) · 클릭=선택
         if(SEL && SEL.id===cell.p.id) d.classList.add('sel');
+        else if(SEL){ d.classList.add('swapable'); d.title='탭하거나 여기에 놓으면 자리 교환'; }   // 선택 중: 다른 내 기물 = 교환 대상(⇄)
       }
     }
 
     if(canSetup && r>=z0 && r<=z1 && (cell.t===0 || cell.t===3)){   // 빈 땅·부쉬 배치 가능(숲·강은 불가)
       const rr=r, cc=c;
-      if(SEL){ d.classList.add('zone'); d.onclick = ()=>placePiece(rr, cc); }   // 드롭은 pointer 드래그가 처리
+      if(SEL && !(cell.p && cell.p.o===me)){ d.classList.add('zone'); d.onclick = ()=>placePiece(rr, cc); }   // 빈 칸: 클릭해 놓기(드롭은 pointer 드래그가 처리). 내 기물 칸의 탭/드롭 교환은 piecePointerUp
     }
 
     if(SEL && myTurn){

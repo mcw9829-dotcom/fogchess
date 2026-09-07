@@ -309,6 +309,20 @@ def test_place_rules():
     assert not pieces.apply_place(st, 'W', 'W_P1', 10, 4)[0]   # 숲 위 불가
 
 
+
+def test_place_swap_own_pieces():
+    """배치: 내 다른 기물이 있는 칸에 놓으면 두 기물의 자리가 바뀐다(클라 탭/드롭 교환이 기대는 동작)."""
+    st = pieces.new_game()
+    a, b = st['pieces']['W_N1'], st['pieces']['W_P1']
+    (ar, ac), (br, bc) = (a['r'], a['c']), (b['r'], b['c'])
+    ok, msg = pieces.apply_place(st, 'W', 'W_N1', br, bc)
+    assert ok, msg
+    assert (a['r'], a['c']) == (br, bc) and (b['r'], b['c']) == (ar, ac)
+    assert pieces.apply_place(st, 'W', 'W_N1', br, bc)[0]                  # 제자리에 다시 놓기 = 변화 없음
+    assert (a['r'], a['c']) == (br, bc) and (b['r'], b['c']) == (ar, ac)
+    assert st['ready']['W'] is False                                       # 배치를 바꾸면 준비 해제
+
+
 # ------------------------- 봇 -------------------------
 def test_bot_captures_visible_enemy():
     st = bare()

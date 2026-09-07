@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-APP_VERSION = '1.30'   # 화면 배지·/version 에 표시(패치노트 최신 항목과 맞출 것)
+APP_VERSION = '1.31'   # 화면 배지·/version 에 표시(패치노트 최신 항목과 맞출 것)
 """
 게임 설정 (control panel) — 대부분의 튜닝은 이 파일 하나만 고치면 됩니다.
 수정 후 서버를 재시작(Ctrl+C → python server.py)하면 반영됩니다.
