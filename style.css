@@ -133,12 +133,15 @@
   /* 이동 인디케이터(리체스식): 빈 칸=초록 점 / 잡을 수 있는 적=초록 링 */
   .movable { cursor: pointer; }
   .movable::before { content: ""; position: absolute; width: 34%; height: 34%;
-    border-radius: 50%; background: rgba(var(--sig-move),.62); z-index: 1;
+    border-radius: 50%; background: rgba(var(--sig-move),.62); z-index: 4;   /* 부쉬 잎(z3) 위로 */
     transition: transform .08s; }
+  /* 부쉬 칸 = 수색 이동: 숨은 적이 있으면 잡는다 → 점 + 점선 링(둘레)로 구분 */
+  .movable.search::before { background: rgba(var(--sig-move),.55);
+    box-shadow: 0 0 0 3px rgba(var(--sig-move),.28), 0 0 0 5px rgba(var(--sig-move),.12); }
   .movable:hover::before { transform: scale(1.25); }
   .capture { cursor: pointer; }
   .capture::before { content: ""; position: absolute; inset: 4%; border-radius: 50%;
-    border: 4px solid rgba(var(--sig-move),.85); z-index: 1; box-sizing: border-box; }
+    border: 4px solid rgba(var(--sig-move),.85); z-index: 4; box-sizing: border-box; }   /* 부쉬 잎(z3) 위로 */
   .capture:hover::before { border-width: 6px; }
   /* 공격 표적(비숍 저격·전차 돌파): 반투명 하늘색 / 실제 착탄칸은 진한 빨강 */
   .aim { cursor: crosshair; }
@@ -661,3 +664,25 @@ body { display: flex; flex-wrap: nowrap; gap: 0; padding: 0; align-items: stretc
 .fbText { min-height: 130px; resize: vertical; font-family: var(--font); text-align: left; line-height: 1.5; }
 .fbFoot { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 0 0 10px; }
 .fbFoot small { color: var(--text-dim); font-size: 11.5px; white-space: nowrap; }
+
+/* 랭크 매칭 */
+.menu-btn.primary { border-color: var(--accent); background: rgba(var(--sig-turn), .10); }
+.menu-btn.primary:hover { background: rgba(var(--sig-turn), .18); }
+.matchCard { max-width: 380px; text-align: center; }
+.matchSpin { width: 38px; height: 38px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%;
+  margin: 6px auto 12px; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.matchFound { font-size: 16px; padding: 10px; border-radius: 12px; background: rgba(var(--sig-turn), .16); margin: 0 0 12px; }
+.matchCard .menu-btn { margin-top: 8px; }
+
+/* 리더보드: 레이팅 규칙(접이식) */
+.lbRules { margin: 10px 0 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel-2);
+  padding: 8px 12px; font-size: 12.5px; color: var(--text-dim); line-height: 1.55; }
+.lbRules summary { cursor: pointer; font-weight: 700; color: var(--text); font-size: 13px; }
+.lbRules b { color: var(--text); }
+.lbRules ul { margin: 8px 0 6px; padding-left: 18px; }
+.lbRules table { border-collapse: collapse; margin: 6px 0 4px; font-size: 12.5px; }
+.lbRules th, .lbRules td { padding: 4px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+.lbRules th { color: var(--text-dim); font-weight: 600; font-size: 11.5px; }
+.lbRules .up { color: rgb(var(--sig-move)); font-weight: 700; }
+.lbRules .dn { color: rgb(var(--sig-impact)); font-weight: 700; }

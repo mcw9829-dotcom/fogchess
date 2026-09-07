@@ -1,25 +1,28 @@
-# Fly.io 배포 설정. 처음엔 `fly launch`가 이 파일을 읽어(또는 다시 만들며) 앱 이름/리전을 정한다.
-# app 이름은 Fly 전체에서 고유해야 함 — 이미 쓰이면 fly가 다른 이름을 제안한다.
-app = "fogchess"
-primary_region = "nrt"          # 도쿄(한국과 가까움). 원하면 바꿔도 됨.
+# fly.toml app configuration file generated for fogchess on 2026-09-07T09:57:26+09:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-[env]
-  FOG_DB = "/data/fogchess.db"    # 계정·레이팅 DB를 볼륨(/data)에 두어 재배포/재시작에도 보존
-
-[mounts]
-  source = "fogchess_data"        # 볼륨 이름 (fly launch가 만들어 주거나: fly volumes create fogchess_data --region nrt --size 1)
-  destination = "/data"
+app = 'fogchess'
+primary_region = 'nrt'
 
 [build]
-  # Dockerfile 사용(별도 설정 불필요)
+[env]
+  FOG_DB = '/data/fogchess.db'
+
+[[mounts]]
+  source = 'fogchess_data'
+  destination = '/data'
 
 [http_service]
-  internal_port = 8080          # 컨테이너 안 서버 포트(Dockerfile ENV PORT=8080 과 일치)
-  force_https = true            # http로 와도 https로 리다이렉트
-  auto_stop_machines = "stop"   # 유휴 시 자동 정지(비용 절감)
-  auto_start_machines = true    # 접속 오면 자동 시작(수초)
-  min_machines_running = 0      # 0 = 아무도 없을 때 정지 / 1 = 항상 켜둠(비용 조금 더)
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "256mb"              # 이 게임엔 넉넉함(표준 라이브러리 단일 프로세스)
+  size = 'shared-cpu-1x'
+  memory = '256mb'
+  cpus = 1
+  memory_mb = 256

@@ -181,11 +181,22 @@ def _apply(c, uid, delta, score):
     return new
 
 
-def record_vs_fixed(uid, opp_rating, score):
-    """고정 레이팅 상대(컴퓨터)와의 결과(score=1 승 / 0 패 / 0.5 무) → {'delta', 'rating'}"""
+def fixed_delta(ra, opp_rating, score, no_loss=False, cap=None):
+    """고정 레이팅 상대(컴퓨터)와의 변동치. no_loss=True면 음수는 0(져도 안 떨어짐),
+    cap이 있으면 그 이상으로는 오르지 않음(cap 도달 시 상승 0, 넘치는 만큼은 잘라냄)."""
+    d = elo_delta(ra, opp_rating, score)
+    if no_loss and d < 0:
+        d = 0
+    if cap is not None and d > 0:
+        d = max(0, min(d, cap - ra))
+    return d
+
+
+def record_vs_fixed(uid, opp_rating, score, no_loss=False, cap=None):
+    """고정 레이팅 상대(컴퓨터)와의 결과(score=1 승 / 0 패 / 0.5 무) → {'delta', 'rating'}. 전적(승/패/무)은 항상 기록."""
     with _db() as c:
         ra = c.execute('SELECT rating FROM users WHERE id=?', (uid,)).fetchone()['rating']
-        new = _apply(c, uid, elo_delta(ra, opp_rating, score), score)
+        new = _apply(c, uid, fixed_delta(ra, opp_rating, score, no_loss, cap), score)
         return {'delta': new - ra, 'rating': new}
 
 
@@ -250,5 +261,12 @@ if __name__ == '__main__':                         # python accounts.py feedback
         for r in rows:
             when = time.strftime('%Y-%m-%d %H:%M', time.localtime(r['created']))
             print(f"#{r['id']} [{when}] [{r['category']}] {r['name'] or '(guest)'} room={r['room'] or '-'}\n   {r['message']}")
+    elif len(sys.argv) > 1 and sys.argv[1] == 'users':
+        with _db() as db:
+            rows = db.execute('SELECT name, rating, wins, losses, draws, created FROM users ORDER BY rating DESC, id').fetchall()
+        print(f'users: {len(rows)} (by rating)')
+        for r in rows:
+            when = time.strftime('%Y-%m-%d', time.localtime(r['created']))
+            print(f"  {r['name']:<16} {r['rating']:>5} {tier(r['rating'])}  {r['wins']}승 {r['losses']}패 {r['draws']}무  가입 {when}")
     else:
-        print('usage: python accounts.py feedback [limit]')
+        print('usage: python accounts.py feedback [limit] | users')

@@ -493,12 +493,12 @@ function renderOverlay(){
   const solo = VIEW.solo || COLOR==='solo';
   let big, sub, snd;
   if(VIEW.winner==='draw'){ big='🤝 무승부'; sub='턴 한도 도달'; snd='drawend'; }
-  else if(solo){ big=`🏳 ${VIEW.winner==='W'?'백':'흑'} 승리`; sub='혼자 테스트'; snd='victory'; }
+  else if(solo){ big=`🏳 ${VIEW.winner==='W'?'백':'흑'} 승리`; sub='혼자 연습'; snd='victory'; }
   else if(VIEW.winner===VIEW.yourColor){ big='🏆 승리!'; sub='적 왕 처치'; snd='victory'; }
   else { big='💀 패배'; sub='내 왕이 당했다'; snd='defeat'; }
   if(VIEW.ratingDelta){                                  // 레이팅전 정산 결과(서버가 한 번만 계산)
     const d = VIEW.ratingDelta.delta;
-    sub += ` · 🏅 레이팅 ${d>0?'+':''}${d} → ${VIEW.ratingDelta.rating}`;
+    sub += d===0 ? ` · 🏅 레이팅 변동 없음(${VIEW.ratingDelta.rating})` : ` · 🏅 레이팅 ${d>0?'+':''}${d} → ${VIEW.ratingDelta.rating}`;
     fetchMe();                                           // 레일 프로필의 레이팅·티어 갱신
   }
   ov.innerHTML = `<div class="big">${big}</div><div class="sub">${sub}</div>`;
@@ -530,7 +530,7 @@ function render(){
   const me = VIEW.yourColor;                 // 조작 중인 색(솔로는 차례마다 바뀜)
   const solo = VIEW.solo || COLOR==='solo';
   const wi = document.getElementById('whoami');
-  if(solo) wi.textContent = `🧪 혼자 테스트 · 지금 ${me==='W'?'백':'흑'} 차례`;
+  if(solo) wi.textContent = `🎯 혼자 연습 · 지금 ${me==='W'?'백':'흑'} 차례`;
   else if(COLOR==='spectator') wi.textContent = '👀 관전자';
   else wi.textContent = `${VIEW.myName||'나'}${VIEW.myRating!=null?` (${VIEW.myRating})`:''} · ${COLOR==='W'?'백(아래)':'흑(위)'}`;
   wi.style.background = solo ? '#4a3a1e' : (COLOR==='W' ? '#22406b' : (COLOR==='B'?'#6b2222':'#333'));
@@ -539,6 +539,7 @@ function render(){
     rttxt += (rttxt?' · ':'') + `vs ${VIEW.oppName}${VIEW.oppRating!=null?` (${VIEW.oppRating})`:''}`;
   if(VIEW.rated) rttxt += ' · 🏅 레이팅전';
   if(VIEW.mapSeed) rttxt += ' · 🗺 맵 #' + VIEW.mapSeed;
+  if(VIEW.match) rttxt = '⚔️ 랭크 매칭 · ' + rttxt;
   document.getElementById('roomtag').textContent = rttxt;
 
   renderInvite();
@@ -581,7 +582,7 @@ function render(){
     banner.classList.add('over'); bt = '🏁 게임 종료';
   } else if(solo){
     banner.classList.add('mine'); boardEl.classList.add('turn-mine');
-    bt = `🧪 지금 ${me==='W'?'백':'흑'} 차례`;
+    bt = `🎯 지금 ${me==='W'?'백':'흑'} 차례`;
   } else if(VIEW.turn===me){
     banner.classList.add('mine'); boardEl.classList.add('turn-mine');
     bt = '🟢 당신 차례 — 지금 두세요'; canAct = true;
@@ -604,10 +605,10 @@ function render(){
   const ctr = document.getElementById('controls'); ctr.innerHTML = '';
   const mkBtn = (txt, fn, cls)=>{ const b=document.createElement('button'); b.textContent=txt; if(cls) b.className=cls; b.onclick=fn; ctr.appendChild(b); return b; };
   if(solo){
-    mkBtn(soloReveal ? '👁 전체 보기 ON' : '🌫 전체 보기 OFF(안개)',
+    mkBtn(soloReveal ? '👁 안개 걷힘(연습용) ON' : '🌫 안개 걷힘 OFF',
           ()=>{ soloReveal=!soloReveal; poll(); }, soloReveal ? 'on' : '');
   }
-  // (컴퓨터 대전·혼자 테스트는 시작 메뉴로 분리 — 대기 화면 패널에는 표시하지 않음)
+  // (컴퓨터 대전·혼자 연습은 시작 메뉴로 분리 — 대기 화면 패널에는 표시하지 않음)
   if(VIEW.phase==='setup' && VIEW.bothJoined && COLOR!=='spectator'){
     mkBtn('↩ 기본 포진', ()=>autoplace('default'));
     mkBtn('🎲 무작위 배치', ()=>autoplace('random'));
@@ -756,6 +757,7 @@ function render(){
         }
       } else if(inList(MOVES, r, c)){
         d.classList.add(cell.p ? 'capture' : 'movable');
+        if(!cell.p && cell.t===3){ d.classList.add('search'); d.title='부쉬 수색: 들어가면 숨은 적을 잡는다'; }   // 숨은 적이 있어도 표식은 그대로(정보 누출 없음)
         d.onclick = ()=>doMove(rr, cc);
       }
     }
@@ -992,7 +994,7 @@ const $ = (id)=>document.getElementById(id);
 $('mLobby').onclick    = lobbyCreate;                       // 로비 게임 만들기(사설 방)
 $('mJoin').onclick     = ()=>{ showScreen('joinMenu'); $('joinCode').value=''; $('joinCode').focus(); };
 $('mBot').onclick      = ()=> showScreen('botMenu');        // 컴퓨터와 대국(난이도 선택)
-$('mSolo').onclick     = soloStart;                         // 혼자 테스트(핫시트)
+$('mSolo').onclick     = soloStart;                         // 혼자 연습(핫시트)
 $('mSettings').onclick = ()=> openSettings('home');         // 홈에서 연 설정 → 뒤로=홈
 $('setBtn').onclick    = ()=> openSettings('game');         // 게임 중 ⚙설정 → 뒤로=게임
 $('lvEasy').onclick    = ()=> botStart('easy');
@@ -1085,15 +1087,15 @@ function tierRangeText(t){
   if(i===0) return '~' + hi;                            // 폰: 999 이하
   return hi===null ? lo + '+' : lo + '~' + hi;
 }
-function renderTierLadder(curTier, rating){
-  const box = $('tierLadder'); if(!box) return;
-  const ci = TIER_ASC.findIndex(([f,x])=>x===curTier);
+function renderTierLadder(curTier, rating, box){
+  box = box || $('tierLadder'); if(!box) return;
+  const ci = curTier ? TIER_ASC.findIndex(([f,x])=>x===curTier) : -1;      // 비로그인(null)이면 강조 없음
   box.innerHTML = TIER_ASC.map(([f,t],i)=>{
-    const cls = i<ci ? 'done' : (i===ci ? 'cur' : (i===ci+1 ? 'next' : 'todo'));
+    const cls = ci<0 ? 'todo' : (i<ci ? 'done' : (i===ci ? 'cur' : (i===ci+1 ? 'next' : 'todo')));
     return '<div class="tl-step '+cls+'" title="'+TIER_KR[t]+' '+tierRangeText(t)+'">'
       + '<img src="'+pieceSrc(t,'W')+'" alt="'+TIER_KR[t]+'" draggable="false">'
       + '<b>'+TIER_KR[t]+'</b><small>'+tierRangeText(t)+'</small>'
-      + (i===ci ? '<em>현재</em>' : (i===ci+1 ? '<em>다음</em>' : '')) + '</div>';
+      + (ci>=0 && i===ci ? '<em>현재</em>' : (ci>=0 && i===ci+1 ? '<em>다음</em>' : '')) + '</div>';
   }).join('');
 }
 async function authSubmit(){
@@ -1115,8 +1117,11 @@ function escapeHtml(s){ return String(s).replace(/[&<>"']/g, ch=>({'&':'&amp;','
 async function openLeaderboard(){
   const m=$('lbModal'), body=$('lbBody');
   m.style.display='flex'; body.innerHTML='<p class="note">불러오는 중…</p>';
-  let rows=[];
-  try{ rows=(await api('/leaderboard')).rows||[]; }catch(e){ body.innerHTML='<p class="note">불러오지 못했어요.</p>'; return; }
+  let rows=[], rules=null;
+  try{ const d=await api('/leaderboard'); rows=d.rows||[]; rules=d.rules||null; }catch(e){ body.innerHTML='<p class="note">불러오지 못했어요.</p>'; return; }
+  renderTierLadder(ME ? ME.tier : null, ME ? ME.rating : 0, $('lbLadder'));   // 티어 사다리(로그인 시 내 위치 강조)
+  $('lbLadderSub').textContent = ME ? ('내 티어: ' + TIER_KR[ME.tier] + ' · ' + ME.rating) : '레이팅 구간 · 로그인하면 내 위치 표시';
+  if(rules) renderRatingRules(rules);
   if(!rows.length){ body.innerHTML='<p class="note">아직 아무도 없어요 — 첫 회원이 되어 보세요!</p>'; return; }
   const me = ME ? ME.name : null;
   body.innerHTML = '<table class="lbTable"><thead><tr><th>#</th><th></th><th>닉네임</th><th>레이팅</th><th>전적</th></tr></thead><tbody>'
@@ -1127,6 +1132,29 @@ async function openLeaderboard(){
     + '</tbody></table>';
 }
 function closeLeaderboard(){ $('lbModal').style.display='none'; }
+// 레이팅 규칙(서버 config 값으로 계산해 그림 — 실제 정산 공식과 항상 동일)
+function renderRatingRules(r){
+  const exp=(a,b)=>1/(1+Math.pow(10,(b-a)/400));
+  const d=(a,b,s)=>{ const v=Math.round(r.k*(s-exp(a,b))); return (v>0?'+':'')+v; };
+  const base=r.default, row=(label,opp)=>'<tr><td>'+label+'</td><td class="up">'+d(base,opp,1)+'</td><td class="dn">'+d(base,opp,0)+'</td><td>'+d(base,opp,0.5)+'</td></tr>';
+  const capTxt = r.botCap!=null ? (' 단, 난이도마다 <b>컴퓨터 레이팅 +'+r.botCap+'</b>까지만 올라요(쉬움 '+(r.bot.easy+r.botCap)+' · 보통 '+(r.bot.normal+r.botCap)+' · 어려움 '+(r.bot.hard+r.botCap)+'). 그 위로는 랭크 매칭으로.') : '';
+  const bot = r.botRated ? ('<li><b>컴퓨터 대국</b>: 이기면 오르고' + (r.botNoLoss ? ' <b>져도 내려가지 않음</b>' : ' 지면 내려감') + ' — 컴퓨터는 고정 레이팅(쉬움 '+r.bot.easy+' · 보통 '+r.bot.normal+' · 어려움 '+r.bot.hard+').' + capTxt + '</li>')
+                         : '<li>컴퓨터 대국은 레이팅에 반영되지 않음</li>';
+  $('lbRulesBody').innerHTML =
+    '<ul>'
+    + '<li>시작 <b>'+base+'점</b>, 바닥 <b>'+r.floor+'점</b>. 티어는 레이팅 구간으로 자동(위 사다리).</li>'
+    + '<li>변동 = <b>'+r.k+' × (결과 − 기대승률)</b>. 기대승률은 <b>상대와의 점수차</b>로 정해져요(400점 차 = 10배). '
+    + '약한 상대를 이기면 조금, 강한 상대를 이기면 많이 얻고, 질 때는 반대.</li>'
+    + '</ul>'
+    + '<table><thead><tr><th>'+base+'점인 내가…</th><th>이기면</th><th>지면</th><th>비기면</th></tr></thead><tbody>'
+    + row('같은 '+base+'점 상대', base) + row('300점 높은 상대('+(base+300)+')', base+300) + row('300점 낮은 상대('+(base-300)+')', base-300)
+    + '</tbody></table>'
+    + '<ul>'
+    + '<li><b>레이팅전</b>: 랭크 매칭(로그인 회원끼리 자동 매칭)' + bot
+    + '<li>로비(친구) 대전·혼자 연습·게스트 대국은 반영되지 않음 — 친구와는 부담 없이!</li>'
+    + '<li><b>기권</b>, 접속 끊김 90초, 연속 3회 미행동은 <b>패배</b>로 정산. 정산은 게임이 끝날 때 한 번.</li>'
+    + '</ul>';
+}
 $('lbClose').onclick = closeLeaderboard;
 $('lbModal').onclick = (e)=>{ if(e.target.id==='lbModal') closeLeaderboard(); };
 // ---------- 이펙트 미리보기(설정 → 🎬) : 8×8 미니 보드 위에서 연출 재생 ----------
@@ -1182,6 +1210,49 @@ $('fbClose').onclick = closeFeedback;
 $('fbModal').onclick = (e)=>{ if(e.target.id==='fbModal') closeFeedback(); };
 $('fbSend').onclick = sendFeedback;
 $('fbText').addEventListener('input', e=>{ $('fbCount').textContent = e.target.value.length + ' / 1000'; });
+// ---------- 랭크 매칭(메인 카드) : 로그인 회원끼리 레이팅 근접 자동 대전 ----------
+let matchTimer = null;
+async function matchStart(){
+  if(!ME){ openAuth(); $('authErr').textContent = '랭크 매칭은 로그인 후 이용할 수 있어요.'; return; }
+  let r; try{ r = await post('/match/join', {session: session()}); }catch(e){ r = {ok:false}; }
+  if(!r || !r.ok){ showMsg((r && r.msg) || '매칭을 시작하지 못했어요.'); return; }
+  $('matchModal').style.display='flex'; $('matchFound').style.display='none'; $('matchBot').style.display='none';
+  $('matchSpin').style.display=''; $('matchTitle').textContent='⚔️ 상대를 찾는 중…';
+  $('matchMe').textContent = ME.name + ' · ' + ME.rating + ' (' + TIER_KR[ME.tier] + ')';
+  matchRender(r);
+  clearInterval(matchTimer); matchTimer = setInterval(matchPoll, 1000);
+}
+function matchRender(r){
+  if(r.state!=='waiting') return;
+  const w = (r.window==null) ? '무제한' : ('±' + r.window);
+  $('matchInfo').textContent = '대기 ' + r.waited + '초 · 검색 범위 ' + w + ' · 대기열 ' + r.queue + '명';
+  if(r.waited >= 30) $('matchBot').style.display='';           // 30초 넘게 아무도 없으면 봇 제안
+}
+async function matchPoll(){
+  let r; try{ r = await post('/match/status', {session: session()}); }catch(e){ return; }
+  if(r.state==='matched'){
+    clearInterval(matchTimer); matchTimer = null;
+    $('matchSpin').style.display='none'; $('matchTitle').textContent='⚔️ 매칭 성사!';
+    $('matchFound').style.display=''; $('matchOpp').textContent = r.opp.name + ' (' + r.opp.rating + ')';
+    if(soundOn){ ac(); (SND.yourturn||function(){})(); }
+    setTimeout(()=>{
+      ROOM = r.room; TOKEN = r.token; COLOR = r.color;
+      location.hash = '#' + ROOM; localStorage.setItem('fog_' + ROOM, TOKEN);
+      _resetGame(); $('matchModal').style.display='none'; showGame(); poll();
+    }, 1200);
+    return;
+  }
+  if(r.state==='idle'){ matchStop(false); showMsg('매칭 대기가 종료됐어요. 다시 시도해 주세요.'); return; }
+  matchRender(r);
+}
+async function matchStop(tell){
+  clearInterval(matchTimer); matchTimer = null;
+  $('matchModal').style.display='none';
+  if(tell !== false){ try{ await post('/match/cancel', {session: session()}); }catch(e){} }
+}
+$('mMatch').onclick = matchStart;
+$('matchCancel').onclick = ()=>matchStop(true);
+$('matchBot').onclick = async ()=>{ await matchStop(true); showScreen('botMenu'); };
 $('railUser').onclick = openAuth;
 $('authClose').onclick = closeAuth;
 $('authModal').onclick = (e)=>{ if(e.target.id==='authModal') closeAuth(); };
@@ -1209,6 +1280,7 @@ document.addEventListener('pointerdown', (e)=>{
   applyTheme(localStorage.getItem('fog_theme') || 'dark');
   applyCb(localStorage.getItem('fog_cb') === '1');
   fetchMe();                                                // 로그인 세션이 있으면 레일 프로필(레이팅·티어) 표시
+  api('/version').then(v=>{ if(v && v.version) $('verBadge').textContent = 'WW1 Fog Chess · v' + v.version; }).catch(()=>{});
   renderCoords();
   renderHomeBoard();
   setInterval(poll, 900);

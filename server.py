@@ -23,8 +23,10 @@ import threading
 from urllib.parse import urlparse, parse_qs
 
 from config import (PORT, CODE_ALPHABET, SEAT_TIMEOUT, SETUP_SECONDS, USE_PERLIN, ROOM_TTL,
-                    TURN_SECONDS, MAX_MISSES, BOT_MIN_THINK, BOT_RATED, BOT_RATING, DISCONNECT_FORFEIT,
-                    PERLIN_SEED, NEW_MAP_ON_REMATCH)
+                    TURN_SECONDS, MAX_MISSES, BOT_MIN_THINK, BOT_RATED, BOT_RATING, BOT_NO_LOSS, BOT_GAIN_CAP,
+                    DISCONNECT_FORFEIT,
+                    PERLIN_SEED, NEW_MAP_ON_REMATCH, RATING_DEFAULT, RATING_FLOOR, ELO_K, RATING_TIERS,
+                    APP_VERSION)
 from game_map import FORESTS, RIVERS, BUSHES, terrain_to_ascii
 from pieces import (new_game, legal_moves, fire_cells, fire_range, barrage_reach,
                     apply_move, apply_fire, apply_barrage, apply_place, autoplace,
@@ -34,6 +36,7 @@ import bot
 import accounts
 import game_map
 import pieces
+import matchmaking
 
 BOT_TOKEN = '__bot__'   # 컴퓨터(봇) 좌석 토큰
 MAX_BODY = 64 * 1024    # 요청 본문 상한(바이트) — 게임 액션은 수백 바이트면 충분
@@ -58,9 +61,26 @@ def new_room(code):
             'ratings': {},                      # color -> 현재 레이팅(표시용 캐시)
             'rated_done': False,                # 이 판의 레이팅 정산을 마쳤나(한 번만)
             'rating_result': {},                # color -> {'delta', 'rating'} 정산 결과
-            'solo': False,                      # 혼자 테스트(핫시트) 방인가
+            'solo': False,                      # 혼자 연습(핫시트) 방인가
             'terrain': game_map.generate_terrain(PERLIN_SEED),   # 이 방만의 지형(숲·부쉬·강 + 시드)
             'created': time.time()}
+
+
+def make_match_room(a, b):
+    """랭크 매칭 성사 → 두 회원을 앉힌 PvP 방 생성(색 무작위). (code, tokA, colorA, tokB, colorB). 락 안에서 호출."""
+    now = time.time()
+    code = gen_code(); room = new_room(code); use_terrain(room)
+    cols = ('W', 'B') if random.random() < 0.5 else ('B', 'W')
+    toks = (uuid.uuid4().hex, uuid.uuid4().hex)
+    for ent, tok, col in ((a, toks[0], cols[0]), (b, toks[1], cols[1])):
+        room['seats'][col] = tok; room['tokens'][tok] = col; room['seen'][tok] = now
+        room['users'][col] = ent['uid']; room['ratings'][col] = ent['rating']; room['names'][col] = ent['name']
+    room['match'] = True
+    room['state']['log'].append(f"랭크 매칭: {room['names']['W']}({room['ratings']['W']}) vs "
+                                f"{room['names']['B']}({room['ratings']['B']}) - 기물을 배치하고 [준비 완료]")
+    ROOMS[code] = room
+    maybe_setup_timer(room)
+    return code, toks[0], cols[0], toks[1], cols[1]
 
 
 def use_terrain(room):
@@ -92,14 +112,15 @@ def game_score(winner, color):
 
 
 def is_rated(room):
-    """이 판이 레이팅전인가: 봇전=사람이 회원(BOT_RATED) / 친구전=양쪽 다 회원(다른 계정). 솔로는 아님."""
+    """이 판이 레이팅전인가: 봇전=사람이 회원(BOT_RATED) / 사람끼리=랭크 매칭 방(match)이고 양쪽 다 다른 회원.
+    로비(친구) 대전·솔로·게스트는 비레이팅 — 친구끼리 점수를 주고받는 걸 막고, 편하게 연습하도록."""
     users = room.get('users', {})
     if room.get('solo'):
         return False
     if room.get('bot'):
         human = 'W' if room['bot'] == 'B' else 'B'
         return bool(BOT_RATED and users.get(human))
-    return bool(users.get('W') and users.get('B') and users['W'] != users['B'])
+    return bool(room.get('match') and users.get('W') and users.get('B') and users['W'] != users['B'])
 
 
 def settle_rating(room):
@@ -114,7 +135,8 @@ def settle_rating(room):
         if room.get('bot'):
             human = 'W' if room['bot'] == 'B' else 'B'
             bot_rating = BOT_RATING.get(room.get('botlevel', 'normal'), 1000)
-            res = accounts.record_vs_fixed(users[human], bot_rating, game_score(st['winner'], human))
+            res = accounts.record_vs_fixed(users[human], bot_rating, game_score(st['winner'], human),
+                                           no_loss=BOT_NO_LOSS, cap=bot_gain_cap(room))   # 져도 안 떨어짐 · 난이도별 상한
             room['rating_result'] = {human: res}
             room['ratings'][human] = res['rating']
         else:
@@ -123,6 +145,28 @@ def settle_rating(room):
             room['ratings']['W'], room['ratings']['B'] = res['a']['rating'], res['b']['rating']
     except Exception as e:
         print('[rating] settle failed:', e)
+
+
+def bot_gain_cap(room):
+    """이 봇 방에서 오를 수 있는 레이팅 상한(컴퓨터 레이팅 + BOT_GAIN_CAP). 상한 없음이면 None."""
+    if BOT_GAIN_CAP is None:
+        return None
+    return BOT_RATING.get(room.get('botlevel', 'normal'), 1000) + BOT_GAIN_CAP
+
+
+def bot_rating_note(room):
+    """봇 방 시작 로그에 붙일 레이팅 안내 한 줄(회원이 아니면 None)."""
+    if not room.get('bot') or not is_rated(room):
+        return None
+    human = 'W' if room['bot'] == 'B' else 'B'
+    r = room['ratings'].get(human, RATING_DEFAULT)
+    bot_rating = BOT_RATING.get(room.get('botlevel', 'normal'), 1000)
+    gain = accounts.fixed_delta(r, bot_rating, 1.0, BOT_NO_LOSS, bot_gain_cap(room))
+    loss = accounts.fixed_delta(r, bot_rating, 0.0, BOT_NO_LOSS, bot_gain_cap(room))
+    if gain <= 0:
+        return f'📈 레이팅 {r}: 이 난이도의 상한({bot_gain_cap(room)})에 닿아 더 오르지 않아요 - 더 어려운 난이도나 랭크 매칭으로!'
+    tail = '져도 내려가지 않아요.' if loss == 0 else f'지면 {loss}.'
+    return f'📈 레이팅 {r}: 이기면 +{gain}, {tail}'
 
 
 def effective_color(room, token):
@@ -258,6 +302,7 @@ def state_response(room, color, now, reveal=False):
     v['solo'] = room.get('solo', False)
     v['room'] = room['code']
     v['mapSeed'] = room['terrain']['seed']       # 이 방의 맵 시드(방 태그 표시·공유용)
+    v['match'] = bool(room.get('match'))         # 랭크 매칭으로 만들어진 방
     v['shareBase'] = LAN_URL
     v['bothJoined'] = both_joined(room)
     opp = 'B' if color == 'W' else 'W'
@@ -368,8 +413,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return
             self._json({'rows': accounts.feedback_list(int(q0.get('limit', ['100'])[0] or 100))})
             return
+        if u.path == '/version':                               # 배지용 버전(공개)
+            self._json({'version': APP_VERSION})
+            return
         if u.path == '/leaderboard':                           # 레이팅 순위(공개)
-            self._json({'rows': accounts.leaderboard()})
+            self._json({'rows': accounts.leaderboard(),
+                        'rules': {'default': RATING_DEFAULT, 'floor': RATING_FLOOR, 'k': ELO_K, 'botRated': BOT_RATED,
+                                  'botNoLoss': BOT_NO_LOSS, 'botCap': BOT_GAIN_CAP,
+                                  'bot': BOT_RATING, 'tiers': [[f, t] for f, t in RATING_TIERS]}})   # 규칙 공개(클라가 그림)
             return
         q = parse_qs(u.query)
         token = q.get('token', [''])[0]
@@ -447,6 +498,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
             user = accounts.user_by_token(data.get('session'))
             self._json({'ok': user is not None, 'user': user})
             return
+        if u.path in ('/match/join', '/match/status', '/match/cancel'):   # 랭크 매칭(로그인 회원 전용)
+            user = accounts.user_by_token(data.get('session'))
+            if not user:
+                self._json({'ok': False, 'state': 'idle', 'msg': '랭크 매칭은 로그인이 필요합니다.'})
+                return
+            with lock:
+                if u.path == '/match/cancel':
+                    matchmaking.cancel(data.get('session'))
+                    self._json({'ok': True, 'state': 'idle'})
+                    return
+                if u.path == '/match/join':
+                    matchmaking.join(data.get('session'), user, now)
+                res = matchmaking.status(data.get('session'), now, make_match_room)
+                res['ok'] = True; res['me'] = {'name': user['name'], 'rating': user['rating']}
+                self._json(res)
+            return
         if u.path == '/feedback':                                   # 개발자 피드백 저장
             ip = self.client_address[0] if self.client_address else '?'
             if now - FB_LAST.get(ip, 0) < FB_COOLDOWN:
@@ -463,7 +530,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         if u.path == '/join':
             with lock:
-                if data.get('solo'):   # 혼자 테스트(핫시트) 방
+                if data.get('solo'):   # 혼자 연습(핫시트) 방
                     code = gen_code()
                     room = new_room(code)
                     use_terrain(room)
@@ -475,7 +542,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     st = room['state']
                     st['phase'] = 'play'
                     st['turn'] = 'W'
-                    st['log'] = ['🧪 혼자 테스트 모드 — 양쪽을 번갈아 조작하세요.']
+                    st['log'] = ['🎯 혼자 연습 - 백과 흑을 번갈아 두세요.']
                     room['names'] = {'W': clean_name(data.get('name'), '백'), 'B': '흑'}
                     ROOMS[code] = room
                     self._json({'room': code, 'token': ntok, 'color': 'solo'})
@@ -500,6 +567,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     st['log'] = ['🤖 컴퓨터와 대전 — 백(당신) 기물을 배치하고 [준비 완료]. 흑(컴퓨터)은 준비됨.']
                     attach_user(room, 'W', data, '플레이어')          # 회원이면 계정 닉네임·레이팅전
                     room['names']['B'] = '컴퓨터(' + room['botlevel'] + ')'
+                    note = bot_rating_note(room)
+                    if note:
+                        st['log'].append(note)
                     ROOMS[code] = room
                     self._json({'room': code, 'token': htok, 'color': 'W'})
                     return
@@ -552,11 +622,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     if room.get('solo'):
                         room['state']['phase'] = 'play'
                         room['state']['turn'] = 'W'
-                        room['state']['log'] = ['🧪 혼자 테스트 — 재시작.']
+                        room['state']['log'] = ['🎯 혼자 연습 - 재시작.']
                     elif room.get('bot'):
                         bot.setup_and_ready(room['state'], 'B')
                         room['state']['deadline'] = time.time() + SETUP_SECONDS
                         room['state']['log'] = ['🤖 컴퓨터와 대전 — 재대결! 백 배치 후 [준비 완료].']
+                        note = bot_rating_note(room)
+                        if note:
+                            room['state']['log'].append(note)
                     else:
                         maybe_setup_timer(room)
                     self._json({'ok': True})

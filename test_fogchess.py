@@ -6,6 +6,7 @@
 지형(FORESTS/BUSHES/RIVERS)은 서버 시작 시 무작위 생성되므로, 각 테스트는
 clean_terrain 픽스처로 '빈 지형'에서 시작하고 필요할 때만 지형을 심는다.
 """
+import os, re
 import pytest
 
 import config
@@ -507,6 +508,50 @@ def _cp949_ok(text):
         return False
 
 
+def test_matchmaking_window_and_pairing():
+    import matchmaking as M
+    M.QUEUE.clear()
+    assert M.window(0) == 100 and M.window(25) == 200 and M.window(59) == 350 and M.window(60) == float('inf')
+    rooms = []
+    def make_room(a, b):
+        rooms.append((a['uid'], b['uid'])); return ('R%d' % len(rooms), 'ta', 'W', 'tb', 'B')
+    M.join('sA', {'id': 1, 'name': 'A', 'rating': 1000}, now=0)
+    M.join('sB', {'id': 2, 'name': 'B', 'rating': 1500}, now=0)              # 차 500 > ±100 → 아직
+    assert M.status('sA', 1, make_room)['state'] == 'waiting' and not rooms
+    M.join('sC', {'id': 3, 'name': 'C', 'rating': 1080}, now=2)              # 차 80 → A와 매칭
+    st = M.status('sA', 3, make_room)
+    assert st['state'] == 'matched' and st['room'] == 'R1' and st['opp']['name'] == 'C' and st['color'] == 'W'
+    assert M.status('sC', 3, make_room)['state'] == 'matched' and 'sC' not in M.QUEUE
+    assert M.status('sB', 3, make_room)['state'] == 'waiting'
+    M.join('sD', {'id': 4, 'name': 'D', 'rating': 700}, now=61)              # B는 60초 지나 무제한 → D와
+    assert M.status('sB', 61, make_room)['state'] == 'matched' and rooms[-1] == (2, 4)
+    M.QUEUE.clear()
+
+
+def test_matchmaking_no_self_match_and_stale_prune():
+    import matchmaking as M
+    M.QUEUE.clear()
+    mk = lambda a, b: ('R', 'a', 'W', 'b', 'B')
+    M.join('s1', {'id': 9, 'name': 'X', 'rating': 1000}, now=0)
+    M.join('s2', {'id': 9, 'name': 'X', 'rating': 1000}, now=0)               # 같은 계정(다른 탭) → 서로 안 붙음
+    assert M.status('s1', 1, mk)['state'] == 'waiting'
+    assert M.status('s1', 19, mk)['state'] == 'waiting'                        # s2는 폴링 끊긴 지 19초 → 정리됨
+    assert 's2' not in M.QUEUE and 's1' in M.QUEUE
+    M.cancel('s1'); assert M.status('s1', 20, mk)['state'] == 'idle'
+    M.QUEUE.clear()
+
+
+def test_server_match_room_is_rated_pvp(tmp_db):
+    import server
+    a = accounts.signup('mm_a', '1234')[0]['user']; b = accounts.signup('mm_b', '1234')[0]['user']
+    code, ta, ca, tb, cb = server.make_match_room({'uid': a['id'], 'name': 'mm_a', 'rating': 1000},
+                                                  {'uid': b['id'], 'name': 'mm_b', 'rating': 1010})
+    room = server.ROOMS.pop(code)
+    assert {ca, cb} == {'W', 'B'} and room['match'] and server.is_rated(room)
+    assert room['users'][ca] == a['id'] and room['tokens'][ta] == ca and room['tokens'][tb] == cb
+    assert room['state']['deadline'] is not None                                # 둘 다 앉음 → 배치 타이머 시작
+
+
 def test_server_settles_bot_game_once(tmp_db):
     import server
     u = accounts.signup('bot_beater', '1234')[0]['user']
@@ -520,6 +565,32 @@ def test_server_settles_bot_game_once(tmp_db):
     assert d['delta'] == accounts.elo_delta(1000, 1300, 1.0) == 27
     assert accounts.user_by_id(u['id'])['rating'] == 1027 and accounts.user_by_id(u['id'])['wins'] == 1
     assert room['ratings']['W'] == 1027
+
+
+
+def test_bot_loss_keeps_rating_and_gain_cap(tmp_db):
+    """컴퓨터 대국: 져도 0(전적은 기록), 이기면 오르되 난이도 상한(컴퓨터 레이팅+200)에서 멈춤."""
+    import server
+    from config import BOT_GAIN_CAP
+    u = accounts.signup('bot_loser', '1234')[0]['user']
+    room = server.new_room('T5'); room['bot'] = 'B'; room['botlevel'] = 'hard'
+    room['users'] = {'W': u['id']}; room['ratings'] = {'W': 1000}
+    st = room['state']; st['phase'] = 'over'; st['winner'] = 'B'                      # 패배
+    server.settle_rating(room)
+    assert room['rating_result']['W'] == {'delta': 0, 'rating': 1000}
+    me = accounts.user_by_id(u['id']); assert me['rating'] == 1000 and me['losses'] == 1
+    # 상한: 어려움(1300)+200 = 1500. 1490에서 이기면 +10까지만, 1500에서는 0
+    assert accounts.fixed_delta(1490, 1300, 1.0, True, 1300 + BOT_GAIN_CAP) == 8        # 원래 변동(8)이 남은 여유(10)보다 작음
+    assert accounts.fixed_delta(1495, 1300, 1.0, True, 1300 + BOT_GAIN_CAP) == 5        # 상한까지 남은 5만
+    assert accounts.fixed_delta(1500, 1300, 1.0, True, 1300 + BOT_GAIN_CAP) == 0
+    assert accounts.fixed_delta(1000, 1300, 1.0, True, 1300 + BOT_GAIN_CAP) == 27      # 상한 아래면 그대로
+    assert accounts.fixed_delta(1400, 1300, 0.5, True, None) == 0                       # 비겨도 안 떨어짐
+    assert server.bot_gain_cap(room) == 1500
+    room2 = server.new_room('T6'); room2['bot'] = 'B'; room2['botlevel'] = 'easy'
+    room2['users'] = {'W': u['id']}; room2['ratings'] = {'W': 1000}
+    assert '더 오르지 않아요' in server.bot_rating_note(room2)                          # 쉬움 상한 1000 도달
+    room2['ratings'] = {'W': 900}
+    assert server.bot_rating_note(room2).startswith('📈 레이팅 900: 이기면 +')
 
 
 def test_leaderboard_order(tmp_db):
@@ -558,6 +629,7 @@ def test_sweep_forfeits_disconnected_player(tmp_db):
     room['seats'] = {'W': 'tokW', 'B': 'tokB'}; room['tokens'] = {'tokW': 'W', 'tokB': 'B'}
     room['seen'] = {'tokW': now - 100, 'tokB': now}                 # 백이 100초째 접속 없음
     room['users'] = {'W': a['id'], 'B': b['id']}; room['ratings'] = {'W': 1000, 'B': 1000}
+    room['match'] = True                                              # 랭크 매칭 방 = 레이팅전(로비는 비레이팅)
     st = room['state']; st['phase'] = 'play'; st['turn'] = 'B'; st['turn_deadline'] = now + 10
     server.ROOMS['SW1'] = room
     try:
@@ -594,6 +666,43 @@ def test_server_guest_and_solo_games_unrated(tmp_db):
     room2 = server.new_room('T3'); room2['solo'] = True
     room2['users'] = {'W': 1, 'B': 1}
     assert not server.is_rated(room2)
+
+
+
+def test_server_lobby_pvp_unrated(tmp_db):
+    """로비(친구) 대전: 양쪽 다 회원이어도 비레이팅. 같은 두 회원이 랭크 매칭 방이면 레이팅전."""
+    import server
+    room = server.new_room('T4'); room['users'] = {'W': 1, 'B': 2}       # match=False (기본)
+    assert not server.is_rated(room)
+    room['match'] = True
+    assert server.is_rated(room)
+
+
+def test_bush_hidden_enemy_capturable_by_move():
+    """부쉬에 숨은 적 칸도 legal_moves에 포함(수색 이동) — 클라 표식은 z-index로 부쉬 잎 위에 그린다."""
+    import sys
+    mods = tuple(sys.modules[n] for n in ('pieces', 'game', 'bot') if n in sys.modules)
+    t = game_map.generate_terrain(seed=7, extra='bush'); assert t['bushes']
+    saved = game_map.TERRAIN
+    game_map.apply_terrain(t, *mods)
+    try:
+        st = bare()
+        found = None
+        for br, bc in sorted(t['bushes']):                                       # 부쉬 옆 빈 칸(장애물 아님) 하나
+            for dr, dc in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+                r, c = br + dr, bc + dc
+                if 0 <= r < 12 and 0 <= c < 12 and (r, c) not in t['impassable'] and (r, c) not in t['bushes']:
+                    found = (br, bc, r, c); break
+            if found: break
+        assert found, 'no bush with a free neighbour'
+        br, bc, r, c = found
+        put(st, 'W_R1', 'W', 'R', r, c)                                          # 내 룩 옆칸, 부쉬 안에 숨은 적 폰
+        put(st, 'B_P1', 'B', 'P', br, bc)
+        assert (br, bc) in {tuple(m) for m in pieces.legal_moves(st, 'W_R1')}
+    finally:
+        game_map.apply_terrain(saved, *mods)
+    css = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'style.css'), encoding='utf-8').read()
+    assert re.search(r'\.movable::before\s*\{[^}]*z-index:\s*4', css) and re.search(r'\.bushfront\{\s*z-index:3', css)
 
 
 # ------------------------- 신규 규칙 -------------------------

@@ -34,10 +34,11 @@
       <div class="menu">
         <div class="menu-logo">🎖️ 안개전장 체스</div>
         <div class="menu-sub">WW1 Fog Chess</div>
-        <button class="menu-btn" id="mLobby"><span class="mi">👥</span><span class="mt"><b>로비 게임 만들기</b><small>친구와 사설 방에서 대전(초대 링크)</small></span></button>
-        <button class="menu-btn" id="mJoin"><span class="mi">🤝</span><span class="mt"><b>친구에게 도전</b><small>친구가 준 방 코드로 참가</small></span></button>
-        <button class="menu-btn" id="mBot"><span class="mi">💻</span><span class="mt"><b>컴퓨터와 대국</b><small>쉬움 · 보통 · 어려움</small></span></button>
-        <button class="menu-btn" id="mSolo"><span class="mi">🧪</span><span class="mt"><b>혼자 테스트</b><small>양쪽을 번갈아(핫시트)</small></span></button>
+        <button class="menu-btn primary" id="mMatch"><span class="mi">⚔️</span><span class="mt"><b>랭크 매칭</b><small>비슷한 레이팅의 상대를 자동으로 찾아 레이팅전 · 로그인 필요</small></span></button>
+        <button class="menu-btn" id="mLobby"><span class="mi">👥</span><span class="mt"><b>로비 게임 만들기</b><small>친구와 사설 방에서 대전(초대 링크) · 레이팅 미반영</small></span></button>
+        <button class="menu-btn" id="mJoin"><span class="mi">🤝</span><span class="mt"><b>친구 방 참가</b><small>친구가 준 방 코드로 입장 · 레이팅 미반영</small></span></button>
+        <button class="menu-btn" id="mBot"><span class="mi">💻</span><span class="mt"><b>컴퓨터와 대국</b><small>쉬움 · 보통 · 어려움 · 이기면 레이팅 상승, 져도 하락 없음</small></span></button>
+        <button class="menu-btn" id="mSolo"><span class="mi">🎯</span><span class="mt"><b>혼자 연습</b><small>한 화면에서 백·흑을 번갈아 두며 규칙 익히기 · 레이팅 미반영</small></span></button>
         <button class="menu-btn ghost" id="mSettings"><span class="mi">⚙️</span><span class="mt"><b>설정</b><small>효과음 · 배경음악 · 다크/화이트 · 색약</small></span></button>
       </div>
     </div>
@@ -48,9 +49,9 @@
     <div class="menu">
       <div class="menu-logo">💻 컴퓨터와 대국</div>
       <div class="menu-sub">난이도를 고르세요</div>
-      <button class="menu-btn" id="lvEasy"><span class="mi">🟢</span><span class="mt"><b>쉬움</b><small>자주 실수하는 초보용</small></span></button>
-      <button class="menu-btn" id="lvNormal"><span class="mi">🟡</span><span class="mt"><b>보통</b><small>기본 휴리스틱(기억·정찰·회피)</small></span></button>
-      <button class="menu-btn" id="lvHard"><span class="mi">🔴</span><span class="mt"><b>어려움</b><small>미니맥스 + 알파-베타 수읽기</small></span></button>
+      <button class="menu-btn" id="lvEasy"><span class="mi">🟢</span><span class="mt"><b>쉬움</b><small>실수가 잦은 입문용 상대</small></span></button>
+      <button class="menu-btn" id="lvNormal"><span class="mi">🟡</span><span class="mt"><b>보통</b><small>정찰하고 기억하며 위협을 피하는 표준 상대</small></span></button>
+      <button class="menu-btn" id="lvHard"><span class="mi">🔴</span><span class="mt"><b>어려움</b><small>몇 수 앞을 읽고 왕을 끈질기게 추적하는 강한 상대</small></span></button>
       <button class="menu-btn ghost back">← 뒤로</button>
     </div>
   </div>
@@ -85,7 +86,7 @@
 
   <div id="game" class="gamewrap" style="display:none">
   <div>
-    <h1>안개전장 체스 <span class="badge">WW1 Fog Chess · v4</span>
+    <h1>안개전장 체스 <span class="badge" id="verBadge">WW1 Fog Chess</span>
       <button id="helpBtn" class="mini">❔ 규칙</button>
       <button id="setBtn" class="mini">⚙ 설정</button></h1>
     <div id="turnBanner" class="turnBanner"></div>
@@ -106,7 +107,7 @@
     <div class="card">
       <div id="whoami" class="tag"></div> <span id="roomtag" class="roomtag"></span>
       <div id="invite" class="invite" style="display:none">
-        <div class="lbl">🔗 친구 초대 링크 (같은 와이파이에서 열기)</div>
+        <div class="lbl">🔗 친구 초대 링크 — 보내 주면 바로 참가할 수 있어요</div>
         <div class="row"><input id="inviteUrl" readonly><button id="copyBtn">복사</button></div>
       </div>
     </div>
@@ -143,7 +144,7 @@
       <p class="goal">🎯 <b>목표</b>: 안개 속에 숨은 <b>적 왕(♚)</b>을 찾아 처치하면 승리.</p>
       <ul>
         <li>🌫️ <b>안개</b>: 내 기물 주변만 보인다. 기물이 사라지면 그 자리 시야도 사라짐.</li>
-        <li>🧭 <b>배치</b>: 시작 60~70초 동안 내 진영 3줄에 기물을 놓는다(왕을 잘 숨기기!).</li>
+        <li>🧭 <b>배치</b>: 시작 후 70초 동안 내 진영 3줄에 기물을 놓는다(왕을 잘 숨기기!).</li>
         <li>⚔️ <b>승리</b>: 적 왕을 한 번 맞히면 끝(킹 목숨 1).</li>
         <li>⏳ <b>턴 30초</b>: 넘기면 그 턴은 <b>자동으로 상대에게 넘어감</b>(기물 그대로). <b>연속 3회(1분 30초) 미행동 = 상대 자동 승리</b>. 수를 두면 리셋. 접속이 <b>1분 30초</b> 이상 끊기면 <b>자동 기권</b>.</li>
         <li>🌲 <b>숲</b>=시야·이동·사격 모두 차단.</li>
@@ -212,7 +213,13 @@
     <div class="modalCard lbCard">
       <button id="lbClose" class="modalX">✕</button>
       <h2>🏆 리더보드</h2>
-      <p class="note" style="margin:0 0 12px">레이팅 순 상위 50명 · 티어: 폰 &lt;1000 · 나이트 1000+ · 룩 1200+ · 비숍 1500+ · 퀸 1700+ · 킹 1900+</p>
+      <div class="tierHead"><span>티어 사다리</span><small id="lbLadderSub">레이팅 구간</small></div>
+      <div class="tierLadder" id="lbLadder"></div>
+      <details class="lbRules" id="lbRules">
+        <summary>📐 레이팅 규칙 — 어떻게 오르고 내리나</summary>
+        <div id="lbRulesBody"></div>
+      </details>
+      <div class="tierHead"><span>순위</span><small>레이팅 순 상위 50명</small></div>
       <div id="lbBody"></div>
     </div>
   </div>
@@ -250,6 +257,19 @@
         <h2 style="margin:8px 0 4px">고마워요!</h2>
         <p class="note">피드백이 전달됐어요. 다음 업데이트에 반영해 볼게요.</p>
       </div>
+    </div>
+  </div>
+
+  <!-- ===== 랭크 매칭 대기 ===== -->
+  <div id="matchModal" class="modal" style="display:none">
+    <div class="modalCard matchCard">
+      <h2 id="matchTitle">⚔️ 상대를 찾는 중…</h2>
+      <div class="matchSpin" id="matchSpin"></div>
+      <p style="margin:0 0 6px"><b id="matchMe"></b></p>
+      <p class="note" id="matchInfo" style="margin:0 0 12px">대기 0초 · 검색 범위 ±100</p>
+      <div id="matchFound" class="matchFound" style="display:none">상대 발견! <b id="matchOpp"></b><br><small>입장 중…</small></div>
+      <button id="matchBot" class="menu-btn" style="display:none"><span class="mi">💻</span><span class="mt"><b>대신 컴퓨터와 대국</b><small>상대가 없을 때 · 레이팅전</small></span></button>
+      <button id="matchCancel" class="menu-btn ghost"><span class="mi">✕</span><span class="mt"><b>취소</b></span></button>
     </div>
   </div>
 
