@@ -419,13 +419,13 @@ def tmp_db(tmp_path):
 
 
 def test_login_lockout_after_repeated_failures(tmp_db):
-    accounts.signup('pin_user', '1234')
+    accounts.signup('pin_user', 'Test123!')
     for _ in range(5):
         assert accounts.login('pin_user', '0000')[0] is None
-    res, err = accounts.login('pin_user', '1234')              # 맞는 PIN이어도 잠금 중
+    res, err = accounts.login('pin_user', 'Test123!')              # 맞는 PIN이어도 잠금 중
     assert res is None and '잠겼' in err
     accounts._fails['pin_user']['until'] = 0                   # 잠금 시간 경과 시뮬레이션
-    assert accounts.login('pin_user', '1234')[0] is not None
+    assert accounts.login('pin_user', 'Test123!')[0] is not None
 
 
 def test_elo_delta_depends_on_rating_gap():
@@ -443,14 +443,14 @@ def test_rating_tiers():
 
 
 def test_signup_login_session(tmp_db):
-    res, err = accounts.signup('초코비', '1234')
+    res, err = accounts.signup('초코비', 'Test123!')
     assert err is None and res['user']['rating'] == 1000 and res['user']['tier'] == 'N'
     assert accounts.signup('초코비', 'x')[1]                    # 짧은 비밀번호 거부
-    assert accounts.signup('새이름', '12345')[1]                # 5자리 거부(숫자 4자리 PIN만)
-    assert accounts.signup('새이름', '12ab')[1]                 # 숫자 아님 거부
-    assert accounts.signup('ChocoBi', '1234')[1] is None      # 다른 이름은 OK
-    assert accounts.signup('chocobi', '1234')[1]              # 대소문자만 다른 중복은 거부
-    assert accounts.signup('a', '1234')[1]                    # 1글자 거부
+    assert accounts.signup('새이름', '12345678')[1]             # 숫자만 → 거부
+    assert accounts.signup('새이름', 'abcdefgh')[1]             # 영문만 → 거부
+    assert accounts.signup('ChocoBi', 'Test123!')[1] is None      # 다른 이름은 OK
+    assert accounts.signup('chocobi', 'Test123!')[1]              # 대소문자만 다른 중복은 거부
+    assert accounts.signup('a', 'Test123!')[1]                    # 1글자 거부
     assert accounts.login('초코비', 'wrong')[0] is None
     me = accounts.user_by_token(res['session'])
     assert me and me['name'] == '초코비'
@@ -459,8 +459,8 @@ def test_signup_login_session(tmp_db):
 
 
 def test_record_result_and_floor(tmp_db):
-    a = accounts.signup('a_1', '1234')[0]['user']['id']
-    b = accounts.signup('b_1', '1234')[0]['user']['id']
+    a = accounts.signup('a_1', 'Test123!')[0]['user']['id']
+    b = accounts.signup('b_1', 'Test123!')[0]['user']['id']
     r = accounts.record_result(a, b, 1.0)
     assert r['a'] == {'delta': 16, 'rating': 1016} and r['b'] == {'delta': -16, 'rating': 984}
     assert accounts.user_by_id(a)['wins'] == 1 and accounts.user_by_id(b)['losses'] == 1
@@ -485,7 +485,7 @@ def test_feedback_store_and_validate(tmp_db):
 
 def test_feedback_done_delete_and_users(tmp_db):
     """관리자: 처리됨 표시(기본 목록에서 빠짐) / 되돌리기 / 삭제 / 회원 목록."""
-    accounts.signup('adm_u', '1234')
+    accounts.signup('adm_u', 'Test123!')
     assert accounts.add_feedback('bug', '첫 번째 피드백')[0] and accounts.add_feedback('idea', '두 번째 피드백')[0]
     rows = accounts.feedback_list(); assert [r['done'] for r in rows] == [0, 0]
     fid = rows[-1]['id']                                                       # 가장 오래된 것
@@ -530,6 +530,44 @@ def test_admin_gate_lockout(monkeypatch):
     server.ADMIN_FAILS.clear()
 
 
+
+def test_password_policy():
+    """비밀번호 규칙: 8~64자 · 영문(문자)·숫자·특수문자 각 1개 이상 · 공백 없음. 옛 4자리는 weak."""
+    pp = accounts.password_problem
+    for bad in ('1234', 'short1!', 'abcdefgh', '12345678', 'Abcdefg1', 'Abc 123!', '!!!!!!!!', 'a' * 70 + '1!'):
+        assert pp(bad), bad
+    assert pp('Abcdef1!') is None and pp('한글비밀번호1!') is None and pp(None)
+    assert accounts.password_weak('1234') and not accounts.password_weak('Abcdef1!')
+
+
+def test_change_name_and_password(tmp_db):
+    res, _ = accounts.signup('rename_me', 'Test123!'); tok = res['session']
+    accounts.signup('taken', 'Test123!')
+    assert accounts.change_name(tok, 'taken')[1] and accounts.change_name(tok, 'TAKEN')[1]      # 중복(대소문자 무시)
+    assert accounts.change_name(tok, 'a')[1] and accounts.change_name('bogus', 'newname')[1]     # 규칙 위반 · 세션 없음
+    user, err = accounts.change_name(tok, 'renamed_1'); assert err is None and user['name'] == 'renamed_1'
+    assert accounts.user_by_token(tok)['name'] == 'renamed_1' and accounts.login('renamed_1', 'Test123!')[0]
+    assert accounts.login('rename_me', 'Test123!')[0] is None                                    # 옛 이름으로는 로그인 불가
+    other = accounts.login('renamed_1', 'Test123!')[0]['session']                               # 다른 기기 세션
+    assert accounts.change_password(tok, 'wrong', 'NewPass1!')[1]                               # 현재 비밀번호 틀림
+    assert accounts.change_password(tok, 'Test123!', 'weak')[1]                                 # 새 비밀번호 규칙 위반
+    assert accounts.change_password('bogus', 'Test123!', 'NewPass1!')[1]                        # 세션 없음
+    ok, err = accounts.change_password(tok, 'Test123!', 'NewPass1!'); assert ok and err is None
+    assert accounts.user_by_token(tok) and accounts.user_by_token(other) is None                # 내 세션 유지 · 다른 기기 로그아웃
+    assert accounts.login('renamed_1', 'Test123!')[0] is None and accounts.login('renamed_1', 'NewPass1!')[0]
+
+
+def test_legacy_pin_login_flags_weak(tmp_db):
+    """옛 4자리 PIN 회원: 로그인은 되지만 weakPw=True → 클라가 변경을 안내. 새 규칙 비밀번호는 False."""
+    import secrets, time as _t
+    salt = secrets.token_bytes(16)
+    with accounts._db() as c:
+        c.execute('INSERT INTO users(name, name_lc, salt, pw_hash, rating, created) VALUES(?,?,?,?,?,?)',
+                  ('oldpin', 'oldpin', salt, accounts._hash('1234', salt), 1000, _t.time()))
+    res, err = accounts.login('oldpin', '1234'); assert err is None and res['weakPw'] is True
+    assert accounts.signup('newbie', 'Test123!')[0]['weakPw'] is False
+
+
 def test_terrain_generation_seeded_and_varied():
     import game_map
     a = game_map.generate_terrain(seed=123); b = game_map.generate_terrain(seed=123); c = game_map.generate_terrain(seed=456)
@@ -570,23 +608,80 @@ def _cp949_ok(text):
         return False
 
 
-def test_matchmaking_window_and_pairing():
-    import matchmaking as M
-    M.QUEUE.clear()
-    assert M.window(0) == 100 and M.window(25) == 200 and M.window(59) == 350 and M.window(60) == float('inf')
+def _mk_rooms():
     rooms = []
     def make_room(a, b):
         rooms.append((a['uid'], b['uid'])); return ('R%d' % len(rooms), 'ta', 'W', 'tb', 'B')
+    return rooms, make_room
+
+
+def test_matchmaking_window_pairing_and_accept():
+    """v1.36: 짝이 잡히면 found(수락 대기) → 둘 다 수락해야 방이 생기고 matched. 검색 범위는 대기 시간에 따라 넓어짐."""
+    import matchmaking as M
+    M.QUEUE.clear(); rooms, make_room = _mk_rooms()
+    assert M.window(0) == 100 and M.window(25) == 200 and M.window(59) == 350 and M.window(60) == float('inf')
     M.join('sA', {'id': 1, 'name': 'A', 'rating': 1000}, now=0)
     M.join('sB', {'id': 2, 'name': 'B', 'rating': 1500}, now=0)              # 차 500 > ±100 → 아직
     assert M.status('sA', 1, make_room)['state'] == 'waiting' and not rooms
-    M.join('sC', {'id': 3, 'name': 'C', 'rating': 1080}, now=2)              # 차 80 → A와 매칭
+    M.join('sC', {'id': 3, 'name': 'C', 'rating': 1080}, now=2)              # 차 80 → A와 짝
     st = M.status('sA', 3, make_room)
-    assert st['state'] == 'matched' and st['room'] == 'R1' and st['opp']['name'] == 'C' and st['color'] == 'W'
-    assert M.status('sC', 3, make_room)['state'] == 'matched' and 'sC' not in M.QUEUE
-    assert M.status('sB', 3, make_room)['state'] == 'waiting'
-    M.join('sD', {'id': 4, 'name': 'D', 'rating': 700}, now=61)              # B는 60초 지나 무제한 → D와
-    assert M.status('sB', 61, make_room)['state'] == 'matched' and rooms[-1] == (2, 4)
+    assert st['state'] == 'found' and st['opp']['name'] == 'C' and st['accepted'] is False and st['secondsLeft'] == 15 and not rooms
+    sc = M.status('sC', 3, make_room)
+    assert sc['state'] == 'found' and sc['opp']['name'] == 'A' and sc['oppAccepted'] is False
+    M.accept('sA', 4)
+    st = M.status('sA', 4, make_room); assert st['state'] == 'found' and st['accepted'] is True and not rooms   # 한쪽만 수락
+    assert M.status('sC', 4, make_room)['oppAccepted'] is True
+    M.accept('sC', 5)
+    sc = M.status('sC', 5, make_room)                                        # 둘 다 수락 → 방 생성
+    assert sc['state'] == 'matched' and sc['room'] == 'R1' and sc['color'] == 'B' and sc['opp']['name'] == 'A' and rooms == [(1, 3)]
+    sa = M.status('sA', 5, make_room); assert sa['state'] == 'matched' and sa['room'] == 'R1' and sa['token'] == 'ta'
+    assert M.status('sA', 6, make_room)['state'] == 'matched'                # 결과는 TTL 동안 반복 전달
+    assert M.status('sB', 6, make_room)['state'] == 'waiting'
+    M.join('sD', {'id': 4, 'name': 'D', 'rating': 700}, now=61)              # B는 60초 지나 무제한 → D와 짝
+    assert M.status('sB', 61, make_room)['state'] == 'found'
+    M.QUEUE.clear()
+
+
+def test_matchmaking_decline_and_timeout():
+    """거절: 거절한 쪽은 idle, 상대는 대기 시간을 유지한 채 waiting. 시간 초과: 미수락자 제거, 수락자는 다시 waiting."""
+    import matchmaking as M
+    M.QUEUE.clear(); rooms, make_room = _mk_rooms()
+    M.join('sA', {'id': 1, 'name': 'A', 'rating': 1000}, now=0)
+    M.status('sA', 4, make_room)                                             # A는 폴링 중(seen 갱신)
+    M.join('sB', {'id': 2, 'name': 'B', 'rating': 1000}, now=5)
+    assert M.status('sB', 5, make_room)['state'] == 'found'                  # join 순간 짝(응답에 found)
+    M.decline('sB', 6)
+    assert M.status('sB', 6, make_room)['state'] == 'idle'
+    sa = M.status('sA', 6, make_room); assert sa['state'] == 'waiting' and sa['waited'] == 6     # 대기 시간 유지
+    M.join('sC', {'id': 3, 'name': 'C', 'rating': 1000}, now=7)
+    assert M.status('sC', 7, make_room)['state'] == 'found'
+    M.accept('sA', 8)                                                        # A만 수락, C는 무응답
+    assert M.status('sA', 8 + M.ACCEPT_SECONDS + 1, make_room)['state'] == 'waiting'    # 마감 → A는 다시 대기
+    assert M.status('sC', 8 + M.ACCEPT_SECONDS + 1, make_room)['state'] == 'idle'        # C(미수락)는 제거
+    assert not rooms
+    M.QUEUE.clear()
+
+
+def test_matchmaking_cancel_releases_partner_and_redelivery():
+    """수락 대기 중 취소하면 상대는 다시 대기. matched 결과는 30초 안 재조인에도 같은 결과, TTL 뒤엔 정리."""
+    import matchmaking as M
+    M.QUEUE.clear(); rooms, make_room = _mk_rooms()
+    M.join('sA', {'id': 1, 'name': 'A', 'rating': 1000}, now=0)
+    M.join('sB', {'id': 2, 'name': 'B', 'rating': 1000}, now=1)
+    assert M.status('sB', 1, make_room)['state'] == 'found'
+    M.cancel('sA', 2)
+    assert M.status('sA', 2, make_room)['state'] == 'idle' and M.status('sB', 2, make_room)['state'] == 'waiting'
+    M.join('sA', {'id': 1, 'name': 'A', 'rating': 1000}, now=3)
+    assert M.status('sA', 3, make_room)['state'] == 'found'
+    M.accept('sA', 4); M.accept('sB', 4)
+    first = M.status('sB', 4, make_room); assert first['state'] == 'matched' and first['room'] == 'R1'
+    again = M.status('sB', 5, make_room); assert again['state'] == 'matched' and again['token'] == first['token']
+    M.join('sB', {'id': 2, 'name': 'B', 'rating': 1000}, now=10)                # 30초 안 재조인 → 같은 결과
+    assert M.status('sB', 10, make_room)['room'] == 'R1' and len(rooms) == 1
+    M.prune(4 + M.MATCHED_TTL + 1)
+    assert M.status('sB', 4 + M.MATCHED_TTL + 1, make_room)['state'] == 'idle'
+    M.join('sA', {'id': 1, 'name': 'A', 'rating': 1000}, now=200)              # 오래된 결과 뒤 join → 새 대기
+    assert M.status('sA', 200, make_room)['state'] == 'waiting' and len(rooms) == 1
     M.QUEUE.clear()
 
 
@@ -603,9 +698,33 @@ def test_matchmaking_no_self_match_and_stale_prune():
     M.QUEUE.clear()
 
 
+def test_dead_pieces_and_elapsed(tmp_db):
+    """플레이어 패널용: 죽은 기물 종류 목록(가치 순) · 전투 시작 후 경과 시간(종료 시 고정)."""
+    import server, time as _t
+    st = pieces.new_game()
+    assert pieces.dead_types(st, 'W') == [] and st['started_at'] is None
+    for pid in ('W_P1', 'W_N1', 'W_Q1', 'B_P2'):
+        st['pieces'][pid]['alive'] = False
+    assert pieces.dead_types(st, 'W') == ['Q', 'N', 'P'] and pieces.dead_types(st, 'B') == ['P']
+    v = pieces.player_view(st, 'W'); assert v['deadMe'] == ['Q', 'N', 'P'] and v['deadOpp'] == ['P']
+    v = pieces.player_view(st, 'B'); assert v['deadMe'] == ['P'] and v['deadOpp'] == ['Q', 'N', 'P']
+    room = server.new_room('EL1'); room['state'] = st; room['seats'] = {'W': 'tw', 'B': 'tb'}; room['tokens'] = {'tw': 'W', 'tb': 'B'}
+    st['deadline'] = _t.time() + 60; st['ready'] = {'W': True, 'B': True}
+    server.maybe_start(st)
+    assert st['phase'] == 'play' and st['started_at'] is not None
+    now = _t.time()
+    assert server.state_response(room, 'W', now)['elapsed'] == 0
+    st['started_at'] = now - 125
+    assert server.state_response(room, 'W', now)['elapsed'] == 125
+    st['phase'] = 'over'; st['winner'] = 'W'
+    e1 = server.state_response(room, 'W', now)['elapsed']
+    e2 = server.state_response(room, 'W', now + 50)['elapsed']                # 종료 뒤엔 고정
+    assert e1 == 125 and e2 == 125
+
+
 def test_server_match_room_is_rated_pvp(tmp_db):
     import server
-    a = accounts.signup('mm_a', '1234')[0]['user']; b = accounts.signup('mm_b', '1234')[0]['user']
+    a = accounts.signup('mm_a', 'Test123!')[0]['user']; b = accounts.signup('mm_b', 'Test123!')[0]['user']
     code, ta, ca, tb, cb = server.make_match_room({'uid': a['id'], 'name': 'mm_a', 'rating': 1000},
                                                   {'uid': b['id'], 'name': 'mm_b', 'rating': 1010})
     room = server.ROOMS.pop(code)
@@ -616,7 +735,7 @@ def test_server_match_room_is_rated_pvp(tmp_db):
 
 def test_server_settles_bot_game_once(tmp_db):
     import server
-    u = accounts.signup('bot_beater', '1234')[0]['user']
+    u = accounts.signup('bot_beater', 'Test123!')[0]['user']
     room = server.new_room('T1')
     room['bot'] = 'B'; room['botlevel'] = 'hard'
     room['users'] = {'W': u['id']}; room['ratings'] = {'W': 1000}
@@ -634,7 +753,7 @@ def test_bot_loss_keeps_rating_and_gain_cap(tmp_db):
     """컴퓨터 대국: 져도 0(전적은 기록), 이기면 오르되 난이도 상한(컴퓨터 레이팅+200)에서 멈춤."""
     import server
     from config import BOT_GAIN_CAP
-    u = accounts.signup('bot_loser', '1234')[0]['user']
+    u = accounts.signup('bot_loser', 'Test123!')[0]['user']
     room = server.new_room('T5'); room['bot'] = 'B'; room['botlevel'] = 'hard'
     room['users'] = {'W': u['id']}; room['ratings'] = {'W': 1000}
     st = room['state']; st['phase'] = 'over'; st['winner'] = 'B'                      # 패배
@@ -656,9 +775,9 @@ def test_bot_loss_keeps_rating_and_gain_cap(tmp_db):
 
 
 def test_leaderboard_order(tmp_db):
-    a = accounts.signup('lb_a', '1234')[0]['user']['id']
-    b = accounts.signup('lb_b', '1234')[0]['user']['id']
-    accounts.signup('lb_c', '1234')
+    a = accounts.signup('lb_a', 'Test123!')[0]['user']['id']
+    b = accounts.signup('lb_b', 'Test123!')[0]['user']['id']
+    accounts.signup('lb_c', 'Test123!')
     accounts.record_vs_fixed(b, 1000, 1.0)                        # b 1016
     accounts.record_vs_fixed(a, 1000, 0.0)                        # a 984
     lb = accounts.leaderboard()
@@ -669,12 +788,12 @@ def test_leaderboard_order(tmp_db):
 
 def test_session_expires_after_ttl(tmp_db):
     import time
-    res, _ = accounts.signup('sess_u', '1234')
+    res, _ = accounts.signup('sess_u', 'Test123!')
     assert accounts.user_by_token(res['session'])
     with accounts._db() as c:                                      # 31일 전 발급으로 조작
         c.execute('UPDATE sessions SET created=? WHERE token=?', (time.time() - 31 * 86400, res['session']))
     assert accounts.user_by_token(res['session']) is None
-    accounts.login('sess_u', '1234')                              # 로그인 시 만료 세션 정리
+    accounts.login('sess_u', 'Test123!')                              # 로그인 시 만료 세션 정리
     with accounts._db() as c:
         assert c.execute('SELECT COUNT(*) FROM sessions WHERE token=?', (res['session'],)).fetchone()[0] == 0
 
@@ -682,12 +801,12 @@ def test_session_expires_after_ttl(tmp_db):
 def test_account_input_types_are_coerced(tmp_db):
     assert accounts.signup([], {})[1]                              # 이상한 타입도 500 대신 오류 메시지
     assert accounts.login(None, None)[0] is None
-    assert accounts.signup('num_pin', 1234)[1] is None            # 숫자로 온 PIN도 문자열로 처리
+    assert accounts.signup('num_pin', 1234)[1]                    # 숫자로 온 값도 문자열로 처리 → 규칙 위반 메시지(500 아님)
 
 
 def test_sweep_forfeits_disconnected_player(tmp_db):
     import server, time as _t
-    a = accounts.signup('sw_a', '1234')[0]['user']; b = accounts.signup('sw_b', '1234')[0]['user']
+    a = accounts.signup('sw_a', 'Test123!')[0]['user']; b = accounts.signup('sw_b', 'Test123!')[0]['user']
     room = server.new_room('SW1'); now = _t.time()
     room['seats'] = {'W': 'tokW', 'B': 'tokB'}; room['tokens'] = {'tokW': 'W', 'tokB': 'B'}
     room['seen'] = {'tokW': now - 100, 'tokB': now}                 # 백이 100초째 접속 없음

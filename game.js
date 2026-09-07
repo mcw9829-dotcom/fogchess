@@ -458,6 +458,34 @@ function missBar(label, n, max, kind){
   const tail = kind==='win' ? '곧 자동 승리!' : '서두르세요!';
   return `<div class="missbar ${kind}${near}"><span class="ml">⏳ ${label} ${n}/${max} · ${tail}</span><span class="pips">${pips}</span></div>`;
 }
+function tierOf(rating){ for(const [f,t] of TIER_FLOORS) if(rating>=f) return t; return 'P'; }
+function fmtElapsed(s){ if(s==null) return '00:00'; const m=Math.floor(s/60), x=s%60; return (m<10?'0':'')+m+':'+(x<10?'0':'')+x; }
+// 플레이어 패널(리체스식): 위=상대, 아래=나. 티어 기물 아바타 · 이름(레이팅) · 잡은 기물(상대 색 아이콘)+우세 · 병력 · 턴 시계(30초)
+function renderPlayers(me, solo){
+  const oppEl=$('pOpp'), meEl=$('pMe'), g=$('gclock');
+  if(!VIEW || COLOR==='spectator'){ oppEl.innerHTML=''; meEl.innerHTML=''; g.textContent=''; return; }
+  const opp = me==='W' ? 'B' : 'W', play = VIEW.phase==='play';
+  const box = (el, who, name, rating, lost, captured, isMe)=>{
+    const active = play && VIEW.turn===who;
+    const secs = active ? VIEW.turnSecondsLeft : VIEW.turnSeconds;
+    const tier = rating!=null ? tierOf(rating) : null;
+    const avatar = tier ? `<img class="ptier" src="${pieceSrc(tier,'W')}" alt="${TIER_KR[tier]}" title="${TIER_KR[tier]}" draggable="false">`
+                        : `<span class="ptier em">${isMe?'🙂':'👤'}</span>`;
+    const caps = captured.map(t=>`<img src="${pieceSrc(t, who==='W'?'B':'W')}" alt="${t}" title="잡은 ${TIER_KR[t]||t}" draggable="false">`).join('');
+    const adv = captured.length - lost.length;
+    el.className = 'pbox' + (isMe?' me':'') + (active?' active':'');
+    el.innerHTML = avatar
+      + `<div class="pinfo"><div class="pname">${escapeHtml(name)}${rating!=null?` <small>${rating}</small>`:''}<span class="pcol">${who==='W'?'백':'흑'}${isMe?' · 나':''}</span></div>`
+      + `<div class="pcap">${caps}${adv>0?`<span class="adv">+${adv}</span>`:''}<span class="alive">병력 ${who===me ? VIEW.aliveMe : VIEW.aliveOpp}</span></div></div>`
+      + `<div class="pclock ${active ? (secs!=null && secs<=6 ? 'low' : 'active') : 'idle'}">${play && secs!=null ? secs+'s' : (VIEW.phase==='over' ? '—' : '')}</div>`;
+  };
+  const oppName = solo ? (opp==='W'?'백':'흑') : (VIEW.oppName || '상대');
+  const myName  = solo ? (me==='W'?'백':'흑')  : (VIEW.myName  || nick() || '나');
+  box(oppEl, opp, oppName, solo ? null : VIEW.oppRating, VIEW.deadOpp||[], VIEW.deadMe||[], false);   // 상대: 잃은=deadOpp, 잡은=deadMe
+  box(meEl,  me,  myName,  solo ? null : VIEW.myRating,  VIEW.deadMe||[],  VIEW.deadOpp||[], true);    // 나: 잃은=deadMe, 잡은=deadOpp
+  if(VIEW.phase==='setup') g.textContent = (VIEW.secondsLeft!=null && VIEW.bothJoined) ? `⏱ 배치 ${VIEW.secondsLeft}s` : '';
+  else g.innerHTML = `<span>⏱ ${fmtElapsed(VIEW.elapsed)}${VIEW.phase==='over'?' · 종료':''}</span><span>${VIEW.turnCount}/${VIEW.turnLimit}턴</span>`;
+}
 function renderMisses(me, solo){
   const el = document.getElementById('misses');
   if(!el) return;
@@ -554,15 +582,7 @@ function render(){
 
   renderInvite();
 
-  // 시계: 배치=⏱ 전체시간 / 플레이=⏳ 턴 제한시간
-  const tEl = document.getElementById('timer');
-  if(VIEW.phase==='setup' && VIEW.secondsLeft!=null && VIEW.bothJoined){
-    tEl.className = 'clock setup'; tEl.textContent = `⏱ ${VIEW.secondsLeft}s (배치)`;
-  } else if(VIEW.phase==='play' && VIEW.turnSecondsLeft!=null){
-    const n = VIEW.turnSecondsLeft, mine = (VIEW.turn===me);
-    tEl.className = 'clock play ' + (mine?'mine':'opp') + (mine && n<=6 ? ' low' : '');
-    tEl.textContent = `⏳ ${n}s · ${mine?'내 턴':'상대 턴'}`;
-  } else { tEl.className=''; tEl.textContent=''; }
+  renderPlayers(me, solo);                   // 플레이어 패널: 상대/나 · 턴 시계 · 잡은 기물 · 경과 시간
   renderMisses(me, solo);
 
   let s = '';
@@ -576,7 +596,6 @@ function render(){
     s = (VIEW.winner==='draw')?'무승부': solo ? `${VIEW.winner==='W'?'백':'흑'} 승리!` : (VIEW.winner===me?'승리!':'패배');
   } else {
     s = solo ? `🟢 ${me==='W'?'백':'흑'} 차례` : ((VIEW.turn===me) ? '🟢 당신 턴' : '⏳ 상대 턴 대기');
-    s += `  ·  ${VIEW.turnCount}/${VIEW.turnLimit}턴`;
     if(!solo && !VIEW.oppConnected) s += '  · ⚠ 상대 접속 끊김?';
   }
   document.getElementById('status').textContent = s;
@@ -603,13 +622,6 @@ function render(){
   banner.textContent = bt;
   if(canAct && !prevCanAct && soundOn){ ac(); if(SND.yourturn) SND.yourturn(); }  // 상대→나 전환 순간 딩
   prevCanAct = canAct;
-
-  // 병력 수
-  const f = document.getElementById('forces');
-  if(COLOR!=='spectator' && VIEW.phase!=='setup'){
-    f.innerHTML = `<span><span class="dotc" style="background:rgb(var(--sig-me))"></span>내 병력 ${VIEW.aliveMe}</span>`
-      + `<span>적 병력 ${VIEW.aliveOpp} <span class="dotc" style="background:rgb(var(--sig-opp))"></span></span>`;
-  } else f.innerHTML='';
 
   // 컨트롤
   const ctr = document.getElementById('controls'); ctr.innerHTML = '';
@@ -1042,15 +1054,63 @@ function openAuth(){
   $('authForm').style.display = ME ? 'none' : '';
   $('authProfile').style.display = ME ? '' : 'none';
   $('authErr').textContent = '';
-  if(ME) renderProfileCard(); else setTimeout(()=>$('authName').focus(), 50);
+  if(ME){ renderProfileCard(); profMsg(''); openProfSection(ME.weakPw ? 'pw' : null); }
+  else setTimeout(()=>$('authName').focus(), 50);
 }
 function closeAuth(){ $('authModal').style.display='none'; }
 function setAuthMode(m){
   authMode = m;
-  $('tabLogin').classList.toggle('on', m==='login'); $('tabSignup').classList.toggle('on', m==='signup');
-  $('authGoText').textContent = m==='login' ? '로그인' : '회원가입';
-  $('authPw').autocomplete = m==='login' ? 'current-password' : 'new-password';
+  const su = m==='signup';
+  $('tabLogin').classList.toggle('on', !su); $('tabSignup').classList.toggle('on', su);
+  $('authGoIcon').textContent = su ? '🪖' : '🔑';                       // 회원가입=입대(헬멧) / 로그인=열쇠
+  $('authGoText').textContent = su ? '회원가입' : '로그인';
+  $('authGoSub').textContent = su ? '닉네임과 비밀번호만 있으면 끝 · 레이팅 1000부터 시작' : '닉네임과 비밀번호로 입장';
+  $('authGo').classList.toggle('primary', su);
+  $('authPw').autocomplete = su ? 'new-password' : 'current-password';
+  $('authPw').placeholder = su ? '비밀번호 (8자 이상 · 영문+숫자+특수문자)' : '비밀번호';
+  $('pwChecks').style.display = su ? '' : 'none';
+  if(su) pwChecks($('pwChecks'), $('authPw').value);
   $('authErr').textContent = '';
+}
+// 비밀번호 규칙(서버 accounts.password_problem 과 동일): 8~64자, 영문(문자)·숫자·특수문자 각 1개 이상, 공백 없음
+const PW_RULE = { len: pw=>pw.length>=8 && pw.length<=64, alpha: pw=>/\p{L}/u.test(pw), digit: pw=>/\d/.test(pw), special: pw=>/[^\p{L}\p{N}\s]/u.test(pw) };
+function pwProblem(pw){
+  if(!PW_RULE.len(pw)) return '비밀번호는 8~64자입니다.';
+  if(/\s/.test(pw)) return '비밀번호에 공백은 쓸 수 없습니다.';
+  if(!PW_RULE.alpha(pw)) return '비밀번호에 영문(문자)을 넣어주세요.';
+  if(!PW_RULE.digit(pw)) return '비밀번호에 숫자를 넣어주세요.';
+  if(!PW_RULE.special(pw)) return '비밀번호에 특수문자(!@#$ 등)를 넣어주세요.';
+  return null;
+}
+function pwChecks(box, pw){ box.querySelectorAll('span[data-k]').forEach(s=>s.classList.toggle('ok', PW_RULE[s.dataset.k](pw||''))); }
+// ---------- 프로필 편집: 닉네임 변경 · 비밀번호 변경 ----------
+function profMsg(t){ const el=$('profMsg'); el.textContent=t; el.style.display = t ? '' : 'none'; }
+function openProfSection(which){                       // 'name' | 'pw' | null
+  $('nameForm').style.display = which==='name' ? '' : 'none';
+  $('pwForm').style.display   = which==='pw'   ? '' : 'none';
+  $('pwNotice').style.display = (ME && ME.weakPw) ? '' : 'none';
+  $('nameErr').textContent=''; $('pwErr').textContent='';
+  if(which==='name'){ $('newName').value = ME ? ME.name : ''; setTimeout(()=>$('newName').focus(), 50); }
+  if(which==='pw'){ ['pwOld','pwNew','pwNew2'].forEach(id=>$(id).value=''); pwChecks($('pwChecks2'), ''); setTimeout(()=>$('pwOld').focus(), 50); }
+}
+async function saveName(){
+  const name=$('newName').value.trim(); $('nameErr').textContent='';
+  if(!/^[A-Za-z0-9가-힣_]{2,12}$/.test(name)){ $('nameErr').textContent='닉네임은 2~12자(한글·영문·숫자·_)만 가능합니다.'; return; }
+  if(ME && name===ME.name){ openProfSection(null); return; }
+  const r = await post('/account/name', {session: session(), name});
+  if(!r.ok){ $('nameErr').textContent = r.msg || '실패했습니다.'; return; }
+  const weak = !!(ME && ME.weakPw); ME = r.user; ME.weakPw = weak;
+  renderProfile(); renderProfileCard(); openProfSection(null); profMsg('✅ 닉네임을 바꿨어요: ' + ME.name);
+}
+async function savePw(){
+  const o=$('pwOld').value, n=$('pwNew').value, n2=$('pwNew2').value; $('pwErr').textContent='';
+  const p=pwProblem(n); if(p){ $('pwErr').textContent=p; $('pwNew').focus(); return; }
+  if(n!==n2){ $('pwErr').textContent='새 비밀번호 확인이 일치하지 않습니다.'; $('pwNew2').focus(); return; }
+  if(o===n){ $('pwErr').textContent='현재 비밀번호와 다르게 정해주세요.'; return; }
+  const r = await post('/account/pw', {session: session(), old: o, new: n});
+  if(!r.ok){ $('pwErr').textContent = r.msg || '실패했습니다.'; return; }
+  if(ME) ME.weakPw = false;
+  openProfSection(null); profMsg('✅ 비밀번호를 바꿨어요. 다른 기기의 로그인은 풀렸어요.');
 }
 function renderProfileCard(){                   // 모달 안 프로필 카드: 티어·레이팅·전적·다음 티어까지
   if(!ME) return;
@@ -1090,12 +1150,16 @@ function renderTierLadder(curTier, rating, box){
 async function authSubmit(){
   const name=$('authName').value.trim(), pw=$('authPw').value;
   $('authErr').textContent='';
-  if(!/^\d{4}$/.test(pw)){ $('authErr').textContent='비밀번호는 숫자 4자리입니다.'; $('authPw').focus(); return; }
+  if(!name){ $('authErr').textContent='닉네임을 입력하세요.'; $('authName').focus(); return; }
+  if(authMode==='signup'){ const p=pwProblem(pw); if(p){ $('authErr').textContent=p; $('authPw').focus(); return; } }
+  else if(!pw){ $('authErr').textContent='비밀번호를 입력하세요.'; $('authPw').focus(); return; }
   const r = await post(authMode==='login' ? '/login' : '/signup', {name, pw});
   if(!r.ok){ $('authErr').textContent = r.msg || '실패했습니다.'; return; }
-  localStorage.setItem('fog_session', r.session); ME = r.user;
+  localStorage.setItem('fog_session', r.session); ME = r.user; ME.weakPw = !!r.weakPw;
   $('authPw').value='';
-  renderProfile(); closeAuth();
+  renderProfile();
+  if(ME.weakPw) openAuth();                       // 옛 4자리 비밀번호 → 프로필의 비밀번호 변경 폼을 바로 열어 안내
+  else closeAuth();
 }
 async function authLogout(){
   await post('/logout', {session: session()});
@@ -1238,19 +1302,45 @@ async function matchStart(){
   let r; try{ r = await post('/match/join', {session: session()}); }catch(e){ r = {ok:false}; }
   if(!r || !r.ok){ showMsg((r && r.msg) || '매칭을 시작하지 못했어요.'); return; }
   $('matchModal').style.display='flex'; $('matchFound').style.display='none'; $('matchBot').style.display='none';
+  $('matchAccept').style.display='none'; $('matchCancel').style.display=''; matchFoundShown=false;
   $('matchSpin').style.display=''; $('matchTitle').textContent='⚔️ 상대를 찾는 중…';
   $('matchMe').textContent = ME.name + ' · ' + ME.rating + ' (' + TIER_KR[ME.tier] + ')';
-  matchRender(r);
   clearInterval(matchTimer); matchTimer = setInterval(matchPoll, 1000);
+  matchHandle(r);                      // 상대가 이미 기다리고 있었으면 join 응답에 바로 '매칭 성사'가 실려 온다 → 즉시 입장
+}
+let matchFoundShown = false;             // 수락 창을 띄웠나(알림음 1회 · 다시 대기로 돌아가면 안내)
+function matchShowFound(r){              // 짝이 잡힘 → A(레이팅) vs B(레이팅) 수락 창
+  $('matchSpin').style.display='none'; $('matchCancel').style.display='none'; $('matchBot').style.display='none';
+  $('matchTitle').textContent='⚔️ 상대를 찾았어요!';
+  $('matchAccept').style.display='';
+  const mt = tierOf(ME.rating), ot = tierOf(r.opp.rating);
+  $('vsMeImg').src = pieceSrc(mt,'W'); $('vsMeName').textContent = ME.name; $('vsMeSub').textContent = ME.rating + ' · ' + TIER_KR[mt];
+  $('vsOppImg').src = pieceSrc(ot,'W'); $('vsOppName').textContent = r.opp.name; $('vsOppSub').textContent = r.opp.rating + ' · ' + TIER_KR[ot];
+  $('matchAcceptBtn').disabled = !!r.accepted;
+  $('matchAcceptBtn').querySelector('b').textContent = r.accepted ? '수락함' : '수락';
+  $('acceptInfo').textContent = r.accepted ? ('상대 수락 대기 중… ' + r.secondsLeft + '초' + (r.oppAccepted ? ' · 상대 수락!' : ''))
+                                           : (r.secondsLeft + '초 안에 수락하세요' + (r.oppAccepted ? ' · 상대는 수락했어요' : ''));
+  if(!matchFoundShown){ matchFoundShown=true; if(soundOn){ ac(); (SND.yourturn||function(){})(); } }
+}
+function matchShowWaiting(){             // 수락 창에서 다시 대기로(상대 거절/미응답)
+  $('matchAccept').style.display='none'; $('matchSpin').style.display=''; $('matchCancel').style.display='';
+  $('matchTitle').textContent='⚔️ 상대를 찾는 중…';
+  if(matchFoundShown){ matchFoundShown=false; showMsg('상대가 응답하지 않아 다시 찾는 중이에요.'); }
 }
 function matchRender(r){
   if(r.state!=='waiting') return;
+  if($('matchAccept').style.display!=='none') matchShowWaiting();
   const w = (r.window==null) ? '무제한' : ('±' + r.window);
   $('matchInfo').textContent = '대기 ' + r.waited + '초 · 검색 범위 ' + w + ' · 대기열 ' + r.queue + '명';
   if(r.waited >= 30) $('matchBot').style.display='';           // 30초 넘게 아무도 없으면 봇 제안
 }
+let matchRejoinAt = 0;                   // 대기열에서 빠졌다는 응답(idle)에 자동 재등록한 시각(무한 반복 방지)
 async function matchPoll(){
   let r; try{ r = await post('/match/status', {session: session()}); }catch(e){ return; }
+  matchHandle(r);
+}
+function matchHandle(r){
+  if(!r || !r.ok || !matchTimer) return;   // 모달을 닫았거나(취소) 이미 입장했으면 무시
   if(r.state==='matched'){
     clearInterval(matchTimer); matchTimer = null;
     $('matchSpin').style.display='none'; $('matchTitle').textContent='⚔️ 매칭 성사!';
@@ -1260,10 +1350,18 @@ async function matchPoll(){
       ROOM = r.room; TOKEN = r.token; COLOR = r.color;
       location.hash = '#' + ROOM; localStorage.setItem('fog_' + ROOM, TOKEN);
       _resetGame(); $('matchModal').style.display='none'; showGame(); poll();
+      post('/match/cancel', {session: session()}).catch(()=>{});   // 입장 완료 → 대기열의 결과 항목 정리(ack). 안 하면 30초 안 재매칭 시 같은 방으로 안내됨
     }, 1200);
     return;
   }
-  if(r.state==='idle'){ matchStop(false); showMsg('매칭 대기가 종료됐어요. 다시 시도해 주세요.'); return; }
+  if(r.state==='found'){ matchShowFound(r); return; }
+  if(r.state==='idle'){                    // 대기열에서 빠짐(탭이 잠들어 폴링이 끊긴 경우 등) → 조용히 다시 등록
+    if(Date.now() - matchRejoinAt > 5000){
+      matchRejoinAt = Date.now();
+      post('/match/join', {session: session()}).then(matchHandle).catch(()=>{});
+    }else{ matchStop(false); showMsg('매칭 대기가 종료됐어요. 다시 시도해 주세요.'); }
+    return;
+  }
   matchRender(r);
 }
 async function matchStop(tell){
@@ -1273,6 +1371,8 @@ async function matchStop(tell){
 }
 $('mMatch').onclick = matchStart;
 $('matchCancel').onclick = ()=>matchStop(true);
+$('matchAcceptBtn').onclick = async ()=>{ $('matchAcceptBtn').disabled = true; try{ matchHandle(await post('/match/accept', {session: session()})); }catch(e){} };
+$('matchDeclineBtn').onclick = async ()=>{ await matchStop(false); try{ await post('/match/decline', {session: session()}); }catch(e){} showMsg('매칭을 거절했어요.'); };
 $('matchBot').onclick = async ()=>{ await matchStop(true); showScreen('botMenu'); };
 $('railUser').onclick = openAuth;
 $('authClose').onclick = closeAuth;
@@ -1282,7 +1382,14 @@ $('tabSignup').onclick = ()=>setAuthMode('signup');
 $('authGo').onclick = authSubmit;
 $('authLogout').onclick = authLogout;
 ['authName','authPw'].forEach(id=>$(id).addEventListener('keydown', e=>{ if(e.key==='Enter') authSubmit(); }));
-$('authPw').addEventListener('input', e=>{ e.target.value = e.target.value.replace(/\D/g,'').slice(0,4); });   // 숫자 4자리만
+$('authPw').addEventListener('input', e=>{ if(authMode==='signup') pwChecks($('pwChecks'), e.target.value); });   // 회원가입: 규칙 칩 실시간
+$('btnName').onclick = ()=>openProfSection($('nameForm').style.display==='none' ? 'name' : null);
+$('btnPw').onclick   = ()=>openProfSection($('pwForm').style.display==='none' ? 'pw' : null);
+$('nameCancel').onclick = $('pwCancel').onclick = ()=>openProfSection(null);
+$('nameSave').onclick = saveName; $('pwSave').onclick = savePw;
+$('newName').addEventListener('keydown', e=>{ if(e.key==='Enter') saveName(); });
+['pwOld','pwNew','pwNew2'].forEach(id=>$(id).addEventListener('keydown', e=>{ if(e.key==='Enter') savePw(); }));
+$('pwNew').addEventListener('input', e=>pwChecks($('pwChecks2'), e.target.value));
 renderProfile(); setRailActive('play');
 
 // Material 리플(탭 파문) — 버튼·메뉴 카드·세그먼트에 파문 효과

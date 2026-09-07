@@ -260,6 +260,7 @@ def maybe_start(st):
         st['phase'] = 'play'
         st['turn'] = 'W'
         st['turn_deadline'] = time.time() + TURN_SECONDS   # 첫 턴(백) 제한시간 시작
+        st['started_at'] = time.time()                     # 경과 시간 표시용
         st['log'].append('배치 완료 — 전투 시작! (백 선공)')
 
 
@@ -340,6 +341,13 @@ def state_response(room, color, now, reveal=False):
                   and not (room.get('bot') and st['turn'] == room.get('bot')))
     v['turnSecondsLeft'] = max(0, int(round(st['turn_deadline'] - now))) if show_clock else None
     v['turnSeconds'] = TURN_SECONDS
+    sa = st.get('started_at')                                 # 플레이 경과 시간(초). 게임이 끝나면 멈춘 값
+    if sa:
+        if st['phase'] == 'over' and not st.get('ended_at'):
+            st['ended_at'] = now
+        v['elapsed'] = int((st.get('ended_at') or now) - sa)
+    else:
+        v['elapsed'] = None
     v['maxMisses'] = MAX_MISSES
     v['misses'] = dict(st.get('misses', {'W': 0, 'B': 0}))
     # 표시 이름(내/상대). 솔로는 백/흑 라벨.
@@ -544,22 +552,32 @@ class Handler(http.server.BaseHTTPRequestHandler):
             accounts.logout(data.get('session'))
             self._json({'ok': True})
             return
+        if u.path == '/account/name':                          # 닉네임 변경(로그인 회원)
+            user, err = accounts.change_name(data.get('session'), data.get('name'))
+            self._json({'ok': user is not None, 'msg': err, 'user': user})
+            return
+        if u.path == '/account/pw':                            # 비밀번호 변경(현재 비밀번호 확인 · 새 규칙 검사)
+            ok, err = accounts.change_password(data.get('session'), data.get('old'), data.get('new'))
+            self._json({'ok': ok, 'msg': err})
+            return
         if u.path == '/me':
             user = accounts.user_by_token(data.get('session'))
             self._json({'ok': user is not None, 'user': user})
             return
-        if u.path in ('/match/join', '/match/status', '/match/cancel'):   # 랭크 매칭(로그인 회원 전용)
+        if u.path in ('/match/join', '/match/status', '/match/cancel', '/match/accept', '/match/decline'):   # 랭크 매칭(로그인 회원 전용)
             user = accounts.user_by_token(data.get('session'))
             if not user:
                 self._json({'ok': False, 'state': 'idle', 'msg': '랭크 매칭은 로그인이 필요합니다.'})
                 return
             with lock:
-                if u.path == '/match/cancel':
-                    matchmaking.cancel(data.get('session'))
+                if u.path in ('/match/cancel', '/match/decline'):     # 거절 = 나만 대기열에서 나감(상대는 다시 대기)
+                    matchmaking.cancel(data.get('session'), now)
                     self._json({'ok': True, 'state': 'idle'})
                     return
                 if u.path == '/match/join':
                     matchmaking.join(data.get('session'), user, now)
+                if u.path == '/match/accept':
+                    matchmaking.accept(data.get('session'), now)
                 res = matchmaking.status(data.get('session'), now, make_match_room)
                 res['ok'] = True; res['me'] = {'name': user['name'], 'rating': user['rating']}
                 self._json(res)

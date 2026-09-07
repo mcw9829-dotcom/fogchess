@@ -53,6 +53,7 @@ def new_game():
         'ready': {'W': False, 'B': False},
         'deadline': None,           # 배치 마감 시각(epoch)
         'turn_deadline': None,      # 현재 턴 마감 시각(epoch) — 플레이 중 TURN_SECONDS
+        'started_at': None,         # 전투 시작 시각(epoch) — 경과 시간 표시
         'misses': {'W': 0, 'B': 0}, # 연속 미행동(시간초과 자동 넘김) 횟수 — 자기 수를 두면 0으로 리셋
         'reveals': [],              # {pid, viewer, until}
         'feed': [],                 # 킬로그 {seq, actor, atype, method, victim, vtype}
@@ -76,6 +77,14 @@ def piece_at(st, r, c):
 
 def count_alive(st, color):
     return sum(1 for p in st['pieces'].values() if p['alive'] and p['o'] == color)
+
+
+DEAD_ORDER = 'KQRBNP'
+
+
+def dead_types(st, color):
+    """color 쪽에서 죽은 기물의 종류 목록(가치 순). 상대가 잡은 내 기물 = 상대의 전리품 표시에 쓴다."""
+    return sorted([p['t'] for p in st['pieces'].values() if p['o'] == color and not p['alive']], key=DEAD_ORDER.index)
 
 
 # ------------------------- 안개(시야) -------------------------
@@ -580,6 +589,8 @@ def player_view(st, color, reveal=False):
         'secondsLeft': seconds,
         'aliveMe': count_alive(st, color) if not spectator else 0,
         'aliveOpp': count_alive(st, opp) if not spectator else 0,
+        'deadMe': [] if spectator else dead_types(st, color),     # 내가 잃은 기물(상대의 전리품)
+        'deadOpp': [] if spectator else dead_types(st, opp),      # 내가 잡은 상대 기물(적의 죽음은 전부 내 공격이므로 정보 누출 없음)
         'winner': st['winner'],
         'promote': (st['promote']['pid'] if (st.get('promote') and not spectator
                                              and st['promote']['color'] == color) else None),

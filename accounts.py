@@ -25,8 +25,8 @@ DB_PATH = os.environ.get('FOG_DB', os.path.join(os.path.dirname(os.path.abspath(
 NAME_RE = re.compile(r'^[A-Za-z0-9가-힣_]{2,12}$')     # 닉네임 = 로그인 아이디(2~12자)
 PBKDF_ITERS = 200_000
 SESSION_TTL = 30 * 24 * 3600                          # 로그인 세션 유효기간(초) - 30일
-PIN_RE = re.compile(r'^\d{4}$')                       # 비밀번호 = 숫자 4자리(PIN)
-LOGIN_MAX_FAILS, LOGIN_LOCK_SEC = 5, 30               # PIN 무차별 대입 방지: 같은 닉네임 연속 5회 실패 -> 30초 잠금
+PW_MIN, PW_MAX = 8, 64                                # 비밀번호 규칙: 8~64자, 영문·숫자·특수문자 각 1개 이상, 공백 없음
+LOGIN_MAX_FAILS, LOGIN_LOCK_SEC = 5, 30               # 비밀번호 무차별 대입 방지: 같은 닉네임 연속 5회 실패 -> 30초 잠금
 _fails = {}                                           # name_lc -> {'n': 연속 실패 수, 'until': 잠금 해제 시각}
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS users(
@@ -97,6 +97,28 @@ def _hash(pw, salt):
     return hashlib.pbkdf2_hmac('sha256', pw.encode('utf-8'), salt, PBKDF_ITERS)
 
 
+def password_problem(pw):
+    """새 비밀번호 규칙 위반 사유(없으면 None): 8~64자, 영문(문자)·숫자·특수문자 각 1개 이상, 공백 없음.
+    클라이언트 game.js pwProblem 과 같은 규칙."""
+    pw = _s(pw)
+    if not (PW_MIN <= len(pw) <= PW_MAX):
+        return f'비밀번호는 {PW_MIN}~{PW_MAX}자입니다.'
+    if any(ch.isspace() for ch in pw):
+        return '비밀번호에 공백은 쓸 수 없습니다.'
+    if not any(ch.isalpha() for ch in pw):
+        return '비밀번호에 영문(문자)을 넣어주세요.'
+    if not any(ch.isdigit() for ch in pw):
+        return '비밀번호에 숫자를 넣어주세요.'
+    if not any(not ch.isalnum() for ch in pw):
+        return '비밀번호에 특수문자(!@#$ 등)를 넣어주세요.'
+    return None
+
+
+def password_weak(pw):
+    """옛 규칙(숫자 4자리 등)으로 만든 비밀번호인가 → 로그인은 허용하되 변경을 안내한다."""
+    return password_problem(pw) is not None
+
+
 # ------------------------- 티어 · Elo -------------------------
 def tier(rating):
     """레이팅 → 티어 기물 문자(P/N/R/B/Q/K). config.RATING_TIERS(이상 기준)."""
@@ -127,8 +149,9 @@ def signup(name, pw):
     name, pw = _s(name).strip(), _s(pw)                  # 타입이 이상해도(숫자·리스트) 오류 메시지로
     if not NAME_RE.match(name):
         return None, '닉네임은 2~12자(한글·영문·숫자·_)만 가능합니다.'
-    if not PIN_RE.match(pw or ''):
-        return None, '비밀번호는 숫자 4자리입니다.'
+    err = password_problem(pw)
+    if err:
+        return None, err
     salt = secrets.token_bytes(16)
     with _db() as c:
         if c.execute('SELECT 1 FROM users WHERE name_lc=?', (name.lower(),)).fetchone():
@@ -157,7 +180,51 @@ def login(name, pw):
         c.execute('DELETE FROM sessions WHERE created < ?', (time.time() - SESSION_TTL,))   # 만료 세션 정리
         token = secrets.token_urlsafe(24)
         c.execute('INSERT INTO sessions(token, user_id, created) VALUES(?,?,?)', (token, row['id'], time.time()))
-        return {'session': token, 'user': public(row)}, None
+        return {'session': token, 'user': public(row), 'weakPw': password_weak(pw)}, None   # weakPw: 옛 규칙 비밀번호 → 변경 안내
+
+
+def change_name(token, new_name):
+    """닉네임 변경 → (user, None) 또는 (None, 오류). 다른 회원과 대소문자 무시 중복 불가. 세션·레이팅은 그대로."""
+    user = user_by_token(token)
+    if not user:
+        return None, '로그인이 필요합니다.'
+    new_name = _s(new_name).strip()
+    if not NAME_RE.match(new_name):
+        return None, '닉네임은 2~12자(한글·영문·숫자·_)만 가능합니다.'
+    with _db() as c:
+        if c.execute('SELECT id FROM users WHERE name_lc=? AND id<>?', (new_name.lower(), user['id'])).fetchone():
+            return None, '이미 사용 중인 닉네임입니다.'
+        c.execute('UPDATE users SET name=?, name_lc=? WHERE id=?', (new_name, new_name.lower(), user['id']))
+    return user_by_id(user['id']), None
+
+
+def change_password(token, old, new):
+    """비밀번호 변경 → (ok, 오류). 현재 비밀번호 확인 + 새 비밀번호 규칙. 성공하면 다른 기기의 세션은 모두 로그아웃.
+    현재 비밀번호를 연속 5회 틀리면 30초 잠금(로그인과 같은 규칙)."""
+    user = user_by_token(token)
+    if not user:
+        return False, '로그인이 필요합니다.'
+    err = password_problem(new)
+    if err:
+        return False, err
+    key = 'pw:' + user['name'].lower()
+    f = _fails.get(key)
+    if f and f['until'] > time.time():
+        return False, f"실패가 많아 잠시 잠겼습니다. {int(f['until'] - time.time()) + 1}초 후 다시 시도하세요."
+    with _db() as c:
+        row = c.execute('SELECT * FROM users WHERE id=?', (user['id'],)).fetchone()
+        if not hmac.compare_digest(_hash(_s(old), row['salt']), row['pw_hash']):
+            f = _fails.setdefault(key, {'n': 0, 'until': 0})
+            f['n'] += 1
+            if f['n'] >= LOGIN_MAX_FAILS:
+                f['n'] = 0
+                f['until'] = time.time() + LOGIN_LOCK_SEC
+            return False, '현재 비밀번호가 맞지 않습니다.'
+        _fails.pop(key, None)
+        salt = secrets.token_bytes(16)
+        c.execute('UPDATE users SET salt=?, pw_hash=? WHERE id=?', (salt, _hash(_s(new), salt), row['id']))
+        c.execute('DELETE FROM sessions WHERE user_id=? AND token<>?', (row['id'], token))   # 다른 기기 로그아웃
+    return True, None
 
 
 def logout(token):
