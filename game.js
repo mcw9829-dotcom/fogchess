@@ -986,8 +986,45 @@ function buildGuide(){
     card.append(st, tx); box.appendChild(card);
     guideStops.push(pieceDemo(st, spec));
   });
+  // 기물 선택 칩: 누르면 그 카드로 스크롤(가로 한 줄 스트립)
+  const sel = document.getElementById('gSel'); sel.innerHTML='';
+  PIECE_GUIDE.forEach((spec,i)=>{
+    const b=document.createElement('button'); b.className='gsel'+(i===0?' on':''); b.type='button';
+    b.innerHTML=`<img src="${pieceSrc(spec.t,'W')}" alt="" draggable="false"><span>${spec.nm.split(' ')[0]}</span>`;
+    b.onclick=()=>guideGo(i); sel.appendChild(b);
+  });
+  box.scrollLeft = 0; guideTarget = {i: 0, left: 0}; guideSync();
 }
-function openGuide(){ buildGuide(); document.getElementById('guide').style.display='flex'; }
+function guideCards(){ return [...document.getElementById('gPieces').children]; }
+let guideTarget = {i: 0, left: 0};                      // 마지막으로 '골라서' 간 카드(끝 쪽 카드는 가운데에 못 오므로 스크롤만으로는 못 알아냄)
+function guideMark(i){
+  guideCards().forEach((c,k)=>c.classList.toggle('on', k===i));
+  [...document.getElementById('gSel').children].forEach((b,k)=>b.classList.toggle('on', k===i));
+  const box=document.getElementById('gPieces'), prev=document.getElementById('gPrev'), next=document.getElementById('gNext');
+  const fits = box.scrollWidth <= box.clientWidth + 2;         // 다 보이면 화살표 숨김
+  prev.style.display = next.style.display = fits ? 'none' : '';
+  prev.disabled = i <= 0; next.disabled = i >= PIECE_GUIDE.length - 1;
+}
+function guideGo(i){                                    // i번째 카드를 가운데로(가로 스크롤만 움직임)
+  const box=document.getElementById('gPieces'), cards=guideCards(); if(!cards[i]) return;
+  const target = Math.max(0, Math.min(box.scrollWidth - box.clientWidth, cards[i].offsetLeft - (box.clientWidth - cards[i].offsetWidth)/2));
+  const smooth = !document.hidden && !matchMedia('(prefers-reduced-motion: reduce)').matches;   // 숨은 탭·모션 최소화면 즉시
+  guideTarget = {i, left: Math.round(target)};
+  box.scrollTo({left: target, behavior: smooth ? 'smooth' : 'instant'});
+  guideMark(i);
+}
+function guideSync(){                                   // 스크롤 위치 → 강조 카드. 골라서 간 자리 그대로면 그 카드, 손으로 밀었으면 가운데 카드
+  const box=document.getElementById('gPieces'), cards=guideCards(); if(!cards.length) return 0;
+  let best;
+  if(Math.abs(box.scrollLeft - guideTarget.left) < 4) best = guideTarget.i;
+  else {
+    const mid=box.scrollLeft + box.clientWidth/2; let bd=1e9; best=0;
+    cards.forEach((c,i)=>{ const d=Math.abs(c.offsetLeft + c.offsetWidth/2 - mid); if(d<bd){ bd=d; best=i; } });
+  }
+  guideMark(best);
+  return best;
+}
+function openGuide(){ buildGuide(); document.getElementById('guide').style.display='flex'; requestAnimationFrame(guideSync); }
 function closeGuide(){ guideStops.forEach(fn=>fn()); guideStops=[]; guideActive=null; document.getElementById('guide').style.display='none'; }
 
 document.getElementById('rematch').onclick = rematch;
@@ -995,6 +1032,11 @@ document.getElementById('helpBtn').onclick = openHelp;
 document.getElementById('helpClose').onclick = closeHelp;
 document.getElementById('helpModal').onclick = (e)=>{ if(e.target.id==='helpModal') closeHelp(); };
 document.getElementById('guideClose').onclick = closeGuide;
+document.getElementById('gPrev').onclick = ()=>guideGo(Math.max(0, (guideSync()||0) - 1));
+document.getElementById('gNext').onclick = ()=>guideGo(Math.min(PIECE_GUIDE.length-1, (guideSync()||0) + 1));
+{ let t=null; document.getElementById('gPieces').addEventListener('scroll', ()=>{ if(t) return; t=setTimeout(()=>{ t=null; guideSync(); }, 80); }, {passive:true}); }   // 스크롤(스와이프) → 강조 갱신
+document.getElementById('gPieces').addEventListener('touchend', ()=>setTimeout(guideSync, 350), {passive:true});   // 스와이프 끝(스냅 뒤) 한 번 더 동기화
+window.addEventListener('resize', ()=>{ if(document.getElementById('guide').style.display==='flex') guideSync(); });
 document.getElementById('guide').onclick = (e)=>{ if(e.target.id==='guide') closeGuide(); };
 boardEl.oncontextmenu = (e)=>e.preventDefault();            // 우클릭 브라우저 메뉴 차단(주석용)
 boardEl.addEventListener('pointerdown', annPointerDown);   // 우클릭=주석(화살표/원) · 좌클릭=주석 지우기
