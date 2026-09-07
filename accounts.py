@@ -53,9 +53,17 @@ def _ensure():
         return
     c = sqlite3.connect(DB_PATH)
     c.executescript(SCHEMA)
+    _migrate(c)
     c.commit()
     c.close()
     _ready = True
+
+
+def _migrate(c):
+    """기존 DB에 없는 컬럼을 보태는 마이그레이션(멱등). v1.32: feedback.done(처리됨 표시)."""
+    cols = {row[1] for row in c.execute('PRAGMA table_info(feedback)')}
+    if cols and 'done' not in cols:
+        c.execute('ALTER TABLE feedback ADD COLUMN done INTEGER NOT NULL DEFAULT 0')
 
 
 def init_db(path=None):
@@ -245,28 +253,49 @@ def add_feedback(category, message, name=None, user_id=None, room=None, ua=None)
     return True, None
 
 
-def feedback_list(limit=100):
-    """최근 피드백 목록(최신순) [{id, created, name, category, message, room, ua}]"""
+def feedback_list(limit=100, include_done=False):
+    """피드백 목록(최신순) [{id, created, name, category, message, room, ua, done}]. 기본은 미처리만."""
     with _db() as c:
-        rows = c.execute('SELECT id, created, name, user_id, category, message, room, ua FROM feedback '
-                         'ORDER BY id DESC LIMIT ?', (int(limit),)).fetchall()
+        rows = c.execute('SELECT id, created, name, user_id, category, message, room, ua, done FROM feedback '
+                         + ('' if include_done else 'WHERE done=0 ') + 'ORDER BY id DESC LIMIT ?', (int(limit),)).fetchall()
     return [dict(r) for r in rows]
+
+
+def feedback_set_done(fid, done=True):
+    """처리됨 표시/해제 → 있었으면 True"""
+    with _db() as c:
+        return c.execute('UPDATE feedback SET done=? WHERE id=?', (1 if done else 0, int(fid))).rowcount == 1
+
+
+def feedback_delete(fid):
+    """피드백 삭제 → 있었으면 True"""
+    with _db() as c:
+        return c.execute('DELETE FROM feedback WHERE id=?', (int(fid),)).rowcount == 1
+
+
+def users_list():
+    """관리자용 전체 회원 목록(레이팅순) [{id, name, rating, tier, wins, losses, draws, created}]"""
+    with _db() as c:
+        rows = c.execute('SELECT id, name, rating, wins, losses, draws, created FROM users ORDER BY rating DESC, id').fetchall()
+    return [dict(public(r), created=r['created']) for r in rows]
 
 
 if __name__ == '__main__':                         # python accounts.py feedback  → 최근 피드백 출력(서버에서 fly ssh로도)
     import sys
-    if len(sys.argv) > 1 and sys.argv[1] == 'feedback':
-        rows = feedback_list(int(sys.argv[2]) if len(sys.argv) > 2 else 50)
-        print(f'feedback: {len(rows)} (newest first)')
+    if len(sys.argv) > 1 and sys.argv[1] == 'feedback':          # feedback [limit] [all]  (기본: 미처리만)
+        args = sys.argv[2:]
+        nums = [a for a in args if a.isdigit()]
+        rows = feedback_list(int(nums[0]) if nums else 50, include_done='all' in args)
+        print(f'feedback: {len(rows)} ({"all" if "all" in args else "open"}, newest first)')
         for r in rows:
             when = time.strftime('%Y-%m-%d %H:%M', time.localtime(r['created']))
-            print(f"#{r['id']} [{when}] [{r['category']}] {r['name'] or '(guest)'} room={r['room'] or '-'}\n   {r['message']}")
+            flag = '[done] ' if r.get('done') else ''
+            print(f"#{r['id']} {flag}[{when}] [{r['category']}] {r['name'] or '(guest)'} room={r['room'] or '-'}\n   {r['message']}")
     elif len(sys.argv) > 1 and sys.argv[1] == 'users':
-        with _db() as db:
-            rows = db.execute('SELECT name, rating, wins, losses, draws, created FROM users ORDER BY rating DESC, id').fetchall()
+        rows = users_list()
         print(f'users: {len(rows)} (by rating)')
         for r in rows:
             when = time.strftime('%Y-%m-%d', time.localtime(r['created']))
-            print(f"  {r['name']:<16} {r['rating']:>5} {tier(r['rating'])}  {r['wins']}승 {r['losses']}패 {r['draws']}무  가입 {when}")
+            print(f"  {r['name']:<16} {r['rating']:>5} {r['tier']}  {r['wins']}승 {r['losses']}패 {r['draws']}무  가입 {when}")
     else:
-        print('usage: python accounts.py feedback [limit] | users')
+        print('usage: python accounts.py feedback [limit] [all] | users')

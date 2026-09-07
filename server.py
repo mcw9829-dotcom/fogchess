@@ -17,6 +17,7 @@ import socket
 import shutil
 import subprocess
 import uuid
+import hmac
 import time
 import random
 import threading
@@ -42,6 +43,31 @@ BOT_TOKEN = '__bot__'   # 컴퓨터(봇) 좌석 토큰
 MAX_BODY = 64 * 1024    # 요청 본문 상한(바이트) — 게임 액션은 수백 바이트면 충분
 FB_LAST = {}            # 피드백 도배 방지: ip -> 마지막 전송 시각
 FB_COOLDOWN = 10        # 같은 IP는 이 시간(초)에 한 번만
+ADMIN_FAILS = {}        # 관리자 비밀번호 틀린 기록: ip -> [횟수, 첫 실패 시각]
+ADMIN_MAX_FAILS = 5     # 이만큼 틀리면
+ADMIN_LOCK = 600        # 이 시간(초) 동안 그 IP는 관리자 인증을 거부(무차별 대입 방지)
+
+
+def admin_ok(key_given):
+    """관리자 키(FOG_ADMIN_KEY 환경변수) 일치? 키가 설정되지 않았으면 항상 거부."""
+    key = os.environ.get('FOG_ADMIN_KEY')
+    return bool(key) and hmac.compare_digest(str(key_given or ''), key)
+
+
+def admin_gate(ip, key_given, now=None):
+    """관리자 인증 판정: 'ok' / 'forbidden' / 'locked'. 같은 IP가 ADMIN_MAX_FAILS번 틀리면 ADMIN_LOCK초 잠금."""
+    now = time.time() if now is None else now
+    f = ADMIN_FAILS.get(ip)
+    if f and f[0] >= ADMIN_MAX_FAILS and now - f[1] < ADMIN_LOCK:
+        return 'locked'
+    if admin_ok(key_given):
+        ADMIN_FAILS.pop(ip, None)
+        return 'ok'
+    if not f or now - f[1] >= ADMIN_LOCK:
+        ADMIN_FAILS[ip] = [1, now]
+    else:
+        f[0] += 1
+    return 'forbidden'
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 lock = threading.Lock()
@@ -371,6 +397,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def _room(self, code):
         return ROOMS.get((code or '').strip().upper())
 
+    def _admin(self, data=None):
+        """관리자 인증: X-Admin-Key 헤더 → ?key= → 본문 key 순으로 읽어 검사. 실패면 403/429 응답을 보내고 False."""
+        u = urlparse(self.path)
+        key = (self.headers.get('X-Admin-Key') or parse_qs(u.query).get('key', [''])[0] or (data or {}).get('key') or '')
+        ip = self.client_address[0] if self.client_address else '?'
+        res = admin_gate(ip, key)
+        if res == 'ok':
+            return True
+        if res == 'locked':
+            self._json({'ok': False, 'error': 'locked', 'msg': '틀린 시도가 많아 잠시 잠겼어요. 10분 뒤 다시.'}, 429)
+        else:
+            self._json({'ok': False, 'error': 'forbidden'}, 403)
+        return False
+
     def do_GET(self):
         self._safe(self._get)
 
@@ -405,13 +445,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
             ext = os.path.splitext(name)[1].lower()
             self._file(os.path.join('img', name), STATIC_MIME.get(ext, 'application/octet-stream'))
             return
-        if u.path == '/feedback':                              # 피드백 읽기(관리자): FOG_ADMIN_KEY 환경변수와 key= 일치 시
-            key = os.environ.get('FOG_ADMIN_KEY')
-            q0 = parse_qs(u.query)
-            if not key or q0.get('key', [''])[0] != key:
-                self._json({'error': 'forbidden'}, 403)
+        if u.path == '/admin':                                 # 관리자 페이지(비밀번호는 페이지 안에서 입력)
+            self._file('admin.html', 'text/html; charset=utf-8')
+            return
+        if u.path == '/admin/check':                           # 비밀번호 확인용
+            if self._admin():
+                self._json({'ok': True})
+            return
+        if u.path == '/admin/users':                           # 회원 목록(관리자)
+            if self._admin():
+                self._json({'rows': accounts.users_list()})
+            return
+        if u.path == '/feedback':                              # 피드백 읽기(관리자): ?all=1 이면 처리된 것도
+            if not self._admin():
                 return
-            self._json({'rows': accounts.feedback_list(int(q0.get('limit', ['100'])[0] or 100))})
+            q0 = parse_qs(u.query)
+            self._json({'rows': accounts.feedback_list(int(q0.get('limit', ['100'])[0] or 100),
+                                                       include_done=q0.get('all', ['0'])[0] == '1')})
             return
         if u.path == '/version':                               # 배지용 버전(공개)
             self._json({'version': APP_VERSION})
@@ -513,6 +563,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 res = matchmaking.status(data.get('session'), now, make_match_room)
                 res['ok'] = True; res['me'] = {'name': user['name'], 'rating': user['rating']}
                 self._json(res)
+            return
+        if u.path in ('/feedback/done', '/feedback/delete'):        # 관리자: 처리됨 표시 / 삭제
+            if not self._admin(data):
+                return
+            try:
+                fid = int(data.get('id'))
+            except (TypeError, ValueError):
+                self._json({'ok': False, 'msg': 'id가 필요합니다.'})
+                return
+            if u.path == '/feedback/done':
+                ok = accounts.feedback_set_done(fid, bool(data.get('done', True)))
+            else:
+                ok = accounts.feedback_delete(fid)
+            self._json({'ok': ok, 'msg': None if ok else '없는 항목입니다.'})
             return
         if u.path == '/feedback':                                   # 개발자 피드백 저장
             ip = self.client_address[0] if self.client_address else '?'

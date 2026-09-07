@@ -215,5 +215,5 @@ Docker로 도쿄 리전에 배포 → `https://<앱이름>.fly.dev`. 준비 파�
 플레이어가 왼쪽 레일 **[💬 피드백]**으로 보낸 내용은 `fogchess.db`의 `feedback` 테이블에 쌓인다(분류·내용·닉네임 또는 익명·방 코드·브라우저).
 - 로컬/서버 콘솔에서: `python accounts.py feedback` (최근 50개, 숫자를 붙이면 개수 조정)
 - Fly.io에서: `fly ssh console -C "python accounts.py feedback"`
-- 브라우저/스크립트에서 JSON으로: 환경변수 `FOG_ADMIN_KEY`를 정해두면 `GET /feedback?key=<그 값>` (Fly: `fly secrets set FOG_ADMIN_KEY=원하는값`). 키가 없으면 이 API는 꺼져 있다.
+- **관리자 페이지** `https://<주소>/admin` → 비밀번호(`FOG_ADMIN_KEY` 시크릿) 입력 → 피드백 카드(처리됨 ✓ / 삭제 🗑, 처리된 것 보기 토글)와 회원·레이팅 표. 틀린 비밀번호 5회면 그 IP는 10분 잠금. CLI: `python accounts.py feedback [limit] [all]` · `python accounts.py users` (배포 서버는 `fly ssh console -a fogchess -C "python accounts.py feedback"`).
 - 도배 방지: 같은 IP는 10초에 한 번, 내용은 3~1000자.

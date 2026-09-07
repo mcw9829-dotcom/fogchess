@@ -482,6 +482,54 @@ def test_feedback_store_and_validate(tmp_db):
     assert rows[0]['room'] == 'AB12' and len(rows[0]['ua']) <= 200       # 컨텍스트는 길이 제한
 
 
+
+def test_feedback_done_delete_and_users(tmp_db):
+    """관리자: 처리됨 표시(기본 목록에서 빠짐) / 되돌리기 / 삭제 / 회원 목록."""
+    accounts.signup('adm_u', '1234')
+    assert accounts.add_feedback('bug', '첫 번째 피드백')[0] and accounts.add_feedback('idea', '두 번째 피드백')[0]
+    rows = accounts.feedback_list(); assert [r['done'] for r in rows] == [0, 0]
+    fid = rows[-1]['id']                                                       # 가장 오래된 것
+    assert accounts.feedback_set_done(fid, True)
+    assert [r['id'] for r in accounts.feedback_list()] == [rows[0]['id']]      # 기본 목록에서 빠짐
+    allrows = accounts.feedback_list(include_done=True)
+    assert len(allrows) == 2 and {r['done'] for r in allrows} == {0, 1}
+    assert accounts.feedback_set_done(fid, False) and len(accounts.feedback_list()) == 2
+    assert accounts.feedback_delete(fid) and not accounts.feedback_delete(fid) # 두 번째 삭제는 False
+    assert len(accounts.feedback_list()) == 1 and not accounts.feedback_set_done(99999, True)
+    us = accounts.users_list(); assert us[0]['name'] == 'adm_u' and us[0]['tier'] == 'N' and 'created' in us[0]
+
+
+def test_feedback_done_migration(tmp_path):
+    """옛 DB(feedback.done 없음)를 열면 컬럼이 자동으로 추가된다."""
+    import sqlite3
+    p = str(tmp_path / 'old.db')
+    c = sqlite3.connect(p)
+    c.execute('CREATE TABLE feedback(id INTEGER PRIMARY KEY AUTOINCREMENT, created REAL NOT NULL, name TEXT, user_id INTEGER, '
+              'category TEXT NOT NULL, message TEXT NOT NULL, room TEXT, ua TEXT)')
+    c.execute("INSERT INTO feedback(created, category, message) VALUES(1, 'bug', 'old')"); c.commit()
+    accounts._migrate(c); accounts._migrate(c)                                 # 멱등
+    cols = {row[1] for row in c.execute('PRAGMA table_info(feedback)')}
+    assert 'done' in cols and c.execute('SELECT done FROM feedback').fetchone()[0] == 0
+    c.close()
+
+
+def test_admin_gate_lockout(monkeypatch):
+    """관리자 인증: 키 미설정=항상 거부, 5번 틀리면 10분 잠금(맞아도 거부), 다른 IP 무관, 잠금 뒤 성공하면 초기화."""
+    import server
+    monkeypatch.setenv('FOG_ADMIN_KEY', 'secret'); server.ADMIN_FAILS.clear()
+    assert server.admin_gate('1.1.1.1', 'secret', 1000) == 'ok'
+    assert server.admin_gate('1.1.1.1', 'Secret', 1000) == 'forbidden' and server.admin_gate('1.1.1.1', None, 1000) == 'forbidden'
+    server.ADMIN_FAILS.clear()
+    for i in range(server.ADMIN_MAX_FAILS):
+        assert server.admin_gate('1.1.1.1', 'nope', 1000 + i) == 'forbidden'
+    assert server.admin_gate('1.1.1.1', 'secret', 1010) == 'locked'
+    assert server.admin_gate('2.2.2.2', 'secret', 1010) == 'ok'
+    assert server.admin_gate('1.1.1.1', 'secret', 1000 + server.ADMIN_LOCK + 1) == 'ok' and '1.1.1.1' not in server.ADMIN_FAILS
+    monkeypatch.delenv('FOG_ADMIN_KEY')
+    assert server.admin_gate('3.3.3.3', '', 0) == 'forbidden' and not server.admin_ok('')
+    server.ADMIN_FAILS.clear()
+
+
 def test_terrain_generation_seeded_and_varied():
     import game_map
     a = game_map.generate_terrain(seed=123); b = game_map.generate_terrain(seed=123); c = game_map.generate_terrain(seed=456)

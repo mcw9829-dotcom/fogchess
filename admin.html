@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>안개전장 체스 · 관리자</title>
+<style>
+  /* 관리자 페이지 — 게임과 같은 다크 톤, 외부 리소스 없음. /admin 으로 열고 비밀번호(FOG_ADMIN_KEY)를 입력한다.
+     데이터 요청은 모두 X-Admin-Key 헤더로 인증(비밀번호는 이 탭의 sessionStorage에만 보관). */
+  :root { --bg:#14171c; --panel:#1d2229; --panel2:#262d37; --border:#2f3742; --text:#e8ecf1; --dim:#9aa5b3;
+          --gold:#d4a34a; --red:#d4453f; --green:#3f9a45; --blue:#3d7bd6; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", "Malgun Gothic", sans-serif; }
+  header { position: sticky; top:0; z-index:2; background:var(--panel); border-bottom:1px solid var(--border);
+           padding: 12px 18px; display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+  header h1 { font-size:17px; margin:0; }
+  header .cnt { color:var(--dim); font-size:13px; }
+  header .sp { flex:1; }
+  main { max-width: 960px; margin: 0 auto; padding: 16px; }
+  h2 { font-size:13px; margin: 24px 0 10px; color:var(--dim); text-transform: uppercase; letter-spacing:.06em; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin:10px 0; }
+  .card.done { opacity:.55; }
+  .card .top { display:flex; gap:10px; align-items:center; flex-wrap:wrap; font-size:12.5px; color:var(--dim); }
+  .badge { padding:2px 9px; border-radius:999px; font-weight:700; font-size:12px; background:var(--panel2); color:var(--text); }
+  .badge.bug     { background: rgba(212,69,63,.18);  color:#ff9a95; }
+  .badge.balance { background: rgba(212,163,74,.18); color:#ffd27a; }
+  .badge.idea    { background: rgba(63,154,69,.18);  color:#9fe3a3; }
+  .badge.other   { background: rgba(61,123,214,.18); color:#a9c8ff; }
+  .msg { white-space: pre-wrap; word-break: break-word; margin: 8px 0 4px; font-size: 14.5px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  button { background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:8px;
+           padding:6px 11px; cursor:pointer; font:inherit; font-size:13px; }
+  button:hover { border-color: var(--gold); }
+  button.primary { background: var(--gold); color:#1a1408; font-weight:700; border-color: var(--gold); }
+  button.danger:hover { border-color: var(--red); color:#ff9a95; }
+  table { width:100%; border-collapse: collapse; font-size:13.5px; }
+  th, td { padding: 7px 10px; border-bottom: 1px solid var(--border); text-align:left; white-space: nowrap; }
+  th { color: var(--dim); font-weight:600; font-size:12px; }
+  .tbl { overflow-x:auto; background:var(--panel); border:1px solid var(--border); border-radius:12px; }
+  .empty { color:var(--dim); padding:22px; text-align:center; background:var(--panel); border:1px dashed var(--border); border-radius:12px; }
+  label.chk { color:var(--dim); font-size:13px; display:flex; gap:6px; align-items:center; cursor:pointer; }
+  .err { background: rgba(212,69,63,.15); border:1px solid var(--red); padding:10px 12px; border-radius:10px; margin-bottom:12px; }
+  .ua { opacity:.8; }
+  .id { opacity:.6; }
+  /* 로그인 화면 */
+  #login { max-width: 360px; margin: 14vh auto 0; background:var(--panel); border:1px solid var(--border); border-radius:14px; padding: 22px 22px 18px; }
+  #login h1 { font-size:18px; margin:0 0 4px; }
+  #login p { color:var(--dim); margin:0 0 14px; font-size:13px; }
+  #login input { width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:var(--bg); color:var(--text); font:inherit; font-size:15px; }
+  #login .row { margin-top:12px; justify-content:flex-end; }
+  #loginErr { color:#ff9a95; font-size:13px; min-height:1.4em; margin-top:8px; }
+</style>
+</head>
+<body>
+<section id="login" hidden>
+  <h1>🛠 관리자</h1>
+  <p>안개전장 체스 · 피드백과 회원을 관리합니다.</p>
+  <form id="loginForm" autocomplete="off">
+    <input id="pw" type="password" placeholder="관리자 비밀번호" autocomplete="current-password" required>
+    <div id="loginErr"></div>
+    <div class="row"><button type="submit" class="primary">들어가기</button></div>
+  </form>
+</section>
+
+<div id="app" hidden>
+<header>
+  <h1>🛠 안개전장 체스 · 관리자</h1>
+  <span class="cnt" id="cnt">불러오는 중…</span>
+  <span class="sp"></span>
+  <label class="chk"><input type="checkbox" id="showDone"> 처리된 것도 보기</label>
+  <button id="refresh">↻ 새로고침</button>
+  <button id="logout">로그아웃</button>
+</header>
+<main>
+  <div id="err" class="err" style="display:none"></div>
+  <h2>💬 피드백</h2>
+  <div id="fb"></div>
+  <h2>👥 회원 · 레이팅</h2>
+  <div id="users"></div>
+</main>
+</div>
+
+<script>
+const CAT = { bug: '🐛 버그', balance: '⚖️ 밸런스', idea: '💡 제안', other: '💬 기타' };
+const TIER = { K: '킹', Q: '퀸', B: '비숍', R: '룩', N: '나이트', P: '폰' };
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const when = (t) => { const d = new Date(t * 1000), p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+function uaShort(ua) {                      // "Windows · Chrome" 정도로만 요약(전체는 title 툴팁)
+  if (!ua) return '';
+  const os = /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Windows/.test(ua) ? 'Windows'
+           : /Mac OS/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : '?';
+  const br = /Edg\//.test(ua) ? 'Edge' : /SamsungBrowser/.test(ua) ? 'Samsung' : /Chrome\//.test(ua) ? 'Chrome'
+           : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : '?';
+  return os + ' · ' + br;
+}
+
+// ---- 인증: 비밀번호는 이 탭의 sessionStorage 에만 두고, 요청마다 X-Admin-Key 헤더로 보낸다 ----
+let KEY = '';
+try { KEY = sessionStorage.getItem('fog_admin_key') || ''; } catch (e) {}
+const urlKey = new URLSearchParams(location.search).get('key');       // 옛 방식(?key=) 호환: 받아서 주소에서는 지운다
+if (urlKey) { KEY = urlKey; history.replaceState(null, '', location.pathname); }
+const hdr = () => ({ 'X-Admin-Key': KEY });
+class AuthError extends Error {}
+async function get(p) {
+  const r = await fetch(p, { headers: hdr() });
+  if (r.status === 403) throw new AuthError('비밀번호가 틀렸어요.');
+  if (r.status === 429) throw new AuthError('틀린 시도가 많아 잠시 잠겼어요. 10분 뒤 다시 시도하세요.');
+  return r.json();
+}
+async function post(p, body) {
+  const r = await fetch(p, { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, hdr()),
+                             body: JSON.stringify(body || {}) });
+  if (r.status === 403) return { ok: false, msg: '비밀번호가 틀렸어요. 다시 로그인하세요.' };
+  if (r.status === 429) return { ok: false, msg: '틀린 시도가 많아 잠시 잠겼어요.' };
+  return r.json();
+}
+function showLogin(msg) {
+  $('app').hidden = true; $('login').hidden = false;
+  $('loginErr').textContent = msg || '';
+  $('pw').value = ''; $('pw').focus();
+}
+async function enter(key) {                 // 비밀번호 확인 → 저장 → 대시보드
+  KEY = key;
+  try {
+    await get('/admin/check');
+    try { sessionStorage.setItem('fog_admin_key', KEY); } catch (e) {}
+    $('login').hidden = true; $('app').hidden = false;
+    await load();
+    return true;
+  } catch (e) {
+    KEY = '';
+    try { sessionStorage.removeItem('fog_admin_key'); } catch (e2) {}
+    showLogin(e instanceof AuthError ? e.message : '서버에 연결할 수 없어요.');
+    return false;
+  }
+}
+$('loginForm').onsubmit = (ev) => { ev.preventDefault(); const v = $('pw').value; if (v) enter(v); };
+$('logout').onclick = () => { KEY = ''; try { sessionStorage.removeItem('fog_admin_key'); } catch (e) {} showLogin(''); };
+
+// ---- 대시보드 ----
+let ROWS = [], USERS = null;
+function renderFb() {
+  const showDone = $('showDone').checked, box = $('fb');
+  const rows = ROWS.filter(r => showDone || !r.done);
+  const open = ROWS.filter(r => !r.done).length;
+  $('cnt').textContent = `미처리 ${open} · 처리됨 ${ROWS.length - open}` + (USERS ? ` · 회원 ${USERS.length}` : '');
+  if (!rows.length) { box.innerHTML = '<div class="empty">' + (ROWS.length ? '미처리 피드백이 없어요 🎉' : '아직 피드백이 없어요') + '</div>'; return; }
+  box.innerHTML = rows.map(r => `<div class="card ${r.done ? 'done' : ''}" data-id="${r.id}">
+    <div class="top"><span class="badge ${esc(r.category)}">${CAT[r.category] || esc(r.category)}</span>
+      <b>${esc(r.name || '게스트')}</b><span>${when(r.created)}</span>${r.room ? `<span>방 ${esc(r.room)}</span>` : ''}
+      <span class="ua" title="${esc(r.ua || '')}">${esc(uaShort(r.ua))}</span><span class="id">#${r.id}</span></div>
+    <div class="msg">${esc(r.message)}</div>
+    <div class="row"><button data-act="done">${r.done ? '↩ 미처리로 되돌리기' : '✓ 처리됨'}</button>
+      <button class="danger" data-act="del">🗑 삭제</button></div></div>`).join('');
+}
+function renderUsers() {
+  const box = $('users');
+  if (!USERS || !USERS.length) { box.innerHTML = '<div class="empty">회원이 없어요</div>'; return; }
+  box.innerHTML = '<div class="tbl"><table><thead><tr><th>#</th><th>닉네임</th><th>레이팅</th><th>티어</th><th>승</th><th>패</th><th>무</th><th>가입일</th></tr></thead><tbody>'
+    + USERS.map((u, i) => `<tr><td>${i + 1}</td><td><b>${esc(u.name)}</b></td><td>${u.rating}</td><td>${TIER[u.tier] || esc(u.tier)}</td>
+      <td>${u.wins}</td><td>${u.losses}</td><td>${u.draws}</td><td>${when(u.created).slice(0, 10)}</td></tr>`).join('')
+    + '</tbody></table></div>';
+}
+async function load() {
+  try {
+    $('err').style.display = 'none';
+    const [f, u] = await Promise.all([get('/feedback?all=1&limit=300'), get('/admin/users')]);
+    ROWS = f.rows || []; USERS = u.rows || [];
+    renderFb(); renderUsers();
+  } catch (e) {
+    if (e instanceof AuthError) { showLogin(e.message); return; }
+    $('err').textContent = e.message; $('err').style.display = 'block';
+  }
+}
+$('fb').addEventListener('click', async (ev) => {
+  const b = ev.target.closest('button[data-act]'); if (!b) return;
+  const id = +b.closest('.card').dataset.id, row = ROWS.find(r => r.id === id);
+  if (b.dataset.act === 'del') {
+    if (!confirm(`#${id} 피드백을 삭제할까요? 되돌릴 수 없어요.`)) return;
+    const r = await post('/feedback/delete', { id });
+    if (r.ok) { ROWS = ROWS.filter(x => x.id !== id); renderFb(); } else alert(r.msg || '실패');
+  } else {
+    const r = await post('/feedback/done', { id, done: !row.done });
+    if (r.ok) { row.done = row.done ? 0 : 1; renderFb(); } else alert(r.msg || '실패');
+  }
+});
+$('refresh').onclick = load;
+try { $('showDone').checked = localStorage.getItem('fog_admin_showdone') === '1'; } catch (e) {}
+$('showDone').addEventListener('change', () => { renderFb(); try { localStorage.setItem('fog_admin_showdone', $('showDone').checked ? '1' : '0'); } catch (e) {} });
+
+if (KEY) enter(KEY); else showLogin('');
+</script>
+</body>
+</html>
