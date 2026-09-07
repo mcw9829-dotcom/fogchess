@@ -12,7 +12,10 @@
 <body>
   <!-- ===== 왼쪽 내비 레일(상시) ===== -->
   <nav class="rail">
-    <button class="rail-logo" id="railPlay" title="플레이"><span class="m">🎖️</span><span class="t">안개전장</span></button>
+    <div class="rail-brand">
+      <button class="rail-logo" id="railPlay" title="플레이"><span class="m"><img src="/img/Chess_klt45.svg" alt="" draggable="false"></span><span class="t">안개전장</span></button>
+      <button class="rail-ver" id="railVer" title="패치노트 보기">v…</button>
+    </div>
     <button class="rail-item" id="railPlay2"><span class="ri">⚔️</span><span>플레이</span></button>
     <button class="rail-item" id="railGuide"><span class="ri">📖</span><span>기물 설명</span></button>
     <button class="rail-item" id="railBoard"><span class="ri">🏆</span><span>리더보드</span></button>
@@ -36,7 +39,7 @@
         <div class="hlb-foot"><div class="hlb-me" id="hlbMe"></div><button class="hlb-more" id="hlbMore">전체 순위 · 티어 · 규칙 →</button></div>
       </div>
       <div class="menu">
-        <div class="menu-logo">🎖️ 안개전장 체스</div>
+        <div class="menu-logo"><img class="logo-king" src="/img/Chess_klt45.svg" alt="" draggable="false"> 안개전장 체스</div>
         <div class="menu-sub">WW1 Fog Chess</div>
         <button class="menu-btn primary" id="mMatch"><span class="mi">⚔️</span><span class="mt"><b>랭크 매칭</b><small>비슷한 레이팅의 상대를 자동으로 찾아 레이팅전 · 로그인 필요</small></span></button>
         <button class="menu-btn" id="mLobby"><span class="mi">👥</span><span class="mt"><b>로비 게임 만들기</b><small>친구와 사설 방에서 대전(초대 링크) · 레이팅 미반영</small></span></button>
@@ -145,7 +148,7 @@
   <div id="helpModal" class="modal" style="display:none">
     <div class="modalCard">
       <button id="helpClose" class="modalX">✕</button>
-      <h2>🎖️ 안개전장 체스 — 규칙</h2>
+      <h2><img class="logo-king sm" src="/img/Chess_klt45.svg" alt="" draggable="false"> 안개전장 체스 — 규칙</h2>
       <p class="goal">🎯 <b>목표</b>: 안개 속에 숨은 <b>적 왕(♚)</b>을 찾아 처치하면 승리.</p>
       <ul>
         <li>🌫️ <b>안개</b>: 내 기물 주변만 보인다. 기물이 사라지면 그 자리 시야도 사라짐.</li>
@@ -230,6 +233,16 @@
         <div id="profMsg" class="auth-ok"></div>
         <button id="authLogout" class="menu-btn ghost" style="margin-top:12px"><span class="mi">🚪</span><span class="mt"><b>로그아웃</b></span></button>
       </div>
+    </div>
+  </div>
+
+  <!-- ===== 패치노트 ===== -->
+  <div id="notesModal" class="modal" style="display:none">
+    <div class="modalCard notesCard">
+      <button id="notesClose" class="modalX">✕</button>
+      <h2>📜 패치노트 <small id="notesVer" class="notesVer"></small></h2>
+      <p class="note" style="margin:0 0 10px">최신 버전이 맨 위 · 항목을 누르면 자세히 보여요</p>
+      <div id="notesBody"><p class="note">불러오는 중…</p></div>
     </div>
   </div>
 

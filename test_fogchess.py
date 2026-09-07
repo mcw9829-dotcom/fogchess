@@ -568,6 +568,19 @@ def test_legacy_pin_login_flags_weak(tmp_db):
     assert accounts.signup('newbie', 'Test123!')[0]['weakPw'] is False
 
 
+
+def test_patchnotes_parse():
+    """패치노트.txt 파싱: 최신 항목이 현재 APP_VERSION, 헤더/태그/이어붙인 줄, 버전 없는 초기 로그도 항목으로."""
+    import server
+    from config import APP_VERSION
+    ents = server.load_patchnotes()
+    assert ents and ents[0]['version'] == 'v' + APP_VERSION and ents[0]['date'] and ents[0]['title']
+    assert all(e['date'] and e['title'] for e in ents) and any(e['version'] is None for e in ents)   # 초기 개발 로그(버전 없음)
+    assert all(it['tag'] and it['text'] for e in ents for it in e['items'])
+    assert any(len(it['text']) > 120 for it in ents[0]['items'])                                      # 들여쓴 줄이 이어붙음
+    assert server.load_patchnotes() is ents                                                          # mtime 캐시
+
+
 def test_terrain_generation_seeded_and_varied():
     import game_map
     a = game_map.generate_terrain(seed=123); b = game_map.generate_terrain(seed=123); c = game_map.generate_terrain(seed=456)

@@ -1185,6 +1185,22 @@ async function openLeaderboard(){
     + '</tbody></table>';
 }
 function closeLeaderboard(){ $('lbModal').style.display='none'; }
+// ---------- 패치노트(사이드바 버전 · 헤더 배지를 누르면) ----------
+const NOTE_TAG_CLS = { '추가':'add', '수정':'fix', '버그':'fix', 'UI':'ui', '밸런스':'bal', '규칙':'bal', '변경':'ui', '매칭':'add', '운영':'ui', '보안':'fix',
+                       '기술':'tech', '설계':'tech', '검증':'tech', '참고':'tech', '문서':'tech' };
+async function openNotes(){
+  const m=$('notesModal'), body=$('notesBody');
+  m.style.display='flex'; body.innerHTML='<p class="note">불러오는 중…</p>';
+  let d; try{ d = await api('/patchnotes'); }catch(e){ body.innerHTML='<p class="note">불러오지 못했어요.</p>'; return; }
+  $('notesVer').textContent = '현재 v' + d.version;
+  const ents = d.entries || [];
+  if(!ents.length){ body.innerHTML='<p class="note">패치노트가 없어요.</p>'; return; }
+  body.innerHTML = ents.map((e,i)=>'<details class="noteEntry"'+(i<3?' open':'')+'><summary>'
+      + '<span class="nv">'+escapeHtml(e.version||'')+'</span><span class="nd">'+escapeHtml(e.date)+'</span><span class="nt">'+escapeHtml(e.title)+'</span></summary>'
+      + '<ul>' + e.items.map(it=>{ const c=NOTE_TAG_CLS[it.tag]||''; return '<li class="'+(c==='tech'?'tech':'')+'"><span class="ntag '+c+'">'+escapeHtml(it.tag)+'</span><span>'+escapeHtml(it.text)+'</span></li>'; }).join('')
+      + '</ul></details>').join('');
+}
+function closeNotes(){ $('notesModal').style.display='none'; }
 // ---------- 메인 화면 리더보드 패널(상위 10명 · 내 순위) ----------
 const HLB_TOP = 10;
 let HLB = { rows: null, total: 0, loading: false, ok: true };
@@ -1369,6 +1385,8 @@ async function matchStop(tell){
   $('matchModal').style.display='none';
   if(tell !== false){ try{ await post('/match/cancel', {session: session()}); }catch(e){} }
 }
+$('railVer').onclick = openNotes; $('verBadge').onclick = openNotes;
+$('notesClose').onclick = closeNotes; $('notesModal').onclick = (e)=>{ if(e.target.id==='notesModal') closeNotes(); };
 $('mMatch').onclick = matchStart;
 $('matchCancel').onclick = ()=>matchStop(true);
 $('matchAcceptBtn').onclick = async ()=>{ $('matchAcceptBtn').disabled = true; try{ matchHandle(await post('/match/accept', {session: session()})); }catch(e){} };
@@ -1408,7 +1426,7 @@ document.addEventListener('pointerdown', (e)=>{
   applyTheme(localStorage.getItem('fog_theme') || 'dark');
   applyCb(localStorage.getItem('fog_cb') === '1');
   fetchMe();                                                // 로그인 세션이 있으면 레일 프로필(레이팅·티어) 표시
-  api('/version').then(v=>{ if(v && v.version) $('verBadge').textContent = 'WW1 Fog Chess · v' + v.version; }).catch(()=>{});
+  api('/version').then(v=>{ if(v && v.version){ $('verBadge').textContent = 'WW1 Fog Chess · v' + v.version; $('railVer').textContent = 'v' + v.version + ' · 패치노트'; } }).catch(()=>{});
   renderCoords();
   setInterval(poll, 900);
   const hash = (location.hash || '').replace('#','');

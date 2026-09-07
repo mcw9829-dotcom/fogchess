@@ -48,6 +48,42 @@ ADMIN_MAX_FAILS = 5     # 이만큼 틀리면
 ADMIN_LOCK = 600        # 이 시간(초) 동안 그 IP는 관리자 인증을 거부(무차별 대입 방지)
 
 
+NOTES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '패치노트.txt')   # (HERE 는 아래에서 정의됨)
+_NOTES_CACHE = {'mtime': None, 'data': []}
+_NOTE_HDR = re.compile(r'^\[(\d{4}-\d{2}-\d{2})\]\s+(?:(v[\d.]+)\s*[—-]\s*)?(.*)$')
+_NOTE_ITEM = re.compile(r'^\[([^\]]+)\]\s*(.*)$')
+
+
+def load_patchnotes():
+    """패치노트.txt → [{date, version, title, items:[{tag, text}]}] (최신이 앞). 파일 mtime 으로 캐시.
+    형식: '[YYYY-MM-DD]  vX.Y — 제목' 헤더, 그 아래 '[태그] 내용' 줄(들여쓴 줄은 앞 항목에 이어붙임). 파일 머리(표기 규칙)는 건너뜀."""
+    try:
+        mtime = os.path.getmtime(NOTES_PATH)
+    except OSError:
+        return []
+    if _NOTES_CACHE['mtime'] == mtime:
+        return _NOTES_CACHE['data']
+    entries, cur = [], None
+    with open(NOTES_PATH, encoding='utf-8') as f:
+        for ln in f.read().split('\n'):
+            if ln.startswith('===='):
+                continue
+            m = _NOTE_HDR.match(ln)
+            if m:
+                cur = {'date': m.group(1), 'version': m.group(2), 'title': m.group(3).strip(), 'items': []}
+                entries.append(cur)
+                continue
+            if cur is None or not ln.strip():
+                continue
+            m = _NOTE_ITEM.match(ln)
+            if m:
+                cur['items'].append({'tag': m.group(1), 'text': m.group(2).strip()})
+            elif cur['items']:
+                cur['items'][-1]['text'] += ' ' + ln.strip()
+    _NOTES_CACHE['mtime'], _NOTES_CACHE['data'] = mtime, entries
+    return entries
+
+
 def admin_ok(key_given):
     """관리자 키(FOG_ADMIN_KEY 환경변수) 일치? 키가 설정되지 않았으면 항상 거부."""
     key = os.environ.get('FOG_ADMIN_KEY')
@@ -473,6 +509,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         if u.path == '/version':                               # 배지용 버전(공개)
             self._json({'version': APP_VERSION})
+            return
+        if u.path == '/patchnotes':                            # 패치노트(공개) — 사이드바 버전을 누르면 모달로 표시
+            self._json({'version': APP_VERSION, 'entries': load_patchnotes()})
             return
         if u.path == '/leaderboard':                           # 레이팅 순위(공개)
             self._json({'rows': accounts.leaderboard(), 'total': accounts.user_count(),
