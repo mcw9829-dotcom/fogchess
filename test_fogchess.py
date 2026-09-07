@@ -169,10 +169,19 @@ def test_forest_blocks_move():
     assert (9, 5) not in set(pieces.legal_moves(st, 'W_P1'))
 
 
+def test_knight_vision_is_3():
+    st = bare()
+    put(st, 'W_N1', 'W', 'N', 5, 5)
+    vis = pieces.visible_cells(st, 'W')
+    assert (5, 8) in vis and (2, 2) in vis and (8, 8) in vis      # 체비셰프 거리 3까지
+    assert (5, 9) not in vis and (1, 5) not in vis                # 4칸은 안 보임
+    assert len(vis) == 7 * 7                                      # 7×7 시야(장애물 없음)
+
+
 def test_los_blocked_by_forest():
     _set_terrain(forests={(5, 6)})
     st = bare()
-    put(st, 'W_N1', 'W', 'N', 5, 5)                # 시야 2
+    put(st, 'W_N1', 'W', 'N', 5, 5)                # 시야 3
     vis = pieces.visible_cells(st, 'W')
     assert (5, 4) in vis and (5, 7) not in vis      # 숲 뒤는 가림
 
@@ -323,7 +332,7 @@ def test_bot_snipes_visible_enemy():
     st = bare()
     st['turn'] = 'W'
     put(st, 'W_B1', 'W', 'B', 5, 5)                 # 비숍
-    put(st, 'W_N1', 'W', 'N', 5, 7)                 # 정찰(시야2)로 (5,8)을 봄
+    put(st, 'W_N1', 'W', 'N', 5, 7)                 # 정찰(시야3)로 (5,8)을 봄
     put(st, 'B_R1', 'B', 'R', 5, 8)                 # 사거리 안 + 보이는 값진 적
     assert bot.choose_action(st, 'W') == ('fire', 'W_B1', 5, 8)
 
@@ -354,6 +363,197 @@ def test_bot_setup_hides_king_in_bush():
     bot.setup_and_ready(st, 'B')
     k = next(p for p in st['pieces'].values() if p['o'] == 'B' and p['t'] == 'K')
     assert (k['r'], k['c']) == (2, 5) and st['ready']['B'] is True
+
+
+def test_bot_queen_scans_unsearched_enemy_bush():
+    """퀸 스캔(능력)을 실제로 쓴다: 적진의 미수색 부쉬(왕 은신 후보)를 2×2로 감시."""
+    _set_terrain(bushes={(2, 4), (2, 5)})           # 적진 부쉬 2칸 — 이동(2칸)으론 못 들어가는 거리
+    st = bare(); st['turn'] = 'W'; st['turnCount'] = 20
+    put(st, 'W_K1', 'W', 'K', 11, 5)
+    put(st, 'W_Q1', 'W', 'Q', 6, 5)                 # 부쉬까지 맨해튼 4~5 ≤ SCAN_RANGE(6)
+    act = bot.choose_action_hard(st, 'W', budget=0.05)   # 실수 없는 경로(결정적)
+    assert act[0] == 'scan' and act[1] == 'W_Q1'
+    r, c = act[2], act[3]
+    area = {(r, c), (r, c + 1), (r + 1, c), (r + 1, c + 1)}
+    assert area & {(2, 4), (2, 5)}                  # 2×2가 부쉬를 덮음
+    assert st['botscan']['W'] == 20                 # 스캔 시각 기록(재스캔 쿨다운)
+    assert pieces.apply_scan(st, 'W', 'W_Q1', r, c)[0]   # 규칙상 유효한 스캔
+
+
+def test_bot_queen_scan_waits_while_previous_scan_active():
+    """직전 스캔이 살아있는 동안(SCAN_DUR)은 재스캔으로 턴을 낭비하지 않는다."""
+    _set_terrain(bushes={(2, 4), (2, 5)})
+    st = bare(); st['turn'] = 'W'; st['turnCount'] = 20
+    put(st, 'W_K1', 'W', 'K', 11, 5)
+    put(st, 'W_Q1', 'W', 'Q', 6, 5)
+    st['botscan'] = {'W': 18}                       # 2턴 전 스캔 → 아직 감시 중(SCAN_DUR=5)
+    act = bot.choose_action_hard(st, 'W', budget=0.05)
+    assert act and act[0] != 'scan'
+
+
+# ------------------------- 계정 / 레이팅 -------------------------
+import accounts
+
+
+@pytest.fixture
+def tmp_db(tmp_path):
+    """테스트마다 빈 임시 DB(실제 fogchess.db 건드리지 않음)."""
+    accounts.init_db(str(tmp_path / 'test.db'))
+    accounts._fails.clear()
+    return accounts
+
+
+def test_login_lockout_after_repeated_failures(tmp_db):
+    accounts.signup('pin_user', '1234')
+    for _ in range(5):
+        assert accounts.login('pin_user', '0000')[0] is None
+    res, err = accounts.login('pin_user', '1234')              # 맞는 PIN이어도 잠금 중
+    assert res is None and '잠겼' in err
+    accounts._fails['pin_user']['until'] = 0                   # 잠금 시간 경과 시뮬레이션
+    assert accounts.login('pin_user', '1234')[0] is not None
+
+
+def test_elo_delta_depends_on_rating_gap():
+    assert accounts.expected(1000, 1000) == pytest.approx(0.5)
+    assert accounts.elo_delta(1000, 1000, 1) == 16                                   # 동급 승리 = K/2
+    assert accounts.elo_delta(1000, 1000, 0) == -16
+    assert accounts.elo_delta(1000, 1000, 0.5) == 0
+    assert accounts.elo_delta(1000, 1400, 1) > accounts.elo_delta(1400, 1000, 1)     # 약자가 이기면 더 많이
+    assert accounts.elo_delta(1000, 1400, 1) + accounts.elo_delta(1400, 1000, 0) == 0  # 영합(반올림 포함)
+
+
+def test_rating_tiers():
+    assert [accounts.tier(r) for r in (500, 999, 1000, 1200, 1500, 1700, 1900, 2400)] == \
+        ['P', 'P', 'N', 'R', 'B', 'Q', 'K', 'K']
+
+
+def test_signup_login_session(tmp_db):
+    res, err = accounts.signup('초코비', '1234')
+    assert err is None and res['user']['rating'] == 1000 and res['user']['tier'] == 'N'
+    assert accounts.signup('초코비', 'x')[1]                    # 짧은 비밀번호 거부
+    assert accounts.signup('새이름', '12345')[1]                # 5자리 거부(숫자 4자리 PIN만)
+    assert accounts.signup('새이름', '12ab')[1]                 # 숫자 아님 거부
+    assert accounts.signup('ChocoBi', '1234')[1] is None      # 다른 이름은 OK
+    assert accounts.signup('chocobi', '1234')[1]              # 대소문자만 다른 중복은 거부
+    assert accounts.signup('a', '1234')[1]                    # 1글자 거부
+    assert accounts.login('초코비', 'wrong')[0] is None
+    me = accounts.user_by_token(res['session'])
+    assert me and me['name'] == '초코비'
+    accounts.logout(res['session'])
+    assert accounts.user_by_token(res['session']) is None
+
+
+def test_record_result_and_floor(tmp_db):
+    a = accounts.signup('a_1', '1234')[0]['user']['id']
+    b = accounts.signup('b_1', '1234')[0]['user']['id']
+    r = accounts.record_result(a, b, 1.0)
+    assert r['a'] == {'delta': 16, 'rating': 1016} and r['b'] == {'delta': -16, 'rating': 984}
+    assert accounts.user_by_id(a)['wins'] == 1 and accounts.user_by_id(b)['losses'] == 1
+    assert accounts.elo_delta(984, 3000, 0.0) == 0               # 훨씬 강한 상대에게 진 건 잃는 게 거의 없음
+    for _ in range(25):                                          # 이겨야 할 약한 상대(300)에게 계속 지면 크게 잃되 바닥 500에서 멈춤
+        accounts.record_vs_fixed(b, 300, 0.0)
+        assert accounts.user_by_id(b)['rating'] >= 500
+    assert accounts.user_by_id(b)['rating'] == 500
+
+
+def test_feedback_store_and_validate(tmp_db):
+    ok, err = accounts.add_feedback('bug', '킹이 부쉬에서 안 보여요', name='Moon', room='AB12', ua='UA' * 200)
+    assert ok and err is None
+    assert accounts.add_feedback('bug', 'ab')[1]                         # 3자 미만 거부
+    assert accounts.add_feedback('spam', '분류가 이상함')[1]              # 분류 화이트리스트
+    assert accounts.add_feedback('idea', 'x' * 1001)[1]                  # 1000자 초과 거부
+    rows = accounts.feedback_list()
+    assert len(rows) == 1 and rows[0]['message'] == '킹이 부쉬에서 안 보여요' and rows[0]['name'] == 'Moon'
+    assert rows[0]['room'] == 'AB12' and len(rows[0]['ua']) <= 200       # 컨텍스트는 길이 제한
+
+
+def test_server_settles_bot_game_once(tmp_db):
+    import server
+    u = accounts.signup('bot_beater', '1234')[0]['user']
+    room = server.new_room('T1')
+    room['bot'] = 'B'; room['botlevel'] = 'hard'
+    room['users'] = {'W': u['id']}; room['ratings'] = {'W': 1000}
+    st = room['state']; st['phase'] = 'over'; st['winner'] = 'W'
+    assert server.is_rated(room)
+    server.settle_rating(room); server.settle_rating(room)        # 두 번 불러도 한 번만 반영
+    d = room['rating_result']['W']
+    assert d['delta'] == accounts.elo_delta(1000, 1300, 1.0) == 27
+    assert accounts.user_by_id(u['id'])['rating'] == 1027 and accounts.user_by_id(u['id'])['wins'] == 1
+    assert room['ratings']['W'] == 1027
+
+
+def test_leaderboard_order(tmp_db):
+    a = accounts.signup('lb_a', '1234')[0]['user']['id']
+    b = accounts.signup('lb_b', '1234')[0]['user']['id']
+    accounts.signup('lb_c', '1234')
+    accounts.record_vs_fixed(b, 1000, 1.0)                        # b 1016
+    accounts.record_vs_fixed(a, 1000, 0.0)                        # a 984
+    lb = accounts.leaderboard()
+    assert [u['name'] for u in lb] == ['lb_b', 'lb_c', 'lb_a'] and [u['rank'] for u in lb] == [1, 2, 3]
+    assert 'id' not in lb[0] and lb[0]['tier'] == 'N'
+
+
+def test_session_expires_after_ttl(tmp_db):
+    import time
+    res, _ = accounts.signup('sess_u', '1234')
+    assert accounts.user_by_token(res['session'])
+    with accounts._db() as c:                                      # 31일 전 발급으로 조작
+        c.execute('UPDATE sessions SET created=? WHERE token=?', (time.time() - 31 * 86400, res['session']))
+    assert accounts.user_by_token(res['session']) is None
+    accounts.login('sess_u', '1234')                              # 로그인 시 만료 세션 정리
+    with accounts._db() as c:
+        assert c.execute('SELECT COUNT(*) FROM sessions WHERE token=?', (res['session'],)).fetchone()[0] == 0
+
+
+def test_account_input_types_are_coerced(tmp_db):
+    assert accounts.signup([], {})[1]                              # 이상한 타입도 500 대신 오류 메시지
+    assert accounts.login(None, None)[0] is None
+    assert accounts.signup('num_pin', 1234)[1] is None            # 숫자로 온 PIN도 문자열로 처리
+
+
+def test_sweep_forfeits_disconnected_player(tmp_db):
+    import server, time as _t
+    a = accounts.signup('sw_a', '1234')[0]['user']; b = accounts.signup('sw_b', '1234')[0]['user']
+    room = server.new_room('SW1'); now = _t.time()
+    room['seats'] = {'W': 'tokW', 'B': 'tokB'}; room['tokens'] = {'tokW': 'W', 'tokB': 'B'}
+    room['seen'] = {'tokW': now - 100, 'tokB': now}                 # 백이 100초째 접속 없음
+    room['users'] = {'W': a['id'], 'B': b['id']}; room['ratings'] = {'W': 1000, 'B': 1000}
+    st = room['state']; st['phase'] = 'play'; st['turn'] = 'B'; st['turn_deadline'] = now + 10
+    server.ROOMS['SW1'] = room
+    try:
+        server.sweep_rooms(now)
+        assert st['phase'] == 'over' and st['winner'] == 'B'
+        assert any('기권' in line for line in st['log'])
+        assert accounts.user_by_id(a['id'])['rating'] == 984 and accounts.user_by_id(b['id'])['rating'] == 1016
+    finally:
+        server.ROOMS.pop('SW1', None)
+
+
+def test_sweep_ignores_bot_seat_and_short_gaps(tmp_db):
+    import server, time as _t
+    room = server.new_room('SW2'); now = _t.time()
+    room['bot'] = 'B'; room['seats'] = {'W': 'tokW', 'B': server.BOT_TOKEN}
+    room['tokens'] = {'tokW': 'W', server.BOT_TOKEN: 'B'}
+    room['seen'] = {'tokW': now - 30, server.BOT_TOKEN: now - 500}  # 봇 좌석은 오래돼도 무시, 사람 30초는 아직
+    st = room['state']; st['phase'] = 'play'; st['turn'] = 'W'; st['turn_deadline'] = now + 10
+    server.ROOMS['SW2'] = room
+    try:
+        server.sweep_rooms(now)
+        assert st['phase'] == 'play'
+        room['seen']['tokW'] = now - 95                                # 95초 → 기권
+        server.sweep_rooms(now)
+        assert st['phase'] == 'over' and st['winner'] == 'B'
+    finally:
+        server.ROOMS.pop('SW2', None)
+
+
+def test_server_guest_and_solo_games_unrated(tmp_db):
+    import server
+    room = server.new_room('T2'); room['bot'] = 'B'               # 게스트(비회원) 봇전
+    assert not server.is_rated(room)
+    room2 = server.new_room('T3'); room2['solo'] = True
+    room2['users'] = {'W': 1, 'B': 1}
+    assert not server.is_rated(room2)
 
 
 # ------------------------- 신규 규칙 -------------------------

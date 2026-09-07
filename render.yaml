@@ -1,0 +1,10 @@
+# Render 배포 설정(Blueprint). Render에서 New + → "Blueprint" → 이 저장소 선택하면 자동 적용.
+# (또는 수동: New Web Service → 이 repo → Runtime=Python → Start Command=python server.py → Free)
+services:
+  - type: web
+    name: fogchess
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt   # 설치할 것 없음(표준 라이브러리)
+    startCommand: python server.py
+    # 서버는 config.py에서 PORT 환경변수를 읽어 0.0.0.0:$PORT 로 listen 합니다.

@@ -4,19 +4,42 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>안개전장 체스</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <!-- ===== 시작 메뉴 ===== -->
+  <!-- ===== 왼쪽 내비 레일(상시) ===== -->
+  <nav class="rail">
+    <button class="rail-logo" id="railPlay" title="플레이"><span class="m">🎖️</span><span class="t">안개전장</span></button>
+    <button class="rail-item" id="railPlay2"><span class="ri">⚔️</span><span>플레이</span></button>
+    <button class="rail-item" id="railGuide"><span class="ri">📖</span><span>기물 설명</span></button>
+    <button class="rail-item" id="railBoard"><span class="ri">🏆</span><span>리더보드</span></button>
+    <button class="rail-item" id="railFeedback"><span class="ri">💬</span><span>피드백</span></button>
+    <button class="rail-item" id="railSettings"><span class="ri">⚙️</span><span>설정</span></button>
+    <div class="rail-foot">
+      <!-- 프로필: 로그인하면 티어 기물 + 닉네임 + 레이팅, 게스트면 로그인 안내 -->
+      <button class="rail-user" id="railUser" title="계정 / 레이팅">
+        <span class="ava" id="railAva">🙂</span>
+        <span class="uinfo"><b id="railNick">게스트</b><small id="railNickSub">로그인 · 회원가입</small></span>
+      </button>
+    </div>
+  </nav>
+  <main class="appmain">
+  <!-- ===== 시작 메뉴 (보드 + 모드 카드 랜딩) ===== -->
   <div id="home" class="screen">
-    <div class="menu">
-      <div class="menu-logo">🎖️ 안개전장 체스</div>
-      <div class="menu-sub">WW1 Fog Chess — 안개 속 왕을 찾아 처치하라</div>
-      <button class="menu-btn" id="mLobby"><span class="mi">👥</span><span class="mt"><b>로비 게임 만들기</b><small>친구와 사설 방에서 대전(초대 링크)</small></span></button>
-      <button class="menu-btn" id="mJoin"><span class="mi">🤝</span><span class="mt"><b>친구에게 도전</b><small>친구가 준 방 코드로 참가</small></span></button>
-      <button class="menu-btn" id="mBot"><span class="mi">💻</span><span class="mt"><b>컴퓨터와 대국</b><small>쉬움 · 보통 · 어려움</small></span></button>
-      <button class="menu-btn" id="mSolo"><span class="mi">🧪</span><span class="mt"><b>혼자 테스트</b><small>양쪽을 번갈아(핫시트)</small></span></button>
-      <button class="menu-btn ghost" id="mSettings"><span class="mi">⚙️</span><span class="mt"><b>설정</b><small>효과음 · 다크/화이트 · 기물 설명</small></span></button>
+    <div class="home-land">
+      <div class="home-board"><div id="homeBoard"></div><div class="home-cap">FIND AND KILL THE KING</div></div>
+      <div class="menu">
+        <div class="menu-logo">🎖️ 안개전장 체스</div>
+        <div class="menu-sub">WW1 Fog Chess</div>
+        <button class="menu-btn" id="mLobby"><span class="mi">👥</span><span class="mt"><b>로비 게임 만들기</b><small>친구와 사설 방에서 대전(초대 링크)</small></span></button>
+        <button class="menu-btn" id="mJoin"><span class="mi">🤝</span><span class="mt"><b>친구에게 도전</b><small>친구가 준 방 코드로 참가</small></span></button>
+        <button class="menu-btn" id="mBot"><span class="mi">💻</span><span class="mt"><b>컴퓨터와 대국</b><small>쉬움 · 보통 · 어려움</small></span></button>
+        <button class="menu-btn" id="mSolo"><span class="mi">🧪</span><span class="mt"><b>혼자 테스트</b><small>양쪽을 번갈아(핫시트)</small></span></button>
+        <button class="menu-btn ghost" id="mSettings"><span class="mi">⚙️</span><span class="mt"><b>설정</b><small>효과음 · 배경음악 · 다크/화이트 · 색약</small></span></button>
+      </div>
     </div>
   </div>
 
@@ -54,7 +77,8 @@
         <div class="seg"><button id="thDark" class="seg-b">🌙 다크</button><button id="thLight" class="seg-b">☀️ 화이트</button></div>
       </div>
       <div class="set-row"><span>👁 색약 모드<small class="set-note">이동·착탄을 청록/주황으로</small></span><label class="switch"><input type="checkbox" id="setCb"><span class="sl"></span></label></div>
-      <button class="menu-btn" id="setPieces"><span class="mi">📖</span><span class="mt"><b>기물 설명 보기</b></span></button>
+      <div class="set-row"><span>✨ 파티클 이펙트<small class="set-note">폭발·탄도·연기 캔버스 연출. 끄면 간단한 연출만</small></span><label class="switch"><input type="checkbox" id="setFxOn"><span class="sl"></span></label></div>
+      <div class="set-row"><span>🎬 이펙트 미리보기<small class="set-note">게임 없이 연출을 재생해 보기</small></span><button id="setFx" class="seg-b">열기</button></div>
       <button class="menu-btn ghost back">← 뒤로</button>
     </div>
   </div>
@@ -110,6 +134,7 @@
     </div>
   </div>
   </div><!-- /#game -->
+  </main><!-- /.appmain -->
 
   <div id="helpModal" class="modal" style="display:none">
     <div class="modalCard">
@@ -120,12 +145,11 @@
         <li>🌫️ <b>안개</b>: 내 기물 주변만 보인다. 기물이 사라지면 그 자리 시야도 사라짐.</li>
         <li>🧭 <b>배치</b>: 시작 60~70초 동안 내 진영 3줄에 기물을 놓는다(왕을 잘 숨기기!).</li>
         <li>⚔️ <b>승리</b>: 적 왕을 한 번 맞히면 끝(킹 목숨 1).</li>
-        <li>⏳ <b>턴 20초</b>: 넘기면 그 턴은 <b>자동으로 상대에게 넘어감</b>(기물 그대로). <b>연속 3회(1분) 미행동 = 상대 자동 승리</b>. 수를 두면 리셋.</li>
+        <li>⏳ <b>턴 30초</b>: 넘기면 그 턴은 <b>자동으로 상대에게 넘어감</b>(기물 그대로). <b>연속 3회(1분 30초) 미행동 = 상대 자동 승리</b>. 수를 두면 리셋. 접속이 <b>1분 30초</b> 이상 끊기면 <b>자동 기권</b>.</li>
         <li>🌲 <b>숲</b>=시야·이동·사격 모두 차단.</li>
         <li>🌿 <b>부쉬(매복지)</b>=들어갈 수 있고, 그 안의 기물은 상대에게 <b>보이지 않음</b>(인접·시야로도 안 보임). 확인하려면 <b>부쉬로 들어가 잡거나</b> 룩 <b>돌파사격으로 수색</b>. 왕 숨기기·매복에 최적(단, 부쉬 안에서 공격하면 내 위치 노출).</li>
       </ul>
-      <div id="helpPieces" class="hpieces"></div>
-      <p class="note">🎯 비숍·🚜 전차는 <b>공격하면 내 위치가 적에게 노출</b>돼요 — 쏘는 타이밍이 곧 심리전.</p>
+      <p class="note">🎯 비숍·🚜 전차는 <b>공격하면 내 위치가 적에게 노출</b>돼요 — 쏘는 타이밍이 곧 심리전. 기물별 상세 행마·공격은 왼쪽 사이드바 <b>[📖 기물 설명]</b>.</p>
     </div>
   </div>
 
@@ -137,6 +161,99 @@
     </div>
   </div>
 
+  <!-- ===== 기물 설명 보기(상세 가이드) ===== -->
+  <div id="guide" class="modal" style="display:none">
+    <div class="modalCard guideCard">
+      <button id="guideClose" class="modalX">✕</button>
+      <h2>📖 기물 설명</h2>
+      <!-- 핵심 규칙 4줄(레일의 [규칙] 항목을 없앤 대신 여기에 요약) -->
+      <div class="gRules">
+        <span>🎯 <b>목표</b> 안개 속 적 <b>왕</b>을 찾아 처치(왕 목숨 1)</span>
+        <span>🌫️ <b>안개</b> 내 기물 주변만 보임 · 기물이 죽으면 그 시야도 사라짐</span>
+        <span>🧭 <b>배치</b> 내 진영 3줄 · ⏳ <b>턴 30초</b>(연속 3회 미행동 = 패배 · 접속 끊김 90초 = 기권)</span>
+        <span>🌲 <b>숲</b> 시야·이동·사격 차단 · 🌿 <b>부쉬</b> 속 기물은 안 보임(매복)</span>
+      </div>
+      <p class="note" style="margin:0 0 14px">기물 카드에 <b>마우스를 올리면</b>(모바일은 <b>탭</b>) <span style="color:rgba(var(--sig-move),1);font-weight:700">행마</span>(예시 이동) → <span style="color:rgba(var(--sig-impact),1);font-weight:700">공격</span>(움직여서 포획) → <span style="color:rgba(var(--sig-scan),1);font-weight:700">능력</span>(비숍 저격 · 전차 돌파 · 퀸 스캔) 순으로 애니메이션을 보여줍니다.</p>
+      <div class="gDemos" id="gDemos"></div>
+      <div class="gPieces" id="gPieces"></div>
+    </div>
+  </div>
+
+  <!-- ===== 계정 / 레이팅 (레일 하단 프로필 클릭) ===== -->
+  <div id="authModal" class="modal" style="display:none">
+    <div class="modalCard authCard">
+      <button id="authClose" class="modalX">✕</button>
+      <div id="authForm">
+        <h2>🎖️ 계정</h2>
+        <div class="authTabs"><button id="tabLogin" class="seg-b on">로그인</button><button id="tabSignup" class="seg-b">회원가입</button></div>
+        <input id="authName" class="auth-in" placeholder="닉네임 (2~12자 · 한글/영문/숫자/_)" maxlength="12" autocomplete="username">
+        <input id="authPw" class="auth-in" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="비밀번호 (숫자 4자리)" autocomplete="current-password">
+        <div id="authErr" class="auth-err"></div>
+        <button id="authGo" class="menu-btn"><span class="mi">➡️</span><span class="mt"><b id="authGoText">로그인</b><small>레이팅 1000부터 시작 · 승패마다 상대와의 점수차로 변동</small></span></button>
+        <p class="note" style="margin:10px 0 0">티어: 폰 &lt;1000 · 나이트 1000+ · 룩 1200+ · 비숍 1500+ · 퀸 1700+ · 킹 1900+<br>비밀번호는 해시로만 저장돼요(서버에 평문 없음).</p>
+      </div>
+      <div id="authProfile" style="display:none">
+        <h2>🎖️ 내 프로필</h2>
+        <div class="prof">
+          <img id="profTier" class="profTier" alt="" draggable="false">
+          <div class="profInfo"><b id="profName"></b><div id="profRating" class="profRating"></div><small id="profRec"></small></div>
+        </div>
+        <div class="tierHead"><span>티어 사다리</span><small>레이팅 구간 · 현재 티어 강조</small></div>
+        <div class="tierLadder" id="tierLadder"></div>
+        <div class="profBar"><div id="profBarFill"></div></div>
+        <small id="profNext" class="set-note"></small>
+        <button id="authLogout" class="menu-btn ghost" style="margin-top:12px"><span class="mi">🚪</span><span class="mt"><b>로그아웃</b></span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 리더보드 ===== -->
+  <div id="lbModal" class="modal" style="display:none">
+    <div class="modalCard lbCard">
+      <button id="lbClose" class="modalX">✕</button>
+      <h2>🏆 리더보드</h2>
+      <p class="note" style="margin:0 0 12px">레이팅 순 상위 50명 · 티어: 폰 &lt;1000 · 나이트 1000+ · 룩 1200+ · 비숍 1500+ · 퀸 1700+ · 킹 1900+</p>
+      <div id="lbBody"></div>
+    </div>
+  </div>
+
+  <!-- ===== 이펙트 미리보기 (설정) ===== -->
+  <div id="fxModal" class="modal" style="display:none">
+    <div class="modalCard fxCard">
+      <button id="fxClose" class="modalX">✕</button>
+      <h2>🎬 이펙트 미리보기</h2>
+      <div class="fxStage" id="fxStage"></div>
+      <div class="fxBtns" id="fxBtns"></div>
+      <p class="note" style="margin:0">보드 위 캔버스 레이어에서 재생되는 파티클 연출입니다. OS의 '동작 줄이기'가 켜져 있으면 최소 연출로 나옵니다.</p>
+    </div>
+  </div>
+
+  <!-- ===== 개발자 피드백 ===== -->
+  <div id="fbModal" class="modal" style="display:none">
+    <div class="modalCard fbCard">
+      <button id="fbClose" class="modalX">✕</button>
+      <div id="fbForm">
+        <h2>💬 개발자에게 피드백</h2>
+        <p class="note" style="margin:0 0 10px">버그·밸런스·아이디어 뭐든 좋아요. 로그인 상태면 닉네임이 함께 전달되고, 아니면 익명입니다.</p>
+        <select id="fbCat" class="auth-in fbSel">
+          <option value="bug">🐛 버그 · 이상 동작</option>
+          <option value="balance">⚖️ 밸런스 · 규칙</option>
+          <option value="idea">💡 제안 · 아이디어</option>
+          <option value="other">💬 기타</option>
+        </select>
+        <textarea id="fbText" class="auth-in fbText" maxlength="1000" placeholder="어떤 상황에서 무엇이 있었는지 적어주세요 (최대 1000자)"></textarea>
+        <div class="fbFoot"><small id="fbCount">0 / 1000</small><div id="fbErr" class="auth-err" style="margin:0"></div></div>
+        <button id="fbSend" class="menu-btn"><span class="mi">📨</span><span class="mt"><b>보내기</b><small>답장은 없지만 꼭 읽습니다</small></span></button>
+      </div>
+      <div id="fbDone" style="display:none; text-align:center; padding:18px 0 6px">
+        <div style="font-size:40px">🙏</div>
+        <h2 style="margin:8px 0 4px">고마워요!</h2>
+        <p class="note">피드백이 전달됐어요. 다음 업데이트에 반영해 볼게요.</p>
+      </div>
+    </div>
+  </div>
+
+<script src="/fx.js"></script>
 <script src="/sound.js"></script>
 <script src="/game.js"></script>
 </body>

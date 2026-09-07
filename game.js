@@ -7,6 +7,12 @@ let prevFog = null;   // 직전 렌더의 안개 칸 index Set (null=최초) —
 let prevCanAct = false;   // 직전에 '내가 둘 수 있었나' — 내 차례로 바뀌는 순간 딩 소리용
 
 const boardEl = document.getElementById('board');
+function fxOn(){ return localStorage.getItem('fog_fx') !== '0'; }               // 파티클 이펙트 on/off(설정)
+const FXMAIN = (window.FxLayer && document.querySelector('.boardWrap'))          // 보드 위 파티클 레이어
+  ? new FxLayer(document.querySelector('.boardWrap'), boardEl, {border:4, cols:12}) : null;
+window.addEventListener('resize', ()=>{ if(FXMAIN) FXMAIN.resize(); });
+let FX_LAST = null;
+let PENDING_FX = null;   // /action 응답으로 받은 내 액션의 fx — 다음 폴링(새 그리드)에서 먼저 재생   // 내가 방금 쏜 사격 {type, from:[r,c]} — 탄도선 출발점(상대 사격은 머즐 노출된 기물로 추정)
 const PIECE_KR = {K:'킹', Q:'퀸', R:'전차', B:'비숍', N:'나이트', P:'폰'};
 const METHOD_ICON = {melee:'⚔️', artillery:'💥', barrage:'🚜'};
 function SIDE(c){ return c==='W'?'백':'흑'; }
@@ -20,9 +26,14 @@ function pieceSrc(t, o){
 async function api(path, opts){ return (await fetch(path, opts)).json(); }
 function post(path, body){ return api(path, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{})}); }
 
+function nick(){ return (localStorage.getItem('fog_nick')||'').trim(); }  // 게스트 표시 이름(회원이면 서버가 계정 닉네임 사용)
+function session(){ return localStorage.getItem('fog_session') || ''; }   // 로그인 세션 토큰(회원이면 레이팅전)
+let ME = null;                                                             // 내 프로필 {name, rating, tier, wins, losses, draws}
+const TIER_KR = {P:'폰', N:'나이트', R:'룩', B:'비숍', Q:'퀸', K:'킹'};
+const TIER_FLOORS = [[1900,'K'],[1700,'Q'],[1500,'B'],[1200,'R'],[1000,'N'],[500,'P']];   // config.RATING_TIERS 와 동일
 async function join(){
   const stored = ROOM ? (localStorage.getItem('fog_'+ROOM) || '') : '';
-  const r = await post('/join', {room: ROOM, token: stored});
+  const r = await post('/join', {room: ROOM, token: stored, name: nick(), session: session()});
   ROOM = r.room; TOKEN = r.token; COLOR = r.color;
   location.hash = '#'+ROOM;
   localStorage.setItem('fog_'+ROOM, TOKEN);
@@ -45,7 +56,7 @@ function showGame(){
   document.getElementById('game').style.display = 'flex';
   if(bgmEnabled()) startBgm();          // 게임 화면 진입 시 배경음악(켜져 있으면)
 }
-function _resetGame(){ clearSel(); prevPos={}; prevFog=null; overShown=null; lastFx=0; feedSeen=0; }
+function _resetGame(){ clearSel(); prevPos={}; prevFog=null; overShown=null; lastFx=0; PENDING_FX=null; feedSeen=0; }
 
 async function lobbyCreate(){        // 사설 방 생성(친구 초대)
   ROOM = null; TOKEN = '';
@@ -58,13 +69,13 @@ async function joinByCode(code){     // 친구 방 코드로 참가
   _resetGame(); showGame(); poll();
 }
 async function soloStart(){
-  const r = await post('/join', {solo:true});
+  const r = await post('/join', {solo:true, name: nick(), session: session()});
   ROOM = r.room; TOKEN = r.token; COLOR = r.color;   // 'solo'
   location.hash = '#'+ROOM; localStorage.setItem('fog_'+ROOM, TOKEN);
   _resetGame(); showGame(); poll();
 }
 async function botStart(level){
-  const r = await post('/join', {vs_bot:true, level});
+  const r = await post('/join', {vs_bot:true, level, name: nick(), session: session()});
   ROOM = r.room; TOKEN = r.token; COLOR = r.color;   // 'W' (사람=백, 컴퓨터=흑)
   location.hash = '#'+ROOM; localStorage.setItem('fog_'+ROOM, TOKEN);
   _resetGame(); showGame(); poll();
@@ -77,7 +88,9 @@ function applyTheme(t){
   const d=document.getElementById('thDark'), l=document.getElementById('thLight');
   if(d) d.classList.toggle('on', t!=='light');
   if(l) l.classList.toggle('on', t==='light');
+  const ri=document.getElementById('railThemeIco'); if(ri) ri.textContent = (t==='light') ? '🌙' : '☀️';
 }
+function themeIsDark(){ const t=document.documentElement.dataset.theme; return t ? t==='dark' : matchMedia('(prefers-color-scheme:dark)').matches; }
 let settingsFrom = 'home';                 // 설정을 어디서 열었나(뒤로 갈 곳)
 function applyCb(on){                        // 색약 모드: 신호색 팔레트 교체
   if(on) document.documentElement.dataset.cb = 'on';
@@ -92,6 +105,7 @@ function openSettings(from){
   document.getElementById('setBgm').checked = bgmEnabled();
   document.getElementById('setVol').value = Math.round(masterVol()*100);
   document.getElementById('setCb').checked = cbOn();
+  document.getElementById('setFxOn').checked = fxOn();
   showScreen('settings');
 }
 function closeSettings(){                   // 뒤로: 게임 중이면 게임으로, 아니면 홈으로
@@ -110,23 +124,24 @@ async function selectPiece(p){
 async function act(body){
   const r = await post('/action', Object.assign({room:ROOM, token:TOKEN}, body));
   if(r.msg) showMsg(r.msg);
+  if(r.fx) PENDING_FX = r.fx;                     // 내 액션의 fx(다음 폴링에서 재생)
   return r;
 }
 function clearSel(){ SEL=null; MOVES=[]; fireCells=[]; fireRange=[]; attackMode=null; hoverCell=null; }
 async function doMove(r,c){ await act({type:'move', pid:SEL.id, r, c}); clearSel(); poll(); }
-async function doFire(r,c){ await act({type:'fire', pid:SEL.id, r, c}); clearSel(); poll(); }
-async function doBarrage(r,c){ await act({type:'barrage', pid:SEL.id, r, c}); clearSel(); poll(); }
+async function doFire(r,c){ FX_LAST={type:'fire', from:[SEL.r,SEL.c]}; const r_=await act({type:'fire', pid:SEL.id, r, c}); if(!r_.ok) FX_LAST=null; clearSel(); poll(); }
+async function doBarrage(r,c){ FX_LAST={type:'barrage', from:[SEL.r,SEL.c]}; const r_=await act({type:'barrage', pid:SEL.id, r, c}); if(!r_.ok) FX_LAST=null; clearSel(); poll(); }
 async function doScan(r,c){ await act({type:'scan', pid:SEL.id, r, c}); clearSel(); poll(); }
 async function placePiece(r,c){ ac(); await act({type:'place', pid:SEL.id, r, c}); if(soundOn) SND.place(); SEL=null; poll(); }
 async function setReady(v){ await act({type:'ready', value:v}); poll(); }
-async function rematch(){ await act({type:'rematch'}); clearSel(); clearAnnotations(); lastFx=0; feedSeen=0; prevPos={}; prevFog=null; overShown=null; poll(); }
+async function rematch(){ await act({type:'rematch'}); clearSel(); clearAnnotations(); lastFx=0; PENDING_FX=null; feedSeen=0; prevPos={}; prevFog=null; overShown=null; poll(); }
 async function doPromote(t){ await act({type:'promote', choice:t}); document.getElementById('promoModal').style.display='none'; poll(); }
 async function doResign(){ if(!confirm('정말 기권할까요? 상대가 승리합니다.')) return; await act({type:'resign'}); clearSel(); poll(); }
 async function leaveRoom(){
   if(!confirm('이 방에서 나가 홈으로 갈까요?')) return;
   if(ROOM) localStorage.removeItem('fog_'+ROOM);
   ROOM=null; TOKEN=''; COLOR=null; VIEW=null; location.hash='';
-  clearSel(); clearAnnotations(); prevPos={}; prevFog=null; overShown=null; lastFx=0; feedSeen=0;
+  clearSel(); clearAnnotations(); prevPos={}; prevFog=null; overShown=null; lastFx=0; PENDING_FX=null; feedSeen=0;
   stopBgm();
   showScreen('home');                 // 새 방 만들지 말고 시작 메뉴로 복귀
 }
@@ -153,40 +168,68 @@ function piecePointerDown(pd, ev){
   ev.preventDefault();
   if(setup){ SEL = pd; render(); }                   // 배치: 선택
   else if(!(SEL && SEL.id===pd.id)) selectPiece(pd); // 플레이: 선택(+행마 조회)
-  dragState = { pd, moved:false, x:ev.clientX, y:ev.clientY, clone:null, setup };
+  const touch = ev.pointerType === 'touch';
+  // 터치: 손가락 떨림 허용치를 키우고(탭이 드래그로 오인되지 않게), 기물을 손가락 위로 띄워 목표 칸이 가려지지 않게
+  dragState = { pd, moved:false, x:ev.clientX, y:ev.clientY, clone:null, setup, touch,
+                thr: touch ? 12 : 5, lift: touch ? 40 : 0, over:null };
   window.addEventListener('pointermove', piecePointerMove);
   window.addEventListener('pointerup', piecePointerUp);
+  window.addEventListener('pointercancel', piecePointerCancel);   // 브라우저가 터치를 가로채면(스크롤·제스처) 정리
+}
+function dragEnd(){                                  // 드래그 상태·클론·하이라이트 정리
+  window.removeEventListener('pointermove', piecePointerMove);
+  window.removeEventListener('pointerup', piecePointerUp);
+  window.removeEventListener('pointercancel', piecePointerCancel);
+  if(dragState && dragState.clone) dragState.clone.remove();
+  if(dragState && dragState.over) dragState.over.classList.remove('dragover');
+  dragState = null;
+}
+function piecePointerCancel(){ dragEnd(); }
+function dropPoint(ev){                              // 드롭 판정 지점: 터치는 띄운 기물 위치(=손가락 위 lift px)
+  return dragState && dragState.lift ? {clientX: ev.clientX, clientY: ev.clientY - dragState.lift} : ev;
+}
+function dropOk(ds, rc){                             // 이 칸에 놓을 수 있나(배치: 내 진영 빈 땅·부쉬 / 플레이: 합법 이동칸)
+  const [r,c] = rc;
+  if(ds.setup){
+    const [z0,z1] = VIEW.zone||[0,0];
+    const t = (VIEW.grid[r] && VIEW.grid[r][c]) ? VIEW.grid[r][c].t : 1;
+    return r>=z0 && r<=z1 && (t===0 || t===3);
+  }
+  return !!(SEL && SEL.id===ds.pd.id && !attackMode && inList(MOVES, r, c));
 }
 function piecePointerMove(ev){
   if(!dragState) return;
-  if(!dragState.moved && Math.hypot(ev.clientX-dragState.x, ev.clientY-dragState.y) < 5) return;
+  if(!dragState.moved && Math.hypot(ev.clientX-dragState.x, ev.clientY-dragState.y) < dragState.thr) return;
   dragState.moved = true;
-  if(!dragState.clone){                            // 커서를 따라오는 반투명 클론
+  if(!dragState.clone){                            // 커서/손가락을 따라오는 반투명 클론
     const img = document.createElement('img');
-    img.className = 'dragclone';
+    img.className = 'dragclone' + (dragState.touch ? ' touch' : '');
     img.src = pieceSrc(dragState.pd.t, VIEW.yourColor);
     document.body.appendChild(img);
     dragState.clone = img;
   }
   dragState.clone.style.left = ev.clientX + 'px';
-  dragState.clone.style.top  = ev.clientY + 'px';
+  dragState.clone.style.top  = (ev.clientY - dragState.lift) + 'px';
+  const pt = dropPoint(ev), cell = boardCellFromEvent(pt);          // 놓일 칸 미리보기(골드 테두리)
+  let el = null;
+  if(cell && dropOk(dragState, cell)){
+    const hit = document.elementFromPoint(pt.clientX, pt.clientY);   // 클론은 pointer-events:none이라 그 아래 칸이 잡힘
+    el = hit && hit.closest ? hit.closest('#board .cell') : null;
+  }
+  if(el !== dragState.over){
+    if(dragState.over) dragState.over.classList.remove('dragover');
+    if(el) el.classList.add('dragover');
+    dragState.over = el;
+  }
 }
 function piecePointerUp(ev){
-  window.removeEventListener('pointermove', piecePointerMove);
-  window.removeEventListener('pointerup', piecePointerUp);
-  const ds = dragState; dragState = null;
-  if(ds && ds.clone) ds.clone.remove();
+  const ds = dragState, pt = dropPoint(ev);
+  dragEnd();
   if(!ds || !ds.moved) return;                     // 움직임 없으면 그냥 클릭(선택 유지)
-  const cell = boardCellFromEvent(ev); if(!cell) return;
+  const cell = boardCellFromEvent(pt); if(!cell || !dropOk(ds, cell)) return;   // 못 놓는 칸이면 제자리(선택 유지)
   const [r,c] = cell;
-  if(ds.setup){                                    // 배치: 내 진영 빈 땅·부쉬에 놓기
-    const [z0,z1] = VIEW.zone||[0,0];
-    const t = (VIEW.grid[r] && VIEW.grid[r][c]) ? VIEW.grid[r][c].t : 1;
-    if(r>=z0 && r<=z1 && (t===0 || t===3)) placePiece(r, c);
-    return;
-  }
-  if(SEL && SEL.id===ds.pd.id && !attackMode && inList(MOVES, r, c))
-    doMove(r, c);                                  // 합법 이동칸에 놓으면 이동
+  if(ds.setup) placePiece(r, c);                   // 배치: 내 진영 빈 땅·부쉬에 놓기
+  else doMove(r, c);                               // 플레이: 합법 이동칸에 놓으면 이동
 }
 
 // ---------- 리체스식 우클릭 주석: 화살표(드래그) / 원(제자리) ----------
@@ -223,6 +266,7 @@ function annPointerDown(ev){
   annDrag = { r:cell[0], c:cell[1] };
   window.addEventListener('pointermove', annPointerMove);
   window.addEventListener('pointerup', annPointerUp);
+  window.addEventListener('pointercancel', annPointerUp);
 }
 function annPointerMove(ev){
   if(!annDrag) return;
@@ -233,7 +277,9 @@ function annPointerMove(ev){
 function annPointerUp(ev){
   window.removeEventListener('pointermove', annPointerMove);
   window.removeEventListener('pointerup', annPointerUp);
-  const d = annDrag; annDrag = null; if(!d) return;
+  window.removeEventListener('pointercancel', annPointerUp);
+  const d = annDrag; annDrag = null;
+  if(!d || ev.type === 'pointercancel'){ drawAnnotations(); return; }   // 취소면 그리던 것만 지움
   const cell = boardCellFromEvent(ev); if(!cell){ drawAnnotations(); return; }
   if(cell[0]===d.r && cell[1]===d.c){                 // 제자리 = 원 토글
     const k = d.r+','+d.c;
@@ -320,13 +366,20 @@ function barrageLine(tr,tc){
   return out;
 }
 
-function playFx(){
-  if(!VIEW.fx || VIEW.fx.seq === lastFx) return;
-  lastFx = VIEW.fx.seq;
-  const tp = VIEW.fx.type;
+function playFx(fx){                                // fx = 서버 fx 객체(폴링 VIEW.fx 또는 액션 응답)
+  if(!fx || fx.seq === lastFx) return;
+  lastFx = fx.seq;
+  const tp = fx.type;
   if(soundOn) (SND[tp]||SND.move)();
+  if(fxOn() && FXMAIN){                              // 파티클 레이어(캔버스) — 켜져 있으면 CSS 연출 대신
+    const cells = fx.cells || [];
+    const from = fxOrigin(tp, cells); FX_LAST = null;
+    const found = tp==='scan' ? cells.filter(([r,c])=>{ const p=VIEW.grid[r] && VIEW.grid[r][c] && VIEW.grid[r][c].p; return p && p.o!==VIEW.yourColor; }) : null;
+    FXMAIN.play(tp, cells, from, found);
+    return;
+  }
   if(['capture','kill','fire','barrage'].includes(tp)){
-    VIEW.fx.cells.forEach(([r,c])=>{
+    fx.cells.forEach(([r,c])=>{
       const el = boardEl.children[r*12+c];
       if(!el) return;
       const b = document.createElement('div'); b.className='boom'; el.appendChild(b); setTimeout(()=>b.remove(), 520);
@@ -350,9 +403,30 @@ function playFx(){
     }
   }
   if(tp==='scan'){                                   // 스캔: 2×2 보라 플래시
-    VIEW.fx.cells.forEach(([r,c])=>{ const el=boardEl.children[r*12+c]; if(!el) return;
+    fx.cells.forEach(([r,c])=>{ const el=boardEl.children[r*12+c]; if(!el) return;
       const fl=document.createElement('div'); fl.className='scanflash'; el.appendChild(fl); setTimeout(()=>fl.remove(),500); });
   }
+}
+
+// 사격 이펙트의 출발점: 내가 쏜 거면 FX_LAST, 상대가 쐈으면 머즐 노출로 보이는 적 비숍/전차 중 표적과 맞는 것
+function fxOrigin(tp, cells){
+  if(!(tp==='fire' || tp==='barrage' || tp==='kill') || !cells.length) return null;
+  if(FX_LAST) return FX_LAST.from;
+  let want = tp==='fire' ? ['B'] : ['R'];
+  if(tp==='kill'){                                                        // 킹 처치: 킬로그의 수단으로 판별(멜리면 탄도선 없음)
+    const last = (VIEW.feed||[]).slice(-1)[0];
+    if(!last || last.method==='melee') return null;
+    want = last.method==='artillery' ? ['B'] : ['R'];
+  }
+  const to = cells[cells.length-1], me = VIEW.yourColor;
+  let best=null, bd=99;
+  VIEW.grid.forEach((row,r)=>row.forEach((cell,c)=>{
+    const p = cell.p; if(!p || p.o===me || !want.includes(p.t)) return;
+    const dr=Math.abs(r-to[0]), dc=Math.abs(c-to[1]);
+    const ok = p.t==='B' ? (dr*dr+dc*dc <= 25) : ((dr===0 || dc===0) && Math.max(dr,dc) <= 4);
+    const d = Math.max(dr,dc); if(ok && d<bd){ bd=d; best=[r,c]; }
+  }));
+  return best;
 }
 
 // 초대 링크의 기준 주소 — '이 페이지를 연 그 주소'를 그대로 쓴다.
@@ -422,10 +496,16 @@ function renderOverlay(){
   else if(solo){ big=`🏳 ${VIEW.winner==='W'?'백':'흑'} 승리`; sub='혼자 테스트'; snd='victory'; }
   else if(VIEW.winner===VIEW.yourColor){ big='🏆 승리!'; sub='적 왕 처치'; snd='victory'; }
   else { big='💀 패배'; sub='내 왕이 당했다'; snd='defeat'; }
+  if(VIEW.ratingDelta){                                  // 레이팅전 정산 결과(서버가 한 번만 계산)
+    const d = VIEW.ratingDelta.delta;
+    sub += ` · 🏅 레이팅 ${d>0?'+':''}${d} → ${VIEW.ratingDelta.rating}`;
+    fetchMe();                                           // 레일 프로필의 레이팅·티어 갱신
+  }
   ov.innerHTML = `<div class="big">${big}</div><div class="sub">${sub}</div>`;
   const b = document.createElement('button'); b.className='big'; b.textContent='↻ 재대결';
   b.onclick = rematch; ov.appendChild(b);
   ac(); if(soundOn) (SND[snd]||function(){})();
+  if(fxOn() && FXMAIN){ FXMAIN.resize(); if(snd==='victory') FXMAIN.victory(); else if(snd==='defeat') FXMAIN.defeat(); else FXMAIN.drawend(); }
 }
 
 function renderPromo(me, solo){
@@ -451,9 +531,14 @@ function render(){
   const solo = VIEW.solo || COLOR==='solo';
   const wi = document.getElementById('whoami');
   if(solo) wi.textContent = `🧪 혼자 테스트 · 지금 ${me==='W'?'백':'흑'} 차례`;
-  else wi.textContent = COLOR==='spectator' ? '👀 관전자' : `당신은 ${COLOR==='W'?'백(아래)':'흑(위)'} 진영`;
+  else if(COLOR==='spectator') wi.textContent = '👀 관전자';
+  else wi.textContent = `${VIEW.myName||'나'}${VIEW.myRating!=null?` (${VIEW.myRating})`:''} · ${COLOR==='W'?'백(아래)':'흑(위)'}`;
   wi.style.background = solo ? '#4a3a1e' : (COLOR==='W' ? '#22406b' : (COLOR==='B'?'#6b2222':'#333'));
-  document.getElementById('roomtag').textContent = ROOM ? `방 ${ROOM}` : '';
+  let rttxt = ROOM ? `방 ${ROOM}` : '';
+  if(!solo && COLOR!=='spectator' && VIEW.oppName && (VIEW.bothJoined || VIEW.oppName!=='상대'))
+    rttxt += (rttxt?' · ':'') + `vs ${VIEW.oppName}${VIEW.oppRating!=null?` (${VIEW.oppRating})`:''}`;
+  if(VIEW.rated) rttxt += ' · 🏅 레이팅전';
+  document.getElementById('roomtag').textContent = rttxt;
 
   renderInvite();
 
@@ -617,7 +702,8 @@ function render(){
         newPos[cell.p.id] = [r,c];
         const pv = prevPos[cell.p.id];
         if(pv && (pv[0]!==r || pv[1]!==c)){
-          const dy=(pv[0]-r)*42, dx=(pv[1]-c)*42;
+          const cw = boardEl.clientWidth/12;               // 실제 칸 크기(모바일 축소 대응)
+          const dy=(pv[0]-r)*cw, dx=(pv[1]-c)*cw;
           img.style.transition='none';
           img.style.transform=`translate(${dx}px,${dy}px)`;
           requestAnimationFrame(()=>{ img.style.transition=''; img.style.transform=''; });
@@ -681,7 +767,8 @@ function render(){
   prevPos = newPos;
   prevFog = newFog;
   paintAim();
-  playFx();
+  if(PENDING_FX){ playFx(PENDING_FX); PENDING_FX = null; }   // 내 액션 연출(봇 응수에 덮여도 유지)
+  playFx(VIEW.fx);
 }
 
 function paintAim(){
@@ -715,27 +802,183 @@ function renderCoords(){
   }
 }
 
-// 규칙 모달
-function fillHelpPieces(){
-  const box = document.getElementById('helpPieces'); if(box.childElementCount) return;
-  const rows = [
-    ['P','폰 — 앞·좌·우·앞대각 1칸(첫수 2칸), 후퇴 불가. 수비 라인.'],
-    ['N','나이트 — 체스와 동일, 시야 2칸. 정찰의 핵심(비숍의 천적).'],
-    ['B','비숍(저격수) — 대각 2 이동 / 단일 저격(사거리 5, 시야에 든 적만·쏘면 노출).'],
-    ['R','전차(룩) — 상하좌우 2칸 이동 / 돌파 사격(십자 4칸, 숲에 막힘).'],
-    ['Q','퀸(정찰) — 8방향 2칸 이동 / 스캔(맨해튼 6 안 2×2를 ~2턴 감시, 상대도 봄).'],
-    ['K','킹 — 8방향 1칸 이동, 시야 3칸(정찰). 목숨 1. 이걸 지키고, 적 것을 노려라.'],
-  ];
-  box.innerHTML = rows.map(([t,desc])=>
-    `<div class="hp"><img src="${pieceSrc(t,COLOR==='B'?'B':'W')}"><span>${desc}</span></div>`).join('');
+// 홈 랜딩용 장식 보드(정적·비상호작용) — '한 판 진행 중' 스냅샷:
+// 백 군대가 전진(나이트 정찰), 안개 가장자리에 적 2기 포착, 위쪽은 안개, 지형 몇 개.
+function renderHomeBoard(){
+  const el = document.getElementById('homeBoard'); if(!el || el.childElementCount) return;
+  const W = { '11_2':'R','11_4':'Q','11_6':'K','11_7':'B','11_9':'R',   // 뒤쪽(킹 포함)
+              '9_3':'P','9_6':'P','8_2':'P','8_5':'P','7_8':'P',        // 전진한 폰
+              '7_4':'N','6_7':'N','9_8':'B' };                          // 정찰 나이트·비숍
+  const B = { '5_5':'N','6_3':'P' };                                    // 안개 밖으로 포착된 적 2기
+  const forest = new Set(['3_9','4_10','2_3','8_1']);
+  const bush = new Set(['10_5','2_7']);
+  const mv = new Set(['6_7','7_4']);                                    // 최근 이동(정찰) 강조
+  let html='';
+  for(let r=0;r<12;r++) for(let c=0;c<12;c++){
+    const dark=(r+c)%2; let cls='hc '+(dark?'d':'l'); let inner=''; const k=r+'_'+c;
+    // 실제 게임과 동일한 지형 아트(SVG) + 기물 스타일
+    if(forest.has(k)) inner='<div class="terrain">'+forestTile((r+c)%2)+'</div>';
+    else if(bush.has(k)) inner='<div class="terrain bushfront">'+bushTile(r,c)+'</div>';
+    if(W[k]) inner+='<img class="piece" src="'+pieceSrc(W[k],'W')+'">';
+    else if(B[k]) inner+='<img class="piece" src="'+pieceSrc(B[k],'B')+'">';
+    if(r<=4) cls+=' fog';                                               // 위쪽 안개(적 진영·지형은 어둡게 보임)
+    if(mv.has(k)) cls+=' mv';
+    html+='<div class="'+cls+'">'+inner+'</div>';
+  }
+  el.innerHTML = html;
 }
-function openHelp(){ fillHelpPieces(); document.getElementById('helpModal').style.display='flex'; }
+
+// 규칙 요약 모달(입장 시 1회 자동 + 상단 ❔규칙)
+function openHelp(){ document.getElementById('helpModal').style.display='flex'; }
 function closeHelp(){ document.getElementById('helpModal').style.display='none'; }
+
+// ---------- 기물 설명 보기(상세 가이드 · 설정에서 염) ----------
+const OB_C = 'W';   // 가이드 기물 색(백)
+let guideStops = [];   // 데모 애니메이션 정지 함수들
+
+function obMiniGrid(cols, rows, cellPx, decorate){
+  const g = document.createElement('div'); g.className = 'obGrid';
+  g.style.gridTemplateColumns = `repeat(${cols}, ${cellPx}px)`;
+  for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
+    const d = document.createElement('div');
+    d.className = 'obCell ' + ((r+c)%2 ? 'dark':'light');
+    d.style.width = d.style.height = cellPx+'px';
+    d.dataset.rc = r+'_'+c;
+    if(decorate) decorate(d, r, c);
+    g.appendChild(d);
+  }
+  return g;
+}
+// 기물 움직임 데모(미니판): 평소엔 정지 상태로 기물만 표시.
+// 마우스를 올리면(모바일은 탭) 그 카드만 재생 — 행마(예시 1~2수, 반복) → 공격(실제로 적을 잡는 장면) 순.
+// spec.moves = 예시 이동(상대좌표 1~2개), spec.capture = {mode:'move'|'shot', ...}.
+let guideActive = null;   // 동시에 하나만 재생(시선 분산 방지)
+function pieceDemo(stage, spec){
+  const SZ=7, C=3, CELL=24;
+  stage.classList.add('gd');
+  const grid = obMiniGrid(SZ, SZ, CELL); grid.classList.add('obDemo','pdemo'); stage.appendChild(grid);
+  const cellAt=(r,c)=> (r>=0&&r<SZ&&c>=0&&c<SZ) ? grid.querySelector(`[data-rc="${r}_${c}"]`) : null;
+  const p=document.createElement('img'); p.className='demop'; p.src=pieceSrc(spec.t,'W');
+  p.style.width=p.style.height=CELL+'px'; grid.appendChild(p);
+  const foes=[];   // 적 기물(검은 폰) 풀 — 재사용
+  const foeAt=(i)=>{ while(foes.length<=i){ const e=document.createElement('img'); e.className='demoe';
+      e.src=pieceSrc('P','B'); e.style.width=e.style.height=CELL+'px'; e.style.display='none'; grid.appendChild(e); foes.push(e); } return foes[i]; };
+  const place=(el,r,c)=>{ el.style.transform=`translate(${c*CELL}px, ${r*CELL}px)`; };
+  const A=(rc)=>[C+rc[0], C+rc[1]];   // 상대→절대 좌표
+
+  // ---- 프레임 타임라인 ----
+  const HOME=[C,C];
+  const frames=[{p:HOME}];                                   // [0] 정지(휴식)
+  (spec.moves||[]).forEach(mv=>{ const d=A(mv);           // 행마: 예시 칸으로 슬라이드(점 표시) → 제자리
+    frames.push({p:d, dot:[d]});
+    frames.push({p:HOME});
+  });
+  // 단계별 프레임: move=이동 포획(공격) / shot=사격(능력: 비숍 저격·전차 돌파) / scan=정찰(능력: 퀸)
+  const addPhase=(ph)=>{
+    if(!ph) return;
+    if(ph.mode==='move'){
+      const e=A(ph.enemy);
+      frames.push({p:HOME, foes:[e]});                     // 적 등장
+      frames.push({p:e, foes:[e], hit:[e]});               // 적 위로 이동(겹침)=잡기
+      frames.push({p:e, foes:[]});                         // 적 제거(포획 완료)
+      frames.push({p:HOME});                               // 리셋
+    } else if(ph.mode==='shot'){
+      const es=(ph.enemies||[]).map(A), path=(ph.path||[]).map(A);
+      frames.push({p:HOME, foes:es});                          // 적 포착
+      frames.push({p:HOME, foes:es, beam:path});               // 조준·발사선
+      frames.push({p:HOME, foes:[], hit:es, exposed:true});    // 명중=적 제거 + 내 위치 노출
+      frames.push({p:HOME});                                   // 리셋
+    } else if(ph.mode==='scan'){
+      const area=(ph.area||[]).map(A), hidden=A(ph.hidden);
+      frames.push({p:HOME, fog:area});                     // 안개에 가려진 2×2(적 안 보임)
+      frames.push({p:HOME, scan:area, foes:[hidden]});     // 스캔 발동 → 숨은 적 발각
+      frames.push({p:HOME, scan:area, foes:[hidden]});     // 감시 유지(내 위치 노출 없음)
+      frames.push({p:HOME});                               // 리셋
+    }
+  };
+  addPhase(spec.capture);   // 공격: 모든 기물 공통(이동해서 포획)
+  addPhase(spec.ability);   // 능력: 비숍·전차·퀸만
+
+  const CLS=['hmv','aim','hit','scan','beam','fog'];
+  const apply=(f)=>{
+    grid.querySelectorAll('.obCell').forEach(d=>d.classList.remove(...CLS));
+    place(p, f.p[0], f.p[1]);
+    p.classList.toggle('exposed', !!f.exposed);
+    (f.dot ||[]).forEach(rc=>{const el=cellAt(rc[0],rc[1]); if(el)el.classList.add('hmv');});
+    (f.beam||[]).forEach(rc=>{const el=cellAt(rc[0],rc[1]); if(el)el.classList.add('beam');});
+    (f.hit ||[]).forEach(rc=>{const el=cellAt(rc[0],rc[1]); if(el)el.classList.add('hit');});
+    (f.scan||[]).forEach(rc=>{const el=cellAt(rc[0],rc[1]); if(el)el.classList.add('scan');});
+    (f.fog ||[]).forEach(rc=>{const el=cellAt(rc[0],rc[1]); if(el)el.classList.add('fog');});
+    foes.forEach(e=>e.style.display='none');
+    (f.foes||[]).forEach((rc,idx)=>{const e=foeAt(idx); place(e,rc[0],rc[1]); e.style.display='';});
+  };
+  const rest=()=>apply(frames[0]);
+  rest();
+
+  let iv=null, idx=0;
+  const stop=()=>{ if(iv){clearInterval(iv); iv=null;} stage.classList.remove('playing');
+    if(guideActive===stop) guideActive=null; rest(); };
+  const start=()=>{ if(iv) return;
+    if(guideActive && guideActive!==stop) guideActive();     // 다른 카드 재생 중이면 정지
+    guideActive=stop; stage.classList.add('playing'); apply(frames[0]); idx=1;
+    iv=setInterval(()=>{ apply(frames[idx % frames.length]); idx++; }, 850);
+  };
+  stage.addEventListener('mouseenter', start);
+  stage.addEventListener('mouseleave', stop);
+  stage.addEventListener('click', start);        // 터치/클릭도 재생(한 번에 하나만)
+  return stop;
+}
+const PIECE_GUIDE = [
+  {t:'P', nm:'폰 (Pawn)', move:'앞·좌·우·앞대각 1칸(첫 수는 앞으로 2칸). <b>후퇴 불가</b>.',
+   atk:'좌·우·앞대각으로 맞닿은 적을 잡음. 끝 줄 도달 시 <b>승격</b>.',
+   moves:[[-2,0],[0,-1]], capture:{mode:'move', enemy:[-1,1]}},
+  {t:'N', nm:'나이트 (Knight)', move:'체스와 동일한 L자(2+1). 지형만 없으면 <b>건너뜀</b>.',
+   atk:'도착 칸의 적을 잡음. <b>시야 3칸</b>(킹과 같음) — 정찰의 핵심(비숍의 천적).',
+   moves:[[-2,1],[1,2]], capture:{mode:'move', enemy:[-2,-1]}},
+  {t:'B', nm:'비숍 (Bishop · 저격수)', move:'대각선 최대 2칸.',
+   atk:'대각선 이동 경로의 적을 잡음(움직여서 포획).',
+   abil:'<b>단일 타일 저격</b>(사거리 5, 시야에 든 적만). 쏘면 <b>내 위치 노출</b>.',
+   moves:[[-2,2],[2,-2]], capture:{mode:'move', enemy:[-1,1]},
+   ability:{mode:'shot', enemies:[[-3,-3]], path:[[-1,-1],[-2,-2],[-3,-3]]}},
+  {t:'R', nm:'전차 (Rook · 룩)', move:'상하좌우 최대 2칸.',
+   atk:'상하좌우 이동 경로의 적을 잡음(움직여서 포획).',
+   abil:'<b>십자 돌파 사격</b>(4칸 관통, 숲에 막힘). 부쉬 속 적도 수색. 쏘면 <b>노출</b>.',
+   moves:[[-2,0],[0,2]], capture:{mode:'move', enemy:[0,-2]},
+   ability:{mode:'shot', enemies:[[-2,0],[-3,0]], path:[[-1,0],[-2,0],[-3,0]]}},
+  {t:'Q', nm:'퀸 (Queen · 정찰)', move:'8방향 최대 2칸.',
+   atk:'이동 경로의 적을 잡음(움직여서 포획).',
+   abil:'<b>스캔</b> — 지정한 2×2를 감시해 <b>안개·부쉬에 숨은 적</b>을 발각. <b>내 위치는 노출 안 됨</b>.',
+   moves:[[-2,-2],[0,2]], capture:{mode:'move', enemy:[-2,0]},
+   ability:{mode:'scan', area:[[-2,1],[-2,2],[-1,1],[-1,2]], hidden:[-2,2]}},
+  {t:'K', nm:'킹 (King)', move:'8방향 1칸.',
+   atk:'맞닿은 적을 잡음. <b>시야 3칸</b>. 목숨 1 — 지키는 게 최우선, 적 킹 처치 시 <b>승리</b>.',
+   moves:[[-1,0],[0,1]], capture:{mode:'move', enemy:[-1,-1]}},
+];
+function buildGuide(){
+  guideStops.forEach(fn=>fn()); guideStops=[]; guideActive=null;
+  document.getElementById('gDemos').innerHTML='';                 // 상단 데모 영역은 비움(각 카드에 통합)
+  const box = document.getElementById('gPieces'); box.innerHTML='';
+  PIECE_GUIDE.forEach(spec=>{
+    const card=document.createElement('div'); card.className='gp2';
+    const st=document.createElement('div'); st.className='gd';
+    const tx=document.createElement('div'); tx.className='gpx';
+    tx.innerHTML=`<b>${spec.nm}</b>
+      <div class="gpl"><span class="gtag">행마</span><span>${spec.move}</span></div>
+      <div class="gpl"><span class="gtag atk">공격</span><span>${spec.atk}</span></div>`
+      + (spec.abil ? `<div class="gpl"><span class="gtag abil">능력</span><span>${spec.abil}</span></div>` : '');
+    card.append(st, tx); box.appendChild(card);
+    guideStops.push(pieceDemo(st, spec));
+  });
+}
+function openGuide(){ buildGuide(); document.getElementById('guide').style.display='flex'; }
+function closeGuide(){ guideStops.forEach(fn=>fn()); guideStops=[]; guideActive=null; document.getElementById('guide').style.display='none'; }
 
 document.getElementById('rematch').onclick = rematch;
 document.getElementById('helpBtn').onclick = openHelp;
 document.getElementById('helpClose').onclick = closeHelp;
 document.getElementById('helpModal').onclick = (e)=>{ if(e.target.id==='helpModal') closeHelp(); };
+document.getElementById('guideClose').onclick = closeGuide;
+document.getElementById('guide').onclick = (e)=>{ if(e.target.id==='guide') closeGuide(); };
 boardEl.oncontextmenu = (e)=>e.preventDefault();            // 우클릭 브라우저 메뉴 차단(주석용)
 boardEl.addEventListener('pointerdown', annPointerDown);   // 우클릭=주석(화살표/원) · 좌클릭=주석 지우기
 document.getElementById('copyBtn').onclick = ()=>{
@@ -759,8 +1002,7 @@ $('joinCode').addEventListener('keydown', (e)=>{ if(e.key==='Enter') joinByCode(
 // 뒤로: 메뉴 화면들은 홈으로, 설정만 열었던 곳(홈/게임)으로 복귀
 document.querySelectorAll('#botMenu .back, #joinMenu .back').forEach(b=> b.onclick = ()=> showScreen('home'));
 document.querySelectorAll('#settings .back').forEach(b=> b.onclick = closeSettings);
-// 설정 항목
-$('setPieces').onclick = openHelp;                          // 기물 설명 모달
+// 설정 항목 (기물 설명은 사이드바 [기물 설명]에 있음 → 설정에서는 제거)
 $('thDark').onclick    = ()=> applyTheme('dark');
 $('thLight').onclick   = ()=> applyTheme('light');
 $('setSound').onchange = (e)=>{ soundOn = e.target.checked; localStorage.setItem('fog_sound', soundOn?'1':'0'); if(soundOn){ ac(); SND.place&&SND.place(); } render(); };
@@ -768,18 +1010,214 @@ $('setBgm').onchange   = (e)=>{ ac(); setBgm(e.target.checked); };   // 배경�
 $('setVol').oninput    = (e)=>{ setMasterVol((+e.target.value)/100); };
 $('setVol').onchange   = ()=>{ if(soundOn){ ac(); SND.place&&SND.place(); } };   // 놓을 때 한 번 미리듣기
 $('setCb').onchange    = (e)=>{ applyCb(e.target.checked); render(); };          // 색약 모드
+$('setFxOn').onchange  = (e)=>{ localStorage.setItem('fog_fx', e.target.checked?'1':'0'); };   // 파티클 이펙트
+$('setFx').onclick     = openFxPreview;                                            // 이펙트 미리보기
+
+// 왼쪽 내비 레일 배선
+function setRailActive(which){   // 'play' | 'settings'
+  const p=$('railPlay2'), s=$('railSettings');
+  if(p) p.classList.toggle('active', which==='play');
+  if(s) s.classList.toggle('active', which==='settings');
+}
+$('railPlay').onclick = $('railPlay2').onclick = ()=>{ setRailActive('play'); if(ROOM) showGame(); else showScreen('home'); };
+$('railGuide').onclick    = openGuide;
+$('railBoard').onclick    = openLeaderboard;
+$('railFeedback').onclick = openFeedback;
+$('railSettings').onclick = ()=>{ setRailActive('settings'); openSettings(ROOM ? 'game' : 'home'); };
+
+// ---------- 계정 · 레이팅 (레일 하단 프로필) ----------
+// 회원이면 티어 기물 + 닉네임 + 레이팅, 게스트면 로그인 안내. 세션 토큰은 localStorage 'fog_session'.
+function renderProfile(){
+  const ava=$('railAva'), nk=$('railNick'), sub=$('railNickSub');
+  if(ME){
+    ava.innerHTML = `<img src="${pieceSrc(ME.tier,'W')}" alt="${TIER_KR[ME.tier]}" draggable="false">`;
+    nk.textContent = ME.name;
+    sub.innerHTML = `<span class="rt">${ME.rating}</span> · ${TIER_KR[ME.tier]}`;
+  }else{
+    ava.textContent = '🙂'; nk.textContent = nick() || '게스트'; sub.textContent = '로그인 · 회원가입';
+  }
+}
+async function fetchMe(){                       // 세션이 있으면 서버에서 내 프로필(현재 레이팅) 갱신
+  if(!session()){ ME=null; renderProfile(); return; }
+  try{ const r = await post('/me', {session: session()}); ME = r.ok ? r.user : null; }
+  catch(e){ ME = null; }
+  if(!ME) localStorage.removeItem('fog_session');   // 만료/무효 세션 정리
+  renderProfile();
+}
+let authMode = 'login';
+function openAuth(){
+  $('authModal').style.display='flex';
+  $('authForm').style.display = ME ? 'none' : '';
+  $('authProfile').style.display = ME ? '' : 'none';
+  $('authErr').textContent = '';
+  if(ME) renderProfileCard(); else setTimeout(()=>$('authName').focus(), 50);
+}
+function closeAuth(){ $('authModal').style.display='none'; }
+function setAuthMode(m){
+  authMode = m;
+  $('tabLogin').classList.toggle('on', m==='login'); $('tabSignup').classList.toggle('on', m==='signup');
+  $('authGoText').textContent = m==='login' ? '로그인' : '회원가입';
+  $('authPw').autocomplete = m==='login' ? 'current-password' : 'new-password';
+  $('authErr').textContent = '';
+}
+function renderProfileCard(){                   // 모달 안 프로필 카드: 티어·레이팅·전적·다음 티어까지
+  if(!ME) return;
+  $('profTier').src = pieceSrc(ME.tier,'W');
+  $('profName').textContent = ME.name;
+  $('profRating').textContent = `${ME.rating} · ${TIER_KR[ME.tier]}`;
+  $('profRec').textContent = `${ME.wins}승 ${ME.losses}패 ${ME.draws}무`;
+  const i = TIER_FLOORS.findIndex(([f,t])=>t===ME.tier);
+  const lo = TIER_FLOORS[i][0], next = i>0 ? TIER_FLOORS[i-1] : null;
+  if(next){
+    const pct = Math.max(0, Math.min(100, (ME.rating-lo)/(next[0]-lo)*100));
+    $('profBarFill').style.width = pct+'%';
+    $('profNext').textContent = `다음 티어 ${TIER_KR[next[1]]}(${next[0]})까지 ${next[0]-ME.rating}점`;
+  }else{ $('profBarFill').style.width='100%'; $('profNext').textContent='최고 티어 🏆'; }
+  renderTierLadder(ME.tier, ME.rating);
+  $('profRating').textContent = ME.rating + ' · ' + TIER_KR[ME.tier] + ' (' + tierRangeText(ME.tier) + ')';
+}
+// 티어 사다리: 6단계 기물 아이콘 + 레이팅 구간. 현재=골드 강조 · 지난 티어=흐리게 · 다음 티어=이름 강조
+const TIER_ASC = TIER_FLOORS.slice().reverse();          // [[500,'P'],[1000,'N'],...,[1900,'K']] 낮은 순
+function tierRangeText(t){
+  const i = TIER_ASC.findIndex(([f,x])=>x===t);
+  const lo = TIER_ASC[i][0], hi = i < TIER_ASC.length-1 ? TIER_ASC[i+1][0]-1 : null;
+  if(i===0) return '~' + hi;                            // 폰: 999 이하
+  return hi===null ? lo + '+' : lo + '~' + hi;
+}
+function renderTierLadder(curTier, rating){
+  const box = $('tierLadder'); if(!box) return;
+  const ci = TIER_ASC.findIndex(([f,x])=>x===curTier);
+  box.innerHTML = TIER_ASC.map(([f,t],i)=>{
+    const cls = i<ci ? 'done' : (i===ci ? 'cur' : (i===ci+1 ? 'next' : 'todo'));
+    return '<div class="tl-step '+cls+'" title="'+TIER_KR[t]+' '+tierRangeText(t)+'">'
+      + '<img src="'+pieceSrc(t,'W')+'" alt="'+TIER_KR[t]+'" draggable="false">'
+      + '<b>'+TIER_KR[t]+'</b><small>'+tierRangeText(t)+'</small>'
+      + (i===ci ? '<em>현재</em>' : (i===ci+1 ? '<em>다음</em>' : '')) + '</div>';
+  }).join('');
+}
+async function authSubmit(){
+  const name=$('authName').value.trim(), pw=$('authPw').value;
+  $('authErr').textContent='';
+  if(!/^\d{4}$/.test(pw)){ $('authErr').textContent='비밀번호는 숫자 4자리입니다.'; $('authPw').focus(); return; }
+  const r = await post(authMode==='login' ? '/login' : '/signup', {name, pw});
+  if(!r.ok){ $('authErr').textContent = r.msg || '실패했습니다.'; return; }
+  localStorage.setItem('fog_session', r.session); ME = r.user;
+  $('authPw').value='';
+  renderProfile(); closeAuth();
+}
+async function authLogout(){
+  await post('/logout', {session: session()});
+  localStorage.removeItem('fog_session'); ME=null; renderProfile(); closeAuth();
+}
+// ---------- 리더보드(레이팅 순위) ----------
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
+async function openLeaderboard(){
+  const m=$('lbModal'), body=$('lbBody');
+  m.style.display='flex'; body.innerHTML='<p class="note">불러오는 중…</p>';
+  let rows=[];
+  try{ rows=(await api('/leaderboard')).rows||[]; }catch(e){ body.innerHTML='<p class="note">불러오지 못했어요.</p>'; return; }
+  if(!rows.length){ body.innerHTML='<p class="note">아직 아무도 없어요 — 첫 회원이 되어 보세요!</p>'; return; }
+  const me = ME ? ME.name : null;
+  body.innerHTML = '<table class="lbTable"><thead><tr><th>#</th><th></th><th>닉네임</th><th>레이팅</th><th>전적</th></tr></thead><tbody>'
+    + rows.map(u=>'<tr class="'+(u.name===me?'me':'')+'"><td>'+u.rank+'</td>'
+      + '<td><img src="'+pieceSrc(u.tier,'W')+'" alt="'+TIER_KR[u.tier]+'" title="'+TIER_KR[u.tier]+'" draggable="false"></td>'
+      + '<td>'+escapeHtml(u.name)+(u.name===me?' <small>(나)</small>':'')+'</td><td><b>'+u.rating+'</b></td>'
+      + '<td>'+u.wins+'승 '+u.losses+'패 '+u.draws+'무</td></tr>').join('')
+    + '</tbody></table>';
+}
+function closeLeaderboard(){ $('lbModal').style.display='none'; }
+$('lbClose').onclick = closeLeaderboard;
+$('lbModal').onclick = (e)=>{ if(e.target.id==='lbModal') closeLeaderboard(); };
+// ---------- 이펙트 미리보기(설정 → 🎬) : 8×8 미니 보드 위에서 연출 재생 ----------
+let FXPREV = null;
+function openFxPreview(){
+  const m=$('fxModal'), stage=$('fxStage'), btns=$('fxBtns');
+  m.style.display='flex';
+  if(!FXPREV && window.FxLayer){
+    const grid = obMiniGrid(8, 8, 36); grid.classList.add('obDemo'); stage.appendChild(grid);
+    FXPREV = new FxLayer(stage, grid, {border:2, cols:8});
+    const demos = [
+      ['포획',    'capture', ()=>FXPREV.play('capture', [[3,4]])],
+      ['저격',    'fire',    ()=>FXPREV.play('fire', [[1,6]], [6,1])],
+      ['돌파',    'barrage', ()=>FXPREV.play('barrage', [[4,3],[4,4],[4,5],[4,6]], [4,2])],
+      ['스캔',    'scan',    ()=>FXPREV.play('scan', [[2,4],[2,5],[3,4],[3,5]], null, [[2,5]])],
+      ['킹 처치', 'kill',    ()=>FXPREV.play('kill', [[3,4]], [7,0])],
+      ['승리',    'victory', ()=>FXPREV.victory()],
+      ['패배',    'defeat',  ()=>FXPREV.defeat()],
+      ['무승부',  'drawend', ()=>FXPREV.drawend()],
+    ];
+    demos.forEach(([label, snd, fn])=>{
+      const b=document.createElement('button'); b.className='seg-b'; b.textContent=label;
+      b.onclick=()=>{ FXPREV.resize(); fn(); if(soundOn){ ac(); (SND[snd]||function(){})(); } };
+      btns.appendChild(b);
+    });
+  }
+  if(FXPREV) FXPREV.resize();
+}
+function closeFxPreview(){ $('fxModal').style.display='none'; if(FXPREV) FXPREV.clear(); }
+$('fxClose').onclick = closeFxPreview;
+$('fxModal').onclick = (e)=>{ if(e.target.id==='fxModal') closeFxPreview(); };
+// ---------- 개발자 피드백(레일 💬) ----------
+function openFeedback(){
+  $('fbModal').style.display='flex'; $('fbForm').style.display=''; $('fbDone').style.display='none';
+  $('fbErr').textContent=''; setTimeout(()=>$('fbText').focus(), 50);
+}
+function closeFeedback(){ $('fbModal').style.display='none'; }
+async function sendFeedback(){
+  const message=$('fbText').value.trim(), category=$('fbCat').value;
+  $('fbErr').textContent='';
+  if(message.length<3){ $('fbErr').textContent='내용을 조금 더 적어주세요(3자 이상).'; $('fbText').focus(); return; }
+  $('fbSend').disabled=true;
+  let r;
+  try{ r = await post('/feedback', {category, message, session: session(), name: nick(), room: ROOM||'', ua: navigator.userAgent.slice(0,200)}); }
+  catch(e){ r = {ok:false, msg:'보내지 못했어요. 잠시 후 다시 시도해 주세요.'}; }
+  $('fbSend').disabled=false;
+  if(!r.ok){ $('fbErr').textContent = r.msg || '보내지 못했어요.'; return; }
+  $('fbText').value=''; $('fbCount').textContent='0 / 1000';
+  $('fbForm').style.display='none'; $('fbDone').style.display='';
+  setTimeout(closeFeedback, 1800);
+}
+$('fbClose').onclick = closeFeedback;
+$('fbModal').onclick = (e)=>{ if(e.target.id==='fbModal') closeFeedback(); };
+$('fbSend').onclick = sendFeedback;
+$('fbText').addEventListener('input', e=>{ $('fbCount').textContent = e.target.value.length + ' / 1000'; });
+$('railUser').onclick = openAuth;
+$('authClose').onclick = closeAuth;
+$('authModal').onclick = (e)=>{ if(e.target.id==='authModal') closeAuth(); };
+$('tabLogin').onclick = ()=>setAuthMode('login');
+$('tabSignup').onclick = ()=>setAuthMode('signup');
+$('authGo').onclick = authSubmit;
+$('authLogout').onclick = authLogout;
+['authName','authPw'].forEach(id=>$(id).addEventListener('keydown', e=>{ if(e.key==='Enter') authSubmit(); }));
+$('authPw').addEventListener('input', e=>{ e.target.value = e.target.value.replace(/\D/g,'').slice(0,4); });   // 숫자 4자리만
+renderProfile(); setRailActive('play');
+
+// Material 리플(탭 파문) — 버튼·메뉴 카드·세그먼트에 파문 효과
+document.addEventListener('pointerdown', (e)=>{
+  const el = e.target.closest('button, .menu-btn');
+  if(!el || el.disabled) return;
+  const r = el.getBoundingClientRect(), s = Math.max(r.width, r.height);
+  const rip = document.createElement('span'); rip.className = 'rip';
+  rip.style.width = rip.style.height = s + 'px';
+  rip.style.left = (e.clientX - r.left - s/2) + 'px';
+  rip.style.top  = (e.clientY - r.top  - s/2) + 'px';
+  el.appendChild(rip); setTimeout(()=> rip.remove(), 500);
+});
 
 (async function main(){
   applyTheme(localStorage.getItem('fog_theme') || 'dark');
   applyCb(localStorage.getItem('fog_cb') === '1');
+  fetchMe();                                                // 로그인 세션이 있으면 레일 프로필(레이팅·티어) 표시
   renderCoords();
+  renderHomeBoard();
   setInterval(poll, 900);
   const hash = (location.hash || '').replace('#','');
   if(hash){                                                 // 초대 링크로 들어온 경우 → 바로 그 방
     ROOM = hash;
     await join(); showGame(); await poll();
-    if(!localStorage.getItem('fog_help_seen')){ openHelp(); localStorage.setItem('fog_help_seen','1'); }
   }else{                                                    // 그 외 → 시작 메뉴
     showScreen('home');
   }
+  // 첫 방문이면 '규칙 요약' 카드 하나만 자동으로(팝업은 최대 1개). 기물 상세는 설정 → 기물 설명 보기.
+  if(!localStorage.getItem('fog_help_seen')){ openHelp(); localStorage.setItem('fog_help_seen','1'); }
 })();

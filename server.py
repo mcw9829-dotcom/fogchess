@@ -23,15 +23,19 @@ import threading
 from urllib.parse import urlparse, parse_qs
 
 from config import (PORT, CODE_ALPHABET, SEAT_TIMEOUT, SETUP_SECONDS, USE_PERLIN, ROOM_TTL,
-                    TURN_SECONDS, MAX_MISSES, BOT_MIN_THINK)
+                    TURN_SECONDS, MAX_MISSES, BOT_MIN_THINK, BOT_RATED, BOT_RATING, DISCONNECT_FORFEIT)
 from game_map import FORESTS, RIVERS, BUSHES, terrain_to_ascii
 from pieces import (new_game, legal_moves, fire_cells, fire_range, barrage_reach,
                     apply_move, apply_fire, apply_barrage, apply_place, autoplace,
                     player_view, advance_turn, apply_promote, apply_resign,
-                    scan_cells, apply_scan, time_out)
+                    scan_cells, apply_scan, time_out, SIDE_KR)
 import bot
+import accounts
 
 BOT_TOKEN = '__bot__'   # 컴퓨터(봇) 좌석 토큰
+MAX_BODY = 64 * 1024    # 요청 본문 상한(바이트) — 게임 액션은 수백 바이트면 충분
+FB_LAST = {}            # 피드백 도배 방지: ip -> 마지막 전송 시각
+FB_COOLDOWN = 10        # 같은 IP는 이 시간(초)에 한 번만
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 lock = threading.Lock()
@@ -46,8 +50,70 @@ def new_room(code):
             'seats': {'W': None, 'B': None},   # color -> token
             'tokens': {},                       # token -> color ('solo'면 양쪽 조작)
             'seen': {},                         # token -> 마지막 응답 시각
+            'names': {},                        # color -> 표시 닉네임
+            'users': {},                        # color -> 회원 id(로그인한 좌석만 — 레이팅 대상)
+            'ratings': {},                      # color -> 현재 레이팅(표시용 캐시)
+            'rated_done': False,                # 이 판의 레이팅 정산을 마쳤나(한 번만)
+            'rating_result': {},                # color -> {'delta', 'rating'} 정산 결과
             'solo': False,                      # 혼자 테스트(핫시트) 방인가
             'created': time.time()}
+
+
+def clean_name(s, fallback):
+    s = (s or '').strip()[:16]
+    return s if s else fallback
+
+
+def attach_user(room, color, data, fallback):
+    """세션 토큰이 유효하면 그 좌석을 회원과 연결(계정 닉네임·레이팅 표시, 레이팅전 대상).
+    아니면 게스트 닉네임만 기록."""
+    user = accounts.user_by_token(data.get('session'))
+    if user:
+        room['users'][color] = user['id']
+        room['ratings'][color] = user['rating']
+        room['names'][color] = user['name']
+    else:
+        room['users'].pop(color, None)
+        room['ratings'].pop(color, None)
+        room['names'][color] = clean_name(data.get('name'), fallback)
+
+
+def game_score(winner, color):
+    return 0.5 if winner == 'draw' else (1.0 if winner == color else 0.0)
+
+
+def is_rated(room):
+    """이 판이 레이팅전인가: 봇전=사람이 회원(BOT_RATED) / 친구전=양쪽 다 회원(다른 계정). 솔로는 아님."""
+    users = room.get('users', {})
+    if room.get('solo'):
+        return False
+    if room.get('bot'):
+        human = 'W' if room['bot'] == 'B' else 'B'
+        return bool(BOT_RATED and users.get(human))
+    return bool(users.get('W') and users.get('B') and users['W'] != users['B'])
+
+
+def settle_rating(room):
+    """게임이 끝났으면 딱 한 번 레이팅을 정산해 room['rating_result'][color] = {'delta', 'rating'} 에 둔다.
+    정산 실패(DB 오류 등)가 게임 진행을 막지 않도록 예외는 삼킨다."""
+    st = room['state']
+    if st['phase'] != 'over' or room.get('rated_done') or not st.get('winner') or not is_rated(room):
+        return
+    room['rated_done'] = True
+    users = room['users']
+    try:
+        if room.get('bot'):
+            human = 'W' if room['bot'] == 'B' else 'B'
+            bot_rating = BOT_RATING.get(room.get('botlevel', 'normal'), 1000)
+            res = accounts.record_vs_fixed(users[human], bot_rating, game_score(st['winner'], human))
+            room['rating_result'] = {human: res}
+            room['ratings'][human] = res['rating']
+        else:
+            res = accounts.record_result(users['W'], users['B'], game_score(st['winner'], 'W'))
+            room['rating_result'] = {'W': res['a'], 'B': res['b']}
+            room['ratings']['W'], room['ratings']['B'] = res['a']['rating'], res['b']['rating']
+    except Exception as e:
+        print('[rating] settle failed:', e)
 
 
 def effective_color(room, token):
@@ -139,6 +205,42 @@ def enforce_clock(room, now):
             guard += 1
 
 
+def sweep_rooms(now):
+    """주기 점검(아무도 폴링하지 않아도 진행): 턴 시계 강제 → 접속 끊김 DISCONNECT_FORFEIT초 이상이면 기권 → 정산.
+    솔로(핫시트)·봇 좌석은 제외. 양쪽 다 끊겼으면 더 오래 끊긴 쪽이 기권."""
+    for room in list(ROOMS.values()):
+        st = room['state']
+        if st['phase'] != 'play' or room.get('solo'):
+            continue
+        enforce_clock(room, now)                                # 미행동 3회 패배가 폴링 없이도 진행
+        if st['phase'] != 'play':
+            settle_rating(room)
+            continue
+        worst, worst_gap = None, 0.0
+        for color in ('W', 'B'):
+            tok = room['seats'].get(color)
+            if not tok or tok == BOT_TOKEN:
+                continue
+            gap = now - room['seen'].get(tok, room['created'])
+            if gap > DISCONNECT_FORFEIT and gap > worst_gap:
+                worst, worst_gap = color, gap
+        if worst:
+            st['log'].append(f"📵 {SIDE_KR[worst]} 접속 끊김 {int(worst_gap)}초 — 기권 처리")
+            apply_resign(st, worst)
+            settle_rating(room)
+
+
+def sweeper():
+    """5초마다 sweep_rooms (데몬 스레드). 예외가 나도 스레드는 죽지 않는다."""
+    while True:
+        time.sleep(5)
+        try:
+            with lock:
+                sweep_rooms(time.time())
+        except Exception as e:
+            print('[sweep] error:', repr(e))
+
+
 def state_response(room, color, now, reveal=False):
     """pieces.player_view + 방/네트워크 필드."""
     st = room['state']
@@ -158,6 +260,22 @@ def state_response(room, color, now, reveal=False):
     v['turnSeconds'] = TURN_SECONDS
     v['maxMisses'] = MAX_MISSES
     v['misses'] = dict(st.get('misses', {'W': 0, 'B': 0}))
+    # 표시 이름(내/상대). 솔로는 백/흑 라벨.
+    nm = room.get('names', {})
+    if color in ('W', 'B'):
+        v['myName'] = nm.get(color, '플레이어')
+        v['oppName'] = nm.get(opp, '상대')
+    else:
+        v['myName'] = None; v['oppName'] = None
+    # 레이팅: 게임이 끝났으면 정산(한 번만) → 내/상대 레이팅·이번 판 변동
+    settle_rating(room)
+    rt = room.get('ratings', {})
+    if room.get('bot') and BOT_RATED:
+        rt = dict(rt, **{room['bot']: BOT_RATING.get(room.get('botlevel', 'normal'), 1000)})
+    v['rated'] = is_rated(room)
+    v['myRating'] = rt.get(color) if color in ('W', 'B') else None
+    v['oppRating'] = rt.get(opp) if color in ('W', 'B') else None
+    v['ratingDelta'] = room.get('rating_result', {}).get(color) if color in ('W', 'B') else None
     return v
 
 
@@ -176,6 +294,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+        self._sent = True
 
     def _file(self, relpath, mime):
         try:
@@ -187,13 +306,34 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-Type', mime)
         self.send_header('Content-Length', str(len(body)))
+        # 정적 파일(html/js/css) 캐시 방지 — 갱신 즉시 반영(개발 중 '옛 파일' 혼동 제거)
+        self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
         self.end_headers()
         self.wfile.write(body)
+        self._sent = True
 
     def _room(self, code):
         return ROOMS.get((code or '').strip().upper())
 
     def do_GET(self):
+        self._safe(self._get)
+
+    def do_POST(self):
+        self._safe(self._post)
+
+    def _safe(self, fn):
+        """핸들러 예외가 '응답 없이 연결 끊김'으로 새지 않게 — 로그 남기고 JSON 500 응답."""
+        try:
+            fn()
+        except Exception as e:
+            print('[server] handler error:', repr(e))
+            if not getattr(self, '_sent', False):
+                try:
+                    self._json({'ok': False, 'msg': '서버 오류가 났습니다. 새로고침해 보세요.'}, 500)
+                except Exception:
+                    pass
+
+    def _get(self):
         u = urlparse(self.path)
         if u.path in ('/', '/index.html'):
             self._file('client.html', 'text/html; charset=utf-8')
@@ -201,13 +341,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if u.path == '/style.css':
             self._file('style.css', 'text/css; charset=utf-8')
             return
-        if u.path in ('/sound.js', '/game.js'):
+        if u.path in ('/sound.js', '/game.js', '/fx.js'):
             self._file(u.path.lstrip('/'), 'application/javascript; charset=utf-8')
             return
         if u.path.startswith('/img/'):
             name = os.path.basename(u.path)
             ext = os.path.splitext(name)[1].lower()
             self._file(os.path.join('img', name), STATIC_MIME.get(ext, 'application/octet-stream'))
+            return
+        if u.path == '/feedback':                              # 피드백 읽기(관리자): FOG_ADMIN_KEY 환경변수와 key= 일치 시
+            key = os.environ.get('FOG_ADMIN_KEY')
+            q0 = parse_qs(u.query)
+            if not key or q0.get('key', [''])[0] != key:
+                self._json({'error': 'forbidden'}, 403)
+                return
+            self._json({'rows': accounts.feedback_list(int(q0.get('limit', ['100'])[0] or 100))})
+            return
+        if u.path == '/leaderboard':                           # 레이팅 순위(공개)
+            self._json({'rows': accounts.leaderboard()})
             return
         q = parse_qs(u.query)
         token = q.get('token', [''])[0]
@@ -252,15 +403,51 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return
         self._json({'error': 'not found'}, 404)
 
-    def do_POST(self):
+    def _post(self):
         u = urlparse(self.path)
-        length = int(self.headers.get('Content-Length', 0))
+        try:
+            length = int(self.headers.get('Content-Length', 0) or 0)
+        except ValueError:
+            length = 0
+        if length > MAX_BODY:                                   # 본문 상한(메모리 남용 방지)
+            self._json({'ok': False, 'msg': '요청이 너무 큽니다.'}, 413)
+            return
         raw = self.rfile.read(length) if length else b'{}'
         try:
             data = json.loads(raw.decode('utf-8') or '{}')
         except Exception:
             data = {}
+        if not isinstance(data, dict):                          # 본문은 JSON 객체만 받는다
+            data = {}
         now = time.time()
+
+        # ── 계정(회원가입/로그인/로그아웃/내 정보) — 방 락 불필요(accounts가 자체 락) ──
+        if u.path in ('/signup', '/login'):
+            fn = accounts.signup if u.path == '/signup' else accounts.login
+            res, err = fn(data.get('name'), data.get('pw'))
+            self._json({'ok': res is not None, 'msg': err, **(res or {})})
+            return
+        if u.path == '/logout':
+            accounts.logout(data.get('session'))
+            self._json({'ok': True})
+            return
+        if u.path == '/me':
+            user = accounts.user_by_token(data.get('session'))
+            self._json({'ok': user is not None, 'user': user})
+            return
+        if u.path == '/feedback':                                   # 개발자 피드백 저장
+            ip = self.client_address[0] if self.client_address else '?'
+            if now - FB_LAST.get(ip, 0) < FB_COOLDOWN:
+                self._json({'ok': False, 'msg': '잠시 후 다시 보내주세요.'})
+                return
+            user = accounts.user_by_token(data.get('session'))
+            name = user['name'] if user else clean_name(data.get('name'), '')
+            ok, err = accounts.add_feedback(data.get('category'), data.get('message'), name or None,
+                                            user['id'] if user else None, data.get('room'), data.get('ua'))
+            if ok:
+                FB_LAST[ip] = now
+            self._json({'ok': ok, 'msg': err})
+            return
 
         if u.path == '/join':
             with lock:
@@ -276,6 +463,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     st['phase'] = 'play'
                     st['turn'] = 'W'
                     st['log'] = ['🧪 혼자 테스트 모드 — 양쪽을 번갈아 조작하세요.']
+                    room['names'] = {'W': clean_name(data.get('name'), '백'), 'B': '흑'}
                     ROOMS[code] = room
                     self._json({'room': code, 'token': ntok, 'color': 'solo'})
                     return
@@ -296,6 +484,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     bot.setup_and_ready(st, 'B')       # 봇은 즉시 배치+준비
                     st['deadline'] = time.time() + SETUP_SECONDS
                     st['log'] = ['🤖 컴퓨터와 대전 — 백(당신) 기물을 배치하고 [준비 완료]. 흑(컴퓨터)은 준비됨.']
+                    attach_user(room, 'W', data, '플레이어')          # 회원이면 계정 닉네임·레이팅전
+                    room['names']['B'] = '컴퓨터(' + room['botlevel'] + ')'
                     ROOMS[code] = room
                     self._json({'room': code, 'token': htok, 'color': 'W'})
                     return
@@ -308,12 +498,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     ROOMS[code] = room
                 elif token and token in room['tokens']:
                     room['seen'][token] = now
-                    self._json({'room': code, 'token': token, 'color': room['tokens'][token]})
+                    c = room['tokens'][token]
+                    if c in ('W', 'B'):
+                        attach_user(room, c, data, room['names'].get(c, '플레이어'))
+                    self._json({'room': code, 'token': token, 'color': c})
                     return
                 ntok = uuid.uuid4().hex
                 color = assign_seat(room, now, ntok)
                 room['tokens'][ntok] = color
                 room['seen'][ntok] = now
+                if color in ('W', 'B'):
+                    attach_user(room, color, data, '플레이어')
                 maybe_setup_timer(room)
                 self._json({'room': code, 'token': ntok, 'color': color})
             return
@@ -336,6 +531,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     enforce_clock(room, now)        # 마감 지난 턴은 먼저 자동으로 넘김
                 if act == 'rematch':
                     room['state'] = new_game()
+                    room['rated_done'] = False; room['rating_result'] = {}   # 새 판 = 새 정산
                     if room.get('solo'):
                         room['state']['phase'] = 'play'
                         room['state']['turn'] = 'W'
@@ -352,33 +548,40 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     ok, msg = apply_resign(st, color)
                     self._json({'ok': ok, 'msg': msg})
                     return
-                if act == 'place':
-                    ok, msg = apply_place(st, color, data['pid'], data['r'], data['c'])
-                elif act == 'autoplace':
-                    ok, msg = autoplace(st, color, data.get('mode', 'default'))
-                elif act == 'ready':
-                    if st['phase'] == 'setup':
-                        st['ready'][color] = bool(data.get('value', True))
-                        maybe_start(st)
-                        ok, msg = True, None
+                try:                                    # 필드 누락/타입 오류 → 연결 끊김 대신 JSON 오류
+                    if act == 'place':
+                        ok, msg = apply_place(st, color, data['pid'], data['r'], data['c'])
+                    elif act == 'autoplace':
+                        ok, msg = autoplace(st, color, data.get('mode', 'default'))
+                    elif act == 'ready':
+                        if st['phase'] == 'setup':
+                            st['ready'][color] = bool(data.get('value', True))
+                            maybe_start(st)
+                            ok, msg = True, None
+                        else:
+                            ok, msg = False, '배치 단계가 아닙니다.'
+                    elif st['phase'] != 'play':
+                        ok, msg = False, '아직 전투 단계가 아닙니다.'
+                    elif st['turn'] != color:
+                        ok, msg = False, '상대 턴입니다.'
+                    elif act == 'move':
+                        ok, msg = apply_move(st, color, data['pid'], data['r'], data['c'])
+                    elif act == 'fire':
+                        ok, msg = apply_fire(st, color, data['pid'], data['r'], data['c'])
+                    elif act == 'barrage':
+                        ok, msg = apply_barrage(st, color, data['pid'], data['r'], data['c'])
+                    elif act == 'scan':
+                        ok, msg = apply_scan(st, color, data['pid'], data['r'], data['c'])
+                    elif act == 'promote':
+                        ok, msg = apply_promote(st, color, data.get('choice'))
                     else:
-                        ok, msg = False, '배치 단계가 아닙니다.'
-                elif st['phase'] != 'play':
-                    ok, msg = False, '아직 전투 단계가 아닙니다.'
-                elif st['turn'] != color:
-                    ok, msg = False, '상대 턴입니다.'
-                elif act == 'move':
-                    ok, msg = apply_move(st, color, data['pid'], data['r'], data['c'])
-                elif act == 'fire':
-                    ok, msg = apply_fire(st, color, data['pid'], data['r'], data['c'])
-                elif act == 'barrage':
-                    ok, msg = apply_barrage(st, color, data['pid'], data['r'], data['c'])
-                elif act == 'scan':
-                    ok, msg = apply_scan(st, color, data['pid'], data['r'], data['c'])
-                elif act == 'promote':
-                    ok, msg = apply_promote(st, color, data.get('choice'))
-                else:
-                    ok, msg = False, '알 수 없는 동작.'
+                        ok, msg = False, '알 수 없는 동작.'
+                except (KeyError, TypeError, ValueError):
+                    ok, msg = False, '잘못된 요청입니다.'
+                fx_mine = None                                  # 내 액션의 fx(봇 응수 전 스냅샷)
+                if ok and st.get('fx') and st['fx'].get('actor') == color:
+                    f = st['fx']
+                    fx_mine = {'seq': f['seq'], 'type': f['type'], 'cells': [[r, c] for (r, c) in f['cells']]}
                 bot_moved, bot_spent, bot_lvl = False, 0.0, room.get('botlevel', 'normal')
                 if ok and room.get('bot'):
                     t0 = time.time()
@@ -390,7 +593,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             break
                         guard += 1
                     bot_spent = time.time() - t0
-                resp = {'ok': ok, 'msg': msg}
+                resp = {'ok': ok, 'msg': msg, 'fx': fx_mine}
             # ── 락 해제 후 ── 봇이 실제로 뒀으면 '최소 생각시간'까지 대기(다른 방/배치 안 막음)
             if bot_moved:
                 delay = BOT_MIN_THINK.get(bot_lvl, 1.0) - bot_spent
@@ -467,7 +670,9 @@ if __name__ == '__main__':
     ip = lan_ip()
     if ip:
         LAN_URL = f"http://{ip}:{PORT}/"
+    accounts.init_db()                                   # 계정/레이팅 DB 준비(fogchess.db, 없으면 생성)
     srv = ThreadingServer(('0.0.0.0', PORT), Handler)
+    threading.Thread(target=sweeper, daemon=True).start()   # 턴 시계·접속 끊김 기권 주기 점검
     print('=' * 54)
     print('  안개전장 체스 v4 서버 실행 중 (방/재접속/재대결)')
     print(f'  내 브라우저:  http://localhost:{PORT}')

@@ -17,7 +17,7 @@ import time
 import random
 
 from config import (N, VISION, BISHOP_RANGE, BISHOP_MOVE, ROOK_FIRE, QUEEN_MOVE,
-                    SCAN_RANGE, ZONE, BOT_HARD_BUDGET, BOT_EASY_BLUNDER)
+                    SCAN_RANGE, SCAN_DUR, ZONE, BOT_HARD_BUDGET, BOT_EASY_BLUNDER)
 from game_map import FORESTS, BUSHES, in_board
 import pieces
 from pieces import DIRS4, DIRS8
@@ -115,6 +115,7 @@ def _remembered(st, me):
 # 좁혀 들어간다. (부쉬는 시야로 못 뚫음 → 진입/포격/스캔으로만 확인)
 SCOUT_TTL = 5           # 비-부쉬 적진 칸을 이 턴 수 안에 봤으면 '확인됨'으로 침
 SWEEP_COOLDOWN = 8      # 포격/스캔으로 훑은 칸은 이 턴 수 동안 후보에서 제외(반복 낭비 방지)
+SCAN_SWEEP_TTL = 24     # 퀸 스캔으로 들여다본 칸(부쉬 포함)은 이 턴 수 동안 '수색 완료' — 같은 군락 되풀이 스캔 방지
 
 
 def _enemy_half(me):
@@ -144,6 +145,7 @@ def _candidates(st, me):
     seen = st.get('botscout', {}).get(me, {})
     entered = st.get('botenter', {}).get(me, set())
     swept = st.get('botswept', {}).get(me, {})
+    scanned = st.get('botscanned', {}).get(me, {})
     opp = 'B' if me == 'W' else 'W'
     z0, z1 = ZONE[opp]
     out = []
@@ -152,6 +154,8 @@ def _candidates(st, me):
             if (r, c) in FORESTS:
                 continue
             if now - swept.get((r, c), -999) <= SWEEP_COOLDOWN:
+                continue
+            if now - scanned.get((r, c), -999) <= SCAN_SWEEP_TTL:   # 스캔으로 이미 들여다본 칸
                 continue
             if (r, c) in BUSHES:
                 if (r, c) not in entered:
@@ -222,7 +226,7 @@ def _barrage_flush(st, me, cands):
                     break
                 reach += cw.get((r, c), 0.0)
                 swept.append((r, c))
-            if not blocked and reach >= 4.0 and (best is None or reach > best[0]):
+            if not blocked and reach >= 6.0 and (best is None or reach > best[0]):   # 부쉬 2곳급일 때만(노출·템포 비용)
                 best = (reach, p['id'], p['r'] + dr, p['c'] + dc, swept)
     if best:
         sw = st.setdefault('botswept', {}).setdefault(me, {})   # 쿨다운 기록(반복 포격 방지)
@@ -233,21 +237,32 @@ def _barrage_flush(st, me, cands):
 
 
 def _scan_hunt(st, me, cands):
-    """퀸 스캔으로 후보 2×2를 감시(부쉬·안개 뚫어 왕 노출 → 다음 턴 저격 가능). 후보 가중 높은 곳 우선."""
+    """퀸 스캔으로 후보 2×2를 감시(부쉬·안개 뚫어 왕 노출 → 다음 턴 저격/포획). 후보 가중 높은 곳 우선.
+    템포 보호(예전에 '매 턴 스캔만 하다 소극적'이 되던 원인 제거):
+      (1) 미수색 부쉬가 든 2×2만 스캔 — 왕이 숨을 만한 곳이 아니면 턴을 쓰지 않는다.
+      (2) 직전 스캔이 아직 살아있는 동안(SCAN_DUR)은 재스캔 안 함 — 감시가 겹치면 낭비."""
     q = next((p for p in _mine(st, me) if p['t'] == 'Q'), None)
     if not q:
+        return None
+    now = st['turnCount']
+    if now - st.get('botscan', {}).get(me, -999) < SCAN_DUR:
         return None
     cw = {(r, c): w for (r, c, w) in cands}
     best = None
     for (tr, tc) in pieces.scan_cells(st, q['id']):
         area = [(tr, tc), (tr, tc + 1), (tr + 1, tc), (tr + 1, tc + 1)]
+        if not any(cell in BUSHES and cell in cw for cell in area):    # 미수색 부쉬 없으면 스킵
+            continue
         reach = sum(cw.get(cell, 0.0) for cell in area)
         if best is None or reach > best[0]:
             best = (reach, tr, tc, area)
     if best and best[0] >= 4.0:
+        st.setdefault('botscan', {})[me] = now                          # 스캔 시각(재스캔 쿨다운)
         sw = st.setdefault('botswept', {}).setdefault(me, {})
+        sc = st.setdefault('botscanned', {}).setdefault(me, {})         # 들여다본 칸 = 오래 '수색 완료'
         for cell in best[3]:
-            sw[cell] = st['turnCount']
+            sw[cell] = now
+            sc[cell] = now
         return ('scan', q['id'], best[1], best[2])
     return None
 
@@ -391,18 +406,18 @@ def _core(st, me, view):
 
 def _decide(st, me, *, hunt, abilities, mm_budget, mm_quiesce, mm_remembered, blunder=0.0):
     """난이도 공통 결정 엔진. hunt=부쉬 수색/정찰, abilities=전차·퀸 소탕, mm_*=미니맥스 강도."""
-    if blunder and random.random() < blunder:                   # 쉬움: 가끔 무작위 실수
-        moves = _gen_moves(st, me)
-        if moves:
-            mv = random.choice(moves)
-            return ('move', mv[0], mv[1], mv[2])
     view = pieces.player_view(st, me)
     _update_memory(st, me, view)
     if hunt:
         _update_scout(st, me, view)
     core = _core(st, me, view)                                   # 승리/킹방어/보이는 적 공격
     if core:
-        return core
+        return core                                             # 중요한 수(캡처·승리·방어)는 항상 정확
+    if blunder and random.random() < blunder:                   # 그 외(수색·위치잡기)에서만 가끔 무작위 실수
+        moves = _gen_moves(st, me)
+        if moves:
+            mv = random.choice(moves)
+            return ('move', mv[0], mv[1], mv[2])
     if not hunt:                                                # 쉬움: 왕 사냥 안 함(무계획 전진)
         return _advance(st, me, _enemies_from_view(view, me), _remembered(st, me))
     kcands = _candidates(st, me)                                 # 왕 사냥
@@ -426,8 +441,8 @@ def _decide(st, me, *, hunt, abilities, mm_budget, mm_quiesce, mm_remembered, bl
 
 
 def choose_action(st, me):
-    """보통: 왕 사냥 + 킹 방어 + 가벼운 미니맥스 + 가끔 실수(어려움보다 한 수 아래)."""
-    return _decide(st, me, hunt=True, abilities=False,
+    """보통: 왕 사냥 + 킹 방어 + 능력(퀸 스캔·전차 돌파, 템포 보호형) + 가벼운 미니맥스 + 가끔 실수."""
+    return _decide(st, me, hunt=True, abilities=True,
                    mm_budget=0.4, mm_quiesce=0, mm_remembered=False, blunder=0.12)
 
 
@@ -448,7 +463,7 @@ def _advance(st, me, enemies, remembered):
         for (mr, mc) in pieces.legal_moves(st, p['id']):
             s = (abs(p['r'] - tr) + abs(p['c'] - tc)) - (abs(mr - tr) + abs(mc - tc))
             if p['t'] == 'N':
-                s += 0.3                            # 나이트 정찰 선호(시야 2)
+                s += 0.3                            # 나이트 정찰 선호(시야 3)
             s += ((p['r'] * 7 + p['c'] * 13 + mr * 3 + mc) % 5) * 0.01
             if best_s is None or s > best_s:
                 best_s, best = s, ('move', p['id'], mr, mc)
@@ -694,9 +709,10 @@ def choose_action_easy(st, me):
 
 
 def choose_action_hard(st, me, budget=BOT_HARD_BUDGET):
-    """어려움: 공격적 왕 사냥 + 킹 방어 + 깊은 미니맥스(시간 많이) + 실수 없음.
-    (기억한적 상대모델·능력 소탕은 봇끼리 검증 결과 소극적이 돼 제외 — 공격적 수색이 이김)."""
-    return _decide(st, me, hunt=True, abilities=False,
+    """어려움: 공격적 왕 사냥 + 킹 방어 + 능력(퀸 스캔·전차 돌파) + 깊은 미니맥스(시간 많이) + 실수 없음.
+    (기억한적 상대모델은 봇끼리 검증 결과 소극적이 돼 제외. 능력은 예전엔 매 턴 스캔/포격으로 템포를
+    잃어 껐었는데, _scan_hunt/_barrage_flush에 템포 보호를 넣은 뒤 다시 켬 — 토너먼트로 검증.)"""
+    return _decide(st, me, hunt=True, abilities=True,
                    mm_budget=budget, mm_quiesce=0, mm_remembered=False)
 
 

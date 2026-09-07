@@ -9,6 +9,11 @@ __pycache__/
 out.log
 err.log
 
+# 계정/레이팅 DB (개인정보·비밀번호 해시 — 절대 커밋 금지)
+fogchess.db
+*.db
+*.db-journal
+
 # OS / 에디터
 .DS_Store
 Thumbs.db
