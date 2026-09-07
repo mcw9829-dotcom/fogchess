@@ -630,6 +630,10 @@ body { display: flex; flex-wrap: nowrap; gap: 0; padding: 0; align-items: stretc
   .rail-user { padding: 6px; }
   .rail-foot { margin: 0 0 0 auto; }
   .appmain { min-height: 0; }
+  /* 좁은 화면의 시작/메뉴 화면: 절대 배치 + 세로 가운데 정렬은 내용이 화면보다 길면 위쪽이 잘려 스크롤로도 못 봄(로고·첫 카드 실종)
+     → 문서 흐름에 두고 위에서부터 쌓아 자연스럽게 스크롤 */
+  .screen { position: relative; inset: auto; min-height: calc(100vh - 58px); align-items: flex-start; justify-content: center;
+    padding: 14px 12px 28px; }
   #game.gamewrap { padding: 10px; }
 }
 
@@ -772,3 +776,23 @@ body { display: flex; flex-wrap: nowrap; gap: 0; padding: 0; align-items: stretc
 .noteEntry li .ntag.fix { color: #ff9a95; border-color: rgba(212,69,63,.5); }
 .noteEntry li .ntag.ui  { color: #a9c8ff; border-color: rgba(61,123,214,.5); }
 .noteEntry li .ntag.bal { color: #ffd27a; border-color: rgba(212,163,74,.5); }
+
+/* 프로필: 최근 전적 + 레이팅 스파크라인 */
+.spark { height: 54px; margin: 0 0 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); padding: 4px 8px; }
+.spark svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.histList { display: flex; flex-direction: column; gap: 3px; max-height: 220px; overflow-y: auto; }
+.hrow { display: grid; grid-template-columns: 26px 18px 1fr auto auto; gap: 7px; align-items: center; font-size: 12.5px;
+  padding: 5px 8px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--border); }
+.hrow .hres { font-weight: 800; text-align: center; border-radius: 6px; padding: 1px 0; font-size: 11.5px; }
+.hrow.win .hres { background: rgba(var(--sig-move), .18); color: rgb(var(--sig-move)); }
+.hrow.loss .hres { background: rgba(var(--sig-impact), .18); color: rgb(var(--sig-impact)); }
+.hrow.draw .hres { background: rgba(127,127,127,.18); color: var(--text-dim); }
+.hrow .hkind { text-align: center; }
+.hrow .hopp { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.hrow .hopp small { color: var(--text-dim); font-weight: 500; }
+.hrow .hopp em { font-style: normal; color: var(--text-dim); font-weight: 500; margin-left: 5px; font-size: 11px; }
+.hrow .hdelta { font-weight: 800; font-variant-numeric: tabular-nums; min-width: 34px; text-align: right; }
+.hrow .hdelta.up { color: rgb(var(--sig-move)); } .hrow .hdelta.dn { color: rgb(var(--sig-impact)); } .hrow .hdelta.nil { color: var(--text-dim); font-weight: 500; }
+.hrow .hdate { color: var(--text-dim); font-size: 11px; white-space: nowrap; }
+.histSum { font-size: 12px; color: var(--text-dim); margin: 0 0 6px; }
+.histSum b { color: var(--text); }

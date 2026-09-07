@@ -185,13 +185,58 @@ def is_rated(room):
     return bool(room.get('match') and users.get('W') and users.get('B') and users['W'] != users['B'])
 
 
+def game_reason(st):
+    """종료 사유(최근 로그로 판단): king(왕 처치) / resign / disconnect / timeout(미행동) / draw(턴 한도)"""
+    if st.get('winner') == 'draw':
+        return 'draw'
+    for ln in reversed(st['log'][-3:]):                      # 가장 최근 줄부터
+        if '접속 끊김' in ln:
+            return 'disconnect'
+        if '미행동' in ln:
+            return 'timeout'
+        if '기권' in ln:
+            return 'resign'
+    return 'king'
+
+
+def record_history(room):
+    """게임이 끝나면 회원 좌석마다 전적 한 줄(비레이팅 포함). 솔로·게스트 좌석은 제외. 실패해도 게임 진행은 막지 않음."""
+    if room.get('solo'):
+        return
+    st, users = room['state'], room.get('users', {})
+    kind = 'match' if room.get('match') else ('bot' if room.get('bot') else 'lobby')
+    reason = game_reason(st)
+    for color in ('W', 'B'):
+        uid = users.get(color)
+        if not uid:
+            continue
+        opp = 'B' if color == 'W' else 'W'
+        if room.get('bot') == opp:
+            opp_name, opp_uid = room['names'].get(opp, '컴퓨터'), None
+            opp_rating = BOT_RATING.get(room.get('botlevel', 'normal'), 1000)
+        else:
+            opp_name, opp_uid = room['names'].get(opp, '상대'), users.get(opp)
+            ro = room.get('rating_result', {}).get(opp)                          # 정산 전(대국 당시) 상대 레이팅
+            opp_rating = (ro['rating'] - ro['delta']) if ro else room['ratings'].get(opp)
+        result = 'draw' if st['winner'] == 'draw' else ('win' if st['winner'] == color else 'loss')
+        rr = room.get('rating_result', {}).get(color)
+        try:
+            accounts.add_game(uid, kind, result, reason, opp_name, opp_uid, opp_rating, bool(rr),
+                              rr['delta'] if rr else None, rr['rating'] if rr else None, room['code'])
+        except Exception as e:
+            print('[history] record failed:', e)
+
+
 def settle_rating(room):
-    """게임이 끝났으면 딱 한 번 레이팅을 정산해 room['rating_result'][color] = {'delta', 'rating'} 에 둔다.
-    정산 실패(DB 오류 등)가 게임 진행을 막지 않도록 예외는 삼킨다."""
+    """게임이 끝났으면 딱 한 번: 레이팅전이면 정산해 room['rating_result'][color] = {'delta', 'rating'} 에 두고,
+    회원 좌석의 전적(games)을 기록한다. 정산 실패(DB 오류 등)가 게임 진행을 막지 않도록 예외는 삼킨다."""
     st = room['state']
-    if st['phase'] != 'over' or room.get('rated_done') or not st.get('winner') or not is_rated(room):
+    if st['phase'] != 'over' or room.get('rated_done') or not st.get('winner'):
         return
     room['rated_done'] = True
+    if not is_rated(room):
+        record_history(room)
+        return
     users = room['users']
     try:
         if room.get('bot'):
@@ -207,6 +252,7 @@ def settle_rating(room):
             room['ratings']['W'], room['ratings']['B'] = res['a']['rating'], res['b']['rating']
     except Exception as e:
         print('[rating] settle failed:', e)
+    record_history(room)
 
 
 def bot_gain_cap(room):
@@ -326,7 +372,20 @@ def sweep_rooms(now):
     솔로(핫시트)·봇 좌석은 제외. 양쪽 다 끊겼으면 더 오래 끊긴 쪽이 기권."""
     for room in list(ROOMS.values()):
         st = room['state']
-        if st['phase'] != 'play' or room.get('solo'):
+        if room.get('solo'):
+            continue
+        if st['phase'] == 'setup' and room.get('match') and both_joined(room):
+            # 랭크 매칭 방은 수락 순간부터 승부 — 배치 단계에서 접속이 끊겨도 DISCONNECT_FORFEIT초면 기권(레이팅 정산)
+            for color in ('W', 'B'):
+                tok = room['seats'].get(color)
+                gap = now - room['seen'].get(tok, room['created']) if tok else 0
+                if tok and gap > DISCONNECT_FORFEIT:
+                    st['log'].append(f"📵 {SIDE_KR[color]} 접속 끊김 {int(gap)}초 — 기권 처리")
+                    apply_resign(st, color)
+                    settle_rating(room)
+                    break
+            continue
+        if st['phase'] != 'play':
             continue
         use_terrain(room)
         enforce_clock(room, now)                                # 미행동 3회 패배가 폴링 없이도 진행
@@ -366,6 +425,7 @@ def state_response(room, color, now, reveal=False):
     v['room'] = room['code']
     v['mapSeed'] = room['terrain']['seed']       # 이 방의 맵 시드(방 태그 표시·공유용)
     v['match'] = bool(room.get('match'))         # 랭크 매칭으로 만들어진 방
+    v['bot'] = bool(room.get('bot'))             # 컴퓨터 대국(나가기 안내 문구용)
     v['shareBase'] = LAN_URL
     v['bothJoined'] = both_joined(room)
     opp = 'B' if color == 'W' else 'W'
@@ -602,6 +662,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if u.path == '/me':
             user = accounts.user_by_token(data.get('session'))
             self._json({'ok': user is not None, 'user': user})
+            return
+        if u.path == '/me/history':                            # 내 최근 전적(최근 20판)
+            user = accounts.user_by_token(data.get('session'))
+            if not user:
+                self._json({'ok': False, 'msg': '로그인이 필요합니다.'})
+                return
+            self._json({'ok': True, 'rows': accounts.game_history(user['id'], 20)})
             return
         if u.path in ('/match/join', '/match/status', '/match/cancel', '/match/accept', '/match/decline'):   # 랭크 매칭(로그인 회원 전용)
             user = accounts.user_by_token(data.get('session'))

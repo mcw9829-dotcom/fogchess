@@ -900,6 +900,67 @@ def test_bush_hidden_enemy_capturable_by_move():
     assert re.search(r'\.movable::before\s*\{[^}]*z-index:\s*4', css) and re.search(r'\.bushfront\{\s*z-index:3', css)
 
 
+
+def test_sweep_forfeits_match_room_in_setup(tmp_db):
+    """랭크 매칭 방: 배치 단계에서 90초 넘게 끊긴 쪽은 기권(레이팅 정산). 로비 방의 배치 단계는 그대로."""
+    import server, time as _t
+    a = accounts.signup('st_a', 'Test123!')[0]['user']; b = accounts.signup('st_b', 'Test123!')[0]['user']
+    now = _t.time()
+    for code, match in (('MS1', True), ('LB1', False)):
+        room = server.new_room(code)
+        room['seats'] = {'W': 'tw' + code, 'B': 'tb' + code}; room['tokens'] = {'tw' + code: 'W', 'tb' + code: 'B'}
+        room['seen'] = {'tw' + code: now - 100, 'tb' + code: now}                # 백이 100초째 접속 없음
+        room['users'] = {'W': a['id'], 'B': b['id']}; room['ratings'] = {'W': 1000, 'B': 1000}
+        room['match'] = match
+        room['state']['deadline'] = now + 60                                     # 둘 다 앉아 배치 중
+        server.ROOMS[code] = room
+    try:
+        server.sweep_rooms(now)
+        m, l = server.ROOMS['MS1']['state'], server.ROOMS['LB1']['state']
+        assert m['phase'] == 'over' and m['winner'] == 'B' and any('기권' in x for x in m['log'])
+        assert l['phase'] == 'setup'                                             # 로비 방은 배치 단계 유지
+        assert accounts.user_by_id(a['id'])['rating'] == 984 and accounts.user_by_id(b['id'])['rating'] == 1016
+    finally:
+        server.ROOMS.pop('MS1', None); server.ROOMS.pop('LB1', None)
+
+
+
+def test_game_history_recorded(tmp_db):
+    """게임 종료 시 회원 좌석마다 전적 한 줄: 친구전(비레이팅), 랭크(정산 포함), 봇(상대=컴퓨터), 게스트/솔로 제외, 중복 없음."""
+    import server
+    a = accounts.signup('gh_a', 'Test123!')[0]['user']; b = accounts.signup('gh_b', 'Test123!')[0]['user']
+    def finish(room, winner, log=None):
+        room['state']['phase'] = 'over'; room['state']['winner'] = winner
+        if log: room['state']['log'].append(log)
+        server.settle_rating(room); server.settle_rating(room)                    # 두 번 불러도 한 번만 기록
+    lobby = server.new_room('H1'); lobby['users'] = {'W': a['id'], 'B': b['id']}; lobby['ratings'] = {'W': 1000, 'B': 1000}
+    lobby['names'] = {'W': 'gh_a', 'B': 'gh_b'}
+    finish(lobby, 'W', '🏳 흑 기권 — 백 승리!')
+    ha, hb = accounts.game_history(a['id']), accounts.game_history(b['id'])
+    assert len(ha) == 1 and ha[0]['kind'] == 'lobby' and ha[0]['result'] == 'win' and ha[0]['reason'] == 'resign'
+    assert ha[0]['opp_name'] == 'gh_b' and ha[0]['rated'] == 0 and ha[0]['delta'] is None and ha[0]['room'] == 'H1'
+    assert hb[0]['result'] == 'loss' and hb[0]['opp_name'] == 'gh_a'
+    assert accounts.user_by_id(a['id'])['rating'] == 1000                         # 친구전은 레이팅 그대로
+    match = server.new_room('H2'); match['match'] = True; match['users'] = {'W': a['id'], 'B': b['id']}
+    match['ratings'] = {'W': 1000, 'B': 1000}; match['names'] = {'W': 'gh_a', 'B': 'gh_b'}
+    finish(match, 'B')
+    ha = accounts.game_history(a['id'])
+    assert ha[0]['kind'] == 'match' and ha[0]['result'] == 'loss' and ha[0]['reason'] == 'king' and ha[0]['rated'] == 1
+    assert ha[0]['delta'] == -16 and ha[0]['rating_after'] == 984 and ha[0]['opp_rating'] == 1000
+    bot = server.new_room('H3'); bot['bot'] = 'B'; bot['botlevel'] = 'hard'; bot['users'] = {'W': a['id']}
+    bot['ratings'] = {'W': 984}; bot['names'] = {'W': 'gh_a', 'B': '컴퓨터(hard)'}
+    finish(bot, 'W')
+    ha = accounts.game_history(a['id'])
+    assert len(ha) == 3 and ha[0]['kind'] == 'bot' and ha[0]['opp_name'] == '컴퓨터(hard)' and ha[0]['opp_rating'] == 1300 and ha[0]['delta'] > 0
+    guest = server.new_room('H4'); guest['bot'] = 'B'; finish(guest, 'B')            # 게스트 봇전: 기록 없음
+    solo = server.new_room('H5'); solo['solo'] = True; solo['users'] = {'W': a['id'], 'B': a['id']}; finish(solo, 'W')
+    assert len(accounts.game_history(a['id'])) == 3 and [r['room'] for r in accounts.game_history(a['id'])] == ['H3', 'H2', 'H1']
+    assert len(accounts.game_history(a['id'], limit=2)) == 2
+    st = pieces.new_game(); st['winner'] = 'draw'; assert server.game_reason(st) == 'draw'
+    st['winner'] = 'W'; st['log'].append('📵 흑 접속 끊김 95초 — 기권 처리'); assert server.game_reason(st) == 'disconnect'
+    st['log'].append('⏳ 흑 연속 3회 미행동 — 백 승리'); assert server.game_reason(st) == 'timeout'
+
+
 # ------------------------- 신규 규칙 -------------------------
 def test_king_vision_3():
     st = bare()

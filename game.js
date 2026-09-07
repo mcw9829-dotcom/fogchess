@@ -139,7 +139,15 @@ async function rematch(){ await act({type:'rematch'}); clearSel(); clearAnnotati
 async function doPromote(t){ await act({type:'promote', choice:t}); document.getElementById('promoModal').style.display='none'; poll(); }
 async function doResign(){ if(!confirm('정말 기권할까요? 상대가 승리합니다.')) return; await act({type:'resign'}); clearSel(); poll(); }
 async function leaveRoom(){
-  if(!confirm('이 방에서 나가 홈으로 갈까요?')) return;
+  // 플레이 중이거나 랭크 매칭 방(배치 단계 포함)에서 나가면 = 기권 패배. 상대는 즉시 승리, 레이팅전이면 바로 정산.
+  const solo = !!(VIEW && (VIEW.solo || COLOR==='solo'));
+  const inGame = !!(VIEW && COLOR!=='spectator' && !solo && VIEW.phase!=='over' && VIEW.bothJoined);
+  const committed = inGame && (VIEW.phase==='play' || (VIEW.phase==='setup' && VIEW.match));
+  if(committed){
+    const why = VIEW.rated ? (VIEW.bot ? '전적에 패배가 기록돼요.' : '레이팅이 내려갑니다.') : '상대에게 승리가 돌아가요.';
+    if(!confirm('지금 나가면 기권 패배로 처리돼요.\n' + why + '\n그래도 나갈까요?')) return;
+    try{ await act({type:'resign'}); }catch(e){}
+  } else if(!confirm('이 방에서 나가 홈으로 갈까요?')) return;
   if(ROOM) localStorage.removeItem('fog_'+ROOM);
   ROOM=null; TOKEN=''; COLOR=null; VIEW=null; location.hash='';
   clearSel(); clearAnnotations(); prevPos={}; prevFog=null; overShown=null; lastFx=0; PENDING_FX=null; feedSeen=0;
@@ -521,6 +529,13 @@ function renderFeed(){
   }).join('') || '<div style="color:#6a645c;font-size:12px;padding:4px">아직 없음</div>';
   feedSeen = maxSeq;
 }
+function overReason(won){                 // 종료 사유(최근 로그로 판단): 기권 · 접속 끊김 · 미행동 · 왕 처치
+  const logs = (VIEW.log||[]).slice(-3).join(' ');
+  if(/접속 끊김/.test(logs)) return won ? '상대 접속 끊김 · 기권 처리' : '접속 끊김 · 기권 처리';
+  if(/미행동/.test(logs)) return won ? '상대 미행동 3회' : '미행동 3회';
+  if(/기권/.test(logs)) return won ? '상대 기권' : '기권';
+  return won ? '적 왕 처치' : '내 왕이 당했다';
+}
 function renderOverlay(){
   const ov = document.getElementById('overlay');
   if(VIEW.phase !== 'over'){ ov.style.display='none'; ov.innerHTML=''; overShown=null; return; }
@@ -532,8 +547,8 @@ function renderOverlay(){
   let big, sub, snd;
   if(VIEW.winner==='draw'){ big='🤝 무승부'; sub='턴 한도 도달'; snd='drawend'; }
   else if(solo){ big=`🏳 ${VIEW.winner==='W'?'백':'흑'} 승리`; sub='혼자 연습'; snd='victory'; }
-  else if(VIEW.winner===VIEW.yourColor){ big='🏆 승리!'; sub='적 왕 처치'; snd='victory'; }
-  else { big='💀 패배'; sub='내 왕이 당했다'; snd='defeat'; }
+  else if(VIEW.winner===VIEW.yourColor){ big='🏆 승리!'; sub=overReason(true); snd='victory'; }
+  else { big='💀 패배'; sub=overReason(false); snd='defeat'; }
   if(VIEW.ratingDelta){                                  // 레이팅전 정산 결과(서버가 한 번만 계산)
     const d = VIEW.ratingDelta.delta;
     sub += d===0 ? ` · 🏅 레이팅 변동 없음(${VIEW.ratingDelta.rating})` : ` · 🏅 레이팅 ${d>0?'+':''}${d} → ${VIEW.ratingDelta.rating}`;
@@ -1054,7 +1069,7 @@ function openAuth(){
   $('authForm').style.display = ME ? 'none' : '';
   $('authProfile').style.display = ME ? '' : 'none';
   $('authErr').textContent = '';
-  if(ME){ renderProfileCard(); profMsg(''); openProfSection(ME.weakPw ? 'pw' : null); }
+  if(ME){ renderProfileCard(); profMsg(''); openProfSection(ME.weakPw ? 'pw' : null); loadHistory(); fetchMe().then(renderProfileCard); }   // 최신 레이팅·전적으로 갱신
   else setTimeout(()=>$('authName').focus(), 50);
 }
 function closeAuth(){ $('authModal').style.display='none'; }
@@ -1127,6 +1142,38 @@ function renderProfileCard(){                   // 모달 안 프로필 카드: 
   }else{ $('profBarFill').style.width='100%'; $('profNext').textContent='최고 티어 🏆'; }
   renderTierLadder(ME.tier, ME.rating);
   $('profRating').textContent = ME.rating + ' · ' + TIER_KR[ME.tier] + ' (' + tierRangeText(ME.tier) + ')';
+}
+// ---------- 최근 전적(최근 20판) + 레이팅 히스토리 스파크라인 ----------
+const HIST_KIND = { match: ['⚔️','랭크'], bot: ['💻','컴퓨터'], lobby: ['👥','친구'] };
+const HIST_WHY  = { king: '왕 처치', resign: '기권', disconnect: '접속 끊김', timeout: '미행동', draw: '턴 한도' };
+function histWhen(t){ const d=new Date(t*1000), p=(n)=>String(n).padStart(2,'0'); return `${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
+async function loadHistory(){
+  const list=$('histList'), sp=$('histSpark'), sub=$('histSub'); if(!list) return;
+  list.innerHTML='<p class="note">불러오는 중…</p>'; sp.style.display='none';
+  let rows=[]; try{ const r=await post('/me/history', {session: session()}); rows = r.ok ? (r.rows||[]) : []; }catch(e){ list.innerHTML='<p class="note">불러오지 못했어요.</p>'; return; }
+  if(!rows.length){ list.innerHTML='<p class="note">아직 기록이 없어요. 첫 판을 두어 보세요!</p>'; sub.textContent='최근 20판'; return; }
+  const w=rows.filter(r=>r.result==='win').length, l=rows.filter(r=>r.result==='loss').length, d=rows.filter(r=>r.result==='draw').length;
+  const rated=rows.filter(r=>r.rated), sum=rated.reduce((a,r)=>a+(r.delta||0),0);
+  sub.textContent = `최근 ${rows.length}판 · ${w}승 ${l}패${d?` ${d}무`:''}` + (rated.length ? ` · 레이팅 ${sum>0?'+':''}${sum}` : '');
+  // 레이팅 스파크라인(레이팅전만, 오래된 판 → 최신)
+  const pts = rated.slice().reverse().map(r=>r.rating_after).filter(v=>v!=null);
+  if(pts.length>=2){
+    const W=300, H=44, lo=Math.min(...pts), hi=Math.max(...pts), span=Math.max(hi-lo, 20);
+    const xy=pts.map((v,i)=>[(i/(pts.length-1))*W, H-((v-lo)/span)*(H-10)-5]);
+    const path=xy.map(([x,y],i)=>(i?'L':'M')+x.toFixed(1)+' '+y.toFixed(1)).join(' ');
+    const last=xy[xy.length-1], up=pts[pts.length-1]>=pts[0];
+    sp.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><path d="${path}" fill="none" stroke="rgb(var(${up?'--sig-move':'--sig-impact'}))" stroke-width="2" vector-effect="non-scaling-stroke"/>`
+      + xy.map(([x,y])=>`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.2" fill="var(--accent)"/>`).join('')
+      + `<text x="${Math.min(last[0], W-30)}" y="${last[1]<14?last[1]+14:last[1]-6}" font-size="11" fill="var(--text)" font-weight="700">${pts[pts.length-1]}</text></svg>`;
+    sp.title = `레이팅전 ${pts.length}판: ${pts[0]} → ${pts[pts.length-1]}`; sp.style.display='';
+  }
+  list.innerHTML = rows.map(r=>{
+    const k=HIST_KIND[r.kind]||['🎮',r.kind];
+    let why=HIST_WHY[r.reason]||''; if(r.result==='win' && ['resign','disconnect','timeout'].includes(r.reason)) why='상대 '+why;
+    const dl = r.rated ? (r.delta>0?`<span class="hdelta up">+${r.delta}</span>`:(r.delta<0?`<span class="hdelta dn">${r.delta}</span>`:`<span class="hdelta nil">±0</span>`)) : `<span class="hdelta nil">비레이팅</span>`;
+    return `<div class="hrow ${r.result}"><span class="hres">${r.result==='win'?'승':(r.result==='loss'?'패':'무')}</span><span class="hkind" title="${k[1]}">${k[0]}</span>`
+      + `<span class="hopp">${escapeHtml(r.opp_name||'상대')}${r.opp_rating!=null?` <small>(${r.opp_rating})</small>`:''}<em>${why}</em></span>${dl}<span class="hdate">${histWhen(r.created)}</span></div>`;
+  }).join('');
 }
 // 티어 사다리: 6단계 기물 아이콘 + 레이팅 구간. 현재=골드 강조 · 지난 티어=흐리게 · 다음 티어=이름 강조
 const TIER_ASC = TIER_FLOORS.slice().reverse();          // [[500,'P'],[1000,'N'],...,[1900,'K']] 낮은 순

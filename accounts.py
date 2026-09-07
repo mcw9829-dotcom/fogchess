@@ -42,6 +42,13 @@ CREATE TABLE IF NOT EXISTS feedback(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   created REAL NOT NULL, name TEXT, user_id INTEGER,
   category TEXT NOT NULL, message TEXT NOT NULL, room TEXT, ua TEXT);
+CREATE TABLE IF NOT EXISTS games(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  created REAL NOT NULL, user_id INTEGER NOT NULL,
+  kind TEXT NOT NULL, result TEXT NOT NULL, reason TEXT,
+  opp_name TEXT, opp_user_id INTEGER, opp_rating INTEGER,
+  rated INTEGER NOT NULL DEFAULT 0, delta INTEGER, rating_after INTEGER, room TEXT);
+CREATE INDEX IF NOT EXISTS games_user ON games(user_id, id);
 '''
 _lock = threading.Lock()
 _ready = False
@@ -338,6 +345,25 @@ def feedback_delete(fid):
     """피드백 삭제 → 있었으면 True"""
     with _db() as c:
         return c.execute('DELETE FROM feedback WHERE id=?', (int(fid),)).rowcount == 1
+
+
+# ------------------------- 전적(게임 기록) -------------------------
+def add_game(user_id, kind, result, reason, opp_name, opp_user_id, opp_rating, rated, delta, rating_after, room):
+    """게임 한 판의 결과를 회원 기준으로 한 줄 저장. kind: match/bot/lobby · result: win/loss/draw ·
+    reason: king/resign/disconnect/timeout/draw · rated면 delta·rating_after."""
+    with _db() as c:
+        c.execute('INSERT INTO games(created, user_id, kind, result, reason, opp_name, opp_user_id, opp_rating, rated, delta, rating_after, room) '
+                  'VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
+                  (time.time(), int(user_id), kind, result, reason, opp_name, opp_user_id, opp_rating,
+                   1 if rated else 0, delta, rating_after, room))
+
+
+def game_history(user_id, limit=20):
+    """최근 전적(최신순) [{id, created, kind, result, reason, opp_name, opp_rating, rated, delta, rating_after, room}]"""
+    with _db() as c:
+        rows = c.execute('SELECT id, created, kind, result, reason, opp_name, opp_user_id, opp_rating, rated, delta, rating_after, room '
+                         'FROM games WHERE user_id=? ORDER BY id DESC LIMIT ?', (int(user_id), int(limit))).fetchall()
+    return [dict(r) for r in rows]
 
 
 def user_count():
