@@ -446,19 +446,17 @@
    ============================================================ */
 .guideCard { max-width: min(96vw, 1480px); max-height: 90vh; overflow-y: auto; }
 .gDemos { display: none; }                                  /* 상단 단독 데모 미사용(각 카드에 통합) */
-/* 기물 선택 칩(누르면 그 카드로 스크롤) */
-.gSel { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 10px; }
-.gsel { display: flex; align-items: center; gap: 6px; margin: 0; padding: 5px 11px 5px 7px; border-radius: 999px;
-  border: 1px solid var(--border-2); background: var(--panel-2); color: var(--text-dim); font-size: 12.5px; font-weight: 600; cursor: pointer; }
-.gsel img { width: 20px; height: 20px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.4)); }
-.gsel.on { border-color: var(--accent); color: var(--text); background: rgba(var(--sig-turn), .12); }
 /* 가로 한 줄 카드 스트립: 카드 6장이 한 줄, 화면이 좁으면 좌우 스크롤(스냅) + 화살표 */
 .gStrip { position: relative; }
-.gPieces { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-behavior: smooth;
+.gPieces { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory;
   padding: 4px 2px 10px; scrollbar-width: thin; }
 .gp2 { flex: 0 0 212px; scroll-snap-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px;
-  background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 12px 10px 14px; transition: border-color .15s; }
-.gp2.on { border-color: var(--accent); }
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 12px 10px 14px; cursor: pointer;
+  transition: border-color .15s, box-shadow .15s, transform .15s, background .15s; }
+/* 카드 전체에 마우스를 올리면(또는 탭) 카드가 살아나며 애니메이션 재생 */
+.gp2:hover, .gp2.playing { border-color: var(--accent); background: rgba(var(--sig-turn), .07); transform: translateY(-3px);
+  box-shadow: 0 0 0 2px rgba(var(--sig-turn), .35), 0 12px 26px rgba(0,0,0,.4); }
+@media (prefers-reduced-motion: reduce){ .gp2:hover, .gp2.playing { transform: none; } }
 .gArrow { position: absolute; top: 96px; z-index: 2; width: 34px; height: 34px; margin: 0; padding: 0; border-radius: 50%;
   border: 1px solid var(--border-2); background: var(--panel); color: var(--text); font-size: 14px; line-height: 32px; cursor: pointer;
   box-shadow: 0 2px 8px rgba(0,0,0,.4); opacity: .9; }

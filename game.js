@@ -870,7 +870,8 @@ function obMiniGrid(cols, rows, cellPx, decorate){
 // 마우스를 올리면(모바일은 탭) 그 카드만 재생 — 행마(예시 1~2수, 반복) → 공격(실제로 적을 잡는 장면) 순.
 // spec.moves = 예시 이동(상대좌표 1~2개), spec.capture = {mode:'move'|'shot', ...}.
 let guideActive = null;   // 동시에 하나만 재생(시선 분산 방지)
-function pieceDemo(stage, spec){
+function pieceDemo(stage, spec, host){                  // host: 마우스/탭 대상(카드 전체). 없으면 미니판
+  host = host || stage;
   const SZ=7, C=3, CELL=24;
   stage.classList.add('gd');
   const grid = obMiniGrid(SZ, SZ, CELL); grid.classList.add('obDemo','pdemo'); stage.appendChild(grid);
@@ -933,16 +934,16 @@ function pieceDemo(stage, spec){
   rest();
 
   let iv=null, idx=0;
-  const stop=()=>{ if(iv){clearInterval(iv); iv=null;} stage.classList.remove('playing');
+  const stop=()=>{ if(iv){clearInterval(iv); iv=null;} stage.classList.remove('playing'); if(host!==stage) host.classList.remove('playing');
     if(guideActive===stop) guideActive=null; rest(); };
   const start=()=>{ if(iv) return;
     if(guideActive && guideActive!==stop) guideActive();     // 다른 카드 재생 중이면 정지
-    guideActive=stop; stage.classList.add('playing'); apply(frames[0]); idx=1;
+    guideActive=stop; stage.classList.add('playing'); if(host!==stage) host.classList.add('playing'); apply(frames[0]); idx=1;
     iv=setInterval(()=>{ apply(frames[idx % frames.length]); idx++; }, 850);
   };
-  stage.addEventListener('mouseenter', start);
-  stage.addEventListener('mouseleave', stop);
-  stage.addEventListener('click', start);        // 터치/클릭도 재생(한 번에 하나만)
+  host.addEventListener('mouseenter', start);    // 카드 어디에 올려도 재생 + 카드 강조
+  host.addEventListener('mouseleave', stop);
+  host.addEventListener('click', start);         // 터치/클릭도 재생(한 번에 하나만)
   return stop;
 }
 const PIECE_GUIDE = [
@@ -984,22 +985,13 @@ function buildGuide(){
       <div class="gpl"><span class="gtag atk">공격</span><span>${spec.atk}</span></div>`
       + (spec.abil ? `<div class="gpl"><span class="gtag abil">능력</span><span>${spec.abil}</span></div>` : '');
     card.append(st, tx); box.appendChild(card);
-    guideStops.push(pieceDemo(st, spec));
-  });
-  // 기물 선택 칩: 누르면 그 카드로 스크롤(가로 한 줄 스트립)
-  const sel = document.getElementById('gSel'); sel.innerHTML='';
-  PIECE_GUIDE.forEach((spec,i)=>{
-    const b=document.createElement('button'); b.className='gsel'+(i===0?' on':''); b.type='button';
-    b.innerHTML=`<img src="${pieceSrc(spec.t,'W')}" alt="" draggable="false"><span>${spec.nm.split(' ')[0]}</span>`;
-    b.onclick=()=>guideGo(i); sel.appendChild(b);
+    guideStops.push(pieceDemo(st, spec, card));   // 카드 전체가 마우스/탭 대상
   });
   box.scrollLeft = 0; guideTarget = {i: 0, left: 0}; guideSync();
 }
 function guideCards(){ return [...document.getElementById('gPieces').children]; }
 let guideTarget = {i: 0, left: 0};                      // 마지막으로 '골라서' 간 카드(끝 쪽 카드는 가운데에 못 오므로 스크롤만으로는 못 알아냄)
-function guideMark(i){
-  guideCards().forEach((c,k)=>c.classList.toggle('on', k===i));
-  [...document.getElementById('gSel').children].forEach((b,k)=>b.classList.toggle('on', k===i));
+function guideMark(i){                                  // 현재 카드 번호에 맞춰 화살표 상태만 갱신(카드 강조는 마우스 hover가 담당)
   const box=document.getElementById('gPieces'), prev=document.getElementById('gPrev'), next=document.getElementById('gNext');
   const fits = box.scrollWidth <= box.clientWidth + 2;         // 다 보이면 화살표 숨김
   prev.style.display = next.style.display = fits ? 'none' : '';
@@ -1008,9 +1000,8 @@ function guideMark(i){
 function guideGo(i){                                    // i번째 카드를 가운데로(가로 스크롤만 움직임)
   const box=document.getElementById('gPieces'), cards=guideCards(); if(!cards[i]) return;
   const target = Math.max(0, Math.min(box.scrollWidth - box.clientWidth, cards[i].offsetLeft - (box.clientWidth - cards[i].offsetWidth)/2));
-  const smooth = !document.hidden && !matchMedia('(prefers-reduced-motion: reduce)').matches;   // 숨은 탭·모션 최소화면 즉시
   guideTarget = {i, left: Math.round(target)};
-  box.scrollTo({left: target, behavior: smooth ? 'smooth' : 'instant'});
+  box.scrollTo({left: target, behavior: 'instant'});   // 즉시 이동(부드러운 스크롤은 일부 환경에서 멈춰 있어 확실한 쪽으로). 스냅이 정렬해 줌
   guideMark(i);
 }
 function guideSync(){                                   // 스크롤 위치 → 강조 카드. 골라서 간 자리 그대로면 그 카드, 손으로 밀었으면 가운데 카드
