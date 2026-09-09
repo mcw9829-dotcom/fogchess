@@ -880,8 +880,8 @@ function renderCoords(){
 // 홈 랜딩용 장식 보드(정적·비상호작용) — '한 판 진행 중' 스냅샷:
 // 백 군대가 전진(나이트 정찰), 안개 가장자리에 적 2기 포착, 위쪽은 안개, 지형 몇 개.
 // 규칙 요약 모달(입장 시 1회 자동 + 상단 ❔규칙)
-function openHelp(){ document.getElementById('helpModal').style.display='flex'; }
-function closeHelp(){ document.getElementById('helpModal').style.display='none'; }
+function openHelp(){ openGuide(); }             // 규칙은 [규칙 · 기물 설명] 창 한 곳에서(첫 접속 팝업·게임 화면 [❔ 규칙] 공용)
+function closeHelp(){ closeGuide(); }
 
 // ---------- 기물 설명 보기(상세 가이드 · 설정에서 염) ----------
 const OB_C = 'W';   // 가이드 기물 색(백)
@@ -1055,13 +1055,11 @@ function guideSync(){                                   // 스크롤 위치 → 
   guideMark(best);
   return best;
 }
-function openGuide(){ buildGuide(); document.getElementById('guide').style.display='flex'; requestAnimationFrame(guideSync); }
+function openGuide(){ buildGuide(); const m=document.getElementById('guide'); m.style.display='flex'; m.querySelector('.modalCard').scrollTop = 0; requestAnimationFrame(guideSync); }
 function closeGuide(){ guideStops.forEach(fn=>fn()); guideStops=[]; guideActive=null; document.getElementById('guide').style.display='none'; }
 
 document.getElementById('rematch').onclick = rematch;
 document.getElementById('helpBtn').onclick = openHelp;
-document.getElementById('helpClose').onclick = closeHelp;
-document.getElementById('helpModal').onclick = (e)=>{ if(e.target.id==='helpModal') closeHelp(); };
 document.getElementById('guideClose').onclick = closeGuide;
 document.getElementById('gPrev').onclick = ()=>guideGo(Math.max(0, (guideSync()||0) - 1));
 document.getElementById('gNext').onclick = ()=>guideGo(Math.min(PIECE_GUIDE.length-1, (guideSync()||0) + 1));
@@ -1083,8 +1081,6 @@ $('mJoin').onclick     = ()=>{ showScreen('joinMenu'); $('joinCode').value=''; $
 $('mBot').onclick      = ()=> showScreen('botMenu');        // 컴퓨터와 대국(난이도 선택)
 $('mSolo').onclick     = soloStart;                         // 혼자 연습(핫시트)
 $('mSettings').onclick = ()=> openSettings('home');         // 홈에서 연 설정 → 뒤로=홈
-$('mRules').onclick = openHelp;                               // 홈에서 규칙 요약 다시 보기(피드백 #3)
-$('helpGuideBtn').onclick = ()=>{ closeHelp(); openGuide(); }; // 규칙 창 → 기물 설명
 $('hlbMore').onclick   = openLeaderboard;                     // 홈 리더보드 → 전체 순위·티어 사다리·규칙 모달
 $('setBtn').onclick    = ()=> openSettings('game');         // 게임 중 ⚙설정 → 뒤로=게임
 $('lvEasy').onclick    = ()=> botStart('easy');

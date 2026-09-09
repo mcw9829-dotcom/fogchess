@@ -286,7 +286,7 @@
     display: flex; align-items: center; justify-content: center; padding: 16px; }
   .modalCard { position: relative; background: #2b2825; border: 1px solid var(--border-2);
     border-radius: 12px; padding: 20px 22px; max-width: 440px; max-height: 88vh; overflow-y: auto;
-    box-shadow: 0 12px 40px rgba(0,0,0,.6); }
+    box-shadow: 0 12px 40px rgba(0,0,0,.6); scrollbar-width: thin; scrollbar-color: var(--border-2) transparent; }   /* 내용이 길면 스크롤(보이는 스크롤바) */
   .modalCard h2 { margin: 0 0 10px; font-size: 18px; }
   .modalCard .goal { background: var(--panel-2); border-left: 3px solid var(--accent); padding: 8px 10px;
     border-radius: 6px; font-size: 14px; }
@@ -502,11 +502,13 @@
 .obCell.fog  { box-shadow: inset 0 0 0 999px rgba(10, 12, 22, .72); }         /* 안개(스캔 전, 어둡게) */
 @media (max-width: 540px){ .gp2 { flex-basis: 84%; } .gArrow { display: none; } }   /* 폰: 카드 한 장씩 스와이프, 칩으로 이동 */
 /* 기물 설명 상단 핵심 규칙 4줄 */
-.gRules { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; font-size: 12px; line-height: 1.45;
-  color: var(--text-dim); background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px;
-  padding: 10px 12px; margin: 0 0 12px; }
-.gRules b { color: var(--text); }
-@media (max-width: 540px){ .gRules { grid-template-columns: 1fr; } }
+/* 규칙 카드 섹션(기물 설명 창 위쪽) */
+.gSec { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 4px 0 8px; font-weight: 800; font-size: 14px; }
+.gSec small { font-weight: 500; color: var(--text-dim); font-size: 11.5px; }
+.gRules { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px; margin: 0 0 16px; }
+.gr { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 8px 11px; font-size: 12.5px; line-height: 1.5; color: var(--text-dim); }
+.gr > b:first-child { display: block; color: var(--text); font-size: 13px; margin-bottom: 2px; }
+.gr b { color: var(--text); }
 
 /* ============================================================
    계정 / 레이팅 (레일 프로필 · 계정 모달)
