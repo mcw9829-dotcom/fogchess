@@ -17,7 +17,7 @@
       <button class="rail-ver" id="railVer" title="패치노트 보기">v…</button>
     </div>
     <button class="rail-item" id="railPlay2"><span class="ri">⚔️</span><span>플레이</span></button>
-    <button class="rail-item" id="railGuide"><span class="ri">📖</span><span>기물 설명</span></button>
+    <button class="rail-item" id="railGuide" title="규칙 · 기물 설명"><span class="ri">📖</span><span>규칙 · 기물</span><span class="rs">규칙</span></button>
     <button class="rail-item" id="railBoard"><span class="ri">🏆</span><span>리더보드</span></button>
     <button class="rail-item" id="railFeedback"><span class="ri">💬</span><span>피드백</span></button>
     <button class="rail-item" id="railSettings"><span class="ri">⚙️</span><span>설정</span></button>
@@ -46,6 +46,7 @@
         <button class="menu-btn" id="mJoin"><span class="mi">🤝</span><span class="mt"><b>친구 방 참가</b><small>친구가 준 방 코드로 입장 · 레이팅 미반영</small></span></button>
         <button class="menu-btn" id="mBot"><span class="mi">💻</span><span class="mt"><b>컴퓨터와 대국</b><small>쉬움 · 보통 · 어려움 · 이기면 레이팅 상승, 져도 하락 없음</small></span></button>
         <button class="menu-btn" id="mSolo"><span class="mi">🎯</span><span class="mt"><b>혼자 연습</b><small>한 화면에서 백·흑을 번갈아 두며 규칙 익히기 · 레이팅 미반영</small></span></button>
+        <button class="menu-btn ghost" id="mRules"><span class="mi">📜</span><span class="mt"><b>규칙 보기</b><small>목표 · 안개 · 배치 · 턴 30초 · 승리 조건 한 장 요약</small></span></button>
         <button class="menu-btn ghost" id="mSettings"><span class="mi">⚙️</span><span class="mt"><b>설정</b><small>효과음 · 배경음악 · 다크/화이트 · 색약</small></span></button>
       </div>
     </div>
@@ -158,7 +159,9 @@
         <li>🌲 <b>숲</b>=시야·이동·사격 모두 차단.</li>
         <li>🌿 <b>부쉬(매복지)</b>=들어갈 수 있고, 그 안의 기물은 상대에게 <b>보이지 않음</b>(인접·시야로도 안 보임). 확인하려면 <b>부쉬로 들어가 잡거나</b> 룩 <b>돌파사격으로 수색</b>. 왕 숨기기·매복에 최적(단, 부쉬 안에서 공격하면 내 위치 노출).</li>
       </ul>
-      <p class="note">🎯 비숍·🚜 전차는 <b>공격하면 내 위치가 적에게 노출</b>돼요 — 쏘는 타이밍이 곧 심리전. 기물별 상세 행마·공격은 왼쪽 사이드바 <b>[📖 기물 설명]</b>.</p>
+      <p class="note">🎯 비숍·🚜 전차는 <b>공격하면 내 위치가 적에게 노출</b>돼요 — 쏘는 타이밍이 곧 심리전.</p>
+      <button id="helpGuideBtn" class="menu-btn" style="margin-top:10px"><span class="mi">📖</span><span class="mt"><b>기물 설명 자세히 보기</b><small>기물별 행마 · 공격 · 능력 애니메이션</small></span></button>
+      <p class="note" style="margin:10px 0 0">이 창은 홈 화면의 <b>[📜 규칙 보기]</b>, 게임 화면의 <b>[❔ 규칙]</b>, 사이드바 <b>[📖 규칙 · 기물]</b>에서 언제든 다시 열 수 있어요.</p>
     </div>
   </div>
 

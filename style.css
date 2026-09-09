@@ -647,6 +647,7 @@ body { display: flex; flex-wrap: nowrap; gap: 0; padding: 0; align-items: stretc
   .rail-logo .t { display: none; }
   .rail-item { width: auto; white-space: nowrap; padding: 8px 10px; }
   .rail-item > span:not(.ri) { display: none; }   /* 좁으면 아이콘만 */
+  .rail-item > span.rs { display: inline !important; font-size: 12px; }   /* 규칙·기물 항목만 짧은 글자를 함께(피드백: 규칙을 어디서 보는지 모르겠어요) */
   .rail-user .uinfo { display: none; }             /* 좁으면 아바타만 */
   .rail-user { padding: 6px; }
   .rail-foot { margin: 0 0 0 auto; }
@@ -824,3 +825,5 @@ body { display: flex; flex-wrap: nowrap; gap: 0; padding: 0; align-items: stretc
 .overlay button.big.ghost { background: transparent; border: 1px solid rgba(255,255,255,.4); color: #f1ede6; box-shadow: none; }
 .overlay button.big.ghost:hover { background: rgba(255,255,255,.1); }
 :root[data-theme="light"] .overlay .rmnote { color: var(--text-dim); }
+
+.rail-item > span.rs { display: none; }   /* 데스크톱에선 긴 라벨만 */

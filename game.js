@@ -1083,6 +1083,8 @@ $('mJoin').onclick     = ()=>{ showScreen('joinMenu'); $('joinCode').value=''; $
 $('mBot').onclick      = ()=> showScreen('botMenu');        // 컴퓨터와 대국(난이도 선택)
 $('mSolo').onclick     = soloStart;                         // 혼자 연습(핫시트)
 $('mSettings').onclick = ()=> openSettings('home');         // 홈에서 연 설정 → 뒤로=홈
+$('mRules').onclick = openHelp;                               // 홈에서 규칙 요약 다시 보기(피드백 #3)
+$('helpGuideBtn').onclick = ()=>{ closeHelp(); openGuide(); }; // 규칙 창 → 기물 설명
 $('hlbMore').onclick   = openLeaderboard;                     // 홈 리더보드 → 전체 순위·티어 사다리·규칙 모달
 $('setBtn').onclick    = ()=> openSettings('game');         // 게임 중 ⚙설정 → 뒤로=게임
 $('lvEasy').onclick    = ()=> botStart('easy');
