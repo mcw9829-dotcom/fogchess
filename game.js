@@ -877,12 +877,13 @@ function renderCoords(){
 
 // 홈 랜딩용 장식 보드(정적·비상호작용) — '한 판 진행 중' 스냅샷:
 // 백 군대가 전진(나이트 정찰), 안개 가장자리에 적 2기 포착, 위쪽은 안개, 지형 몇 개.
-// 규칙 요약 모달(입장 시 1회 자동 + 상단 ❔규칙)
-function openHelp(){ openGuide(); }             // 규칙은 [규칙 · 기물 설명] 창 한 곳에서(첫 접속 팝업·게임 화면 [❔ 규칙] 공용)
+// 게임 화면 [❔ 규칙] → 첫 접속 인트로(규칙 설명은 인트로 한 곳. v1.49에서 규칙 카드 섹션 제거)
+function openHelp(){ openIntro(); }
 
-// ---------- 첫 접속 인트로: 30초, 슬라이드 3장(시야 · 지형 · 목표). 각 장은 미니 보드 애니메이션 + 자막 ----------
-// 장면은 프레임 배열: {at:{id:[r,c]|null}, lit:[[r,c]..], ghost:[id], scan:[[r,c]..], beam:[[r,c]..], cap:'자막', fx:{...}}
-const IN_SZ = 8, IN_CELL = 26;
+// ---------- 첫 접속 인트로(≈1분, 슬라이드 4장: 배치 · 시야 · 지형 · 목표). 각 장은 미니 보드 애니메이션 + 자막 ----------
+// 장면은 프레임 배열: {at:{id:[r,c]|null}, lit:[[r,c]..], ghost:[id], scan:[[r,c]..], beam:[[r,c]..], cap:'자막', fx:{...}, hold:ms}
+// hold: 그 장면(자막)에 머무는 시간. 자막을 읽을 만큼(기본 4초, 긴 자막 4.8초·짧은 자막 3.2초) — 1.5초 간격은 읽기 전에 넘어감(사용자 피드백)
+const IN_SZ = 8, IN_CELL = 26, IN_HOLD = 4000, IN_LOOP_PAUSE = 1200;
 function inVis(c, rad){ const o=[]; for(let r=c[0]-rad;r<=c[0]+rad;r++) for(let k=c[1]-rad;k<=c[1]+rad;k++) if(r>=0&&r<IN_SZ&&k>=0&&k<IN_SZ) o.push([r,k]); return o; }
 const INTRO_SLIDES = [
   { title: '1. 배치 — 정해진 자리가 없습니다. 지형을 보고 직접 놓으세요.',
@@ -891,34 +892,34 @@ const INTRO_SLIDES = [
     pieces: { R:{t:'R',o:'W'}, N:{t:'N',o:'W'}, B:{t:'B',o:'W'}, Q:{t:'Q',o:'W'}, K:{t:'K',o:'W'}, p1:{t:'P',o:'W'}, p2:{t:'P',o:'W'}, p3:{t:'P',o:'W'}, p4:{t:'P',o:'W'} },
     frames: [
       { at:{}, cap:'체스와 달리 <b>정해진 시작 자리가 없습니다.</b> 맵(숲·부쉬)은 매 판 새로 생성됩니다.' },
-      { at:{R:[7,0], N:[7,2], B:[7,4], Q:[7,6], p1:[5,1], p2:[5,3], p3:[5,5], p4:[6,4]}, cap:'시작 후 <b>70초</b> 동안 내 진영 <b>3줄</b> 안에 자유롭게 놓습니다. 지형을 보고 배치를 정하세요.' },
-      { at:{R:[7,0], N:[7,2], B:[7,4], Q:[7,6], p1:[5,1], p2:[5,3], p3:[5,5], p4:[6,4], K:[7,3]}, cap:'왕을 <b>어디에 숨길지</b>가 첫 번째 심리전입니다.' },
-      { at:{R:[7,0], N:[7,2], B:[7,4], Q:[7,6], p1:[5,1], p2:[5,3], p3:[5,5], p4:[6,4], K:[6,1]}, ghost:['K'], cap:'부쉬 안, 숲 뒤, 폰 사이… 상대는 왕이 어디 있는지 모릅니다.' },
+      { at:{R:[7,0], N:[7,2], B:[7,4], Q:[7,6], p1:[5,1], p2:[5,3], p3:[5,5], p4:[6,4]}, hold:4800, cap:'시작 후 <b>70초</b> 동안 내 진영 <b>3줄</b> 안에 자유롭게 놓습니다. 지형을 보고 배치를 정하세요.' },
+      { at:{R:[7,0], N:[7,2], B:[7,4], Q:[7,6], p1:[5,1], p2:[5,3], p3:[5,5], p4:[6,4], K:[7,3]}, hold:3200, cap:'왕을 <b>어디에 숨길지</b>가 첫 번째 심리전입니다.' },
+      { at:{R:[7,0], N:[7,2], B:[7,4], Q:[7,6], p1:[5,1], p2:[5,3], p3:[5,5], p4:[6,4], K:[6,1]}, ghost:['K'], hold:4600, cap:'부쉬 안, 숲 뒤, 폰 사이… 상대는 왕이 어디 있는지 모릅니다.' },
     ] },
   { title: '2. 시야 — 적은 안개 속에 숨어 있습니다.',
     pieces: { N:{t:'N',o:'W'}, e1:{t:'P',o:'B'}, e2:{t:'R',o:'B'}, e3:{t:'B',o:'B'} },
     frames: [
       { at:{N:[6,3], e1:[2,2], e2:[3,5], e3:[1,6]}, lit: inVis([6,3],2), cap:'내 기물 <b>주변만</b> 보입니다. 어둠 속에 무엇이 있는지 알 수 없습니다.' },
       { at:{N:[4,3], e1:[2,2], e2:[3,5], e3:[1,6]}, lit: inVis([4,3],2), cap:'나이트가 나아가자 숨어 있던 적이 <b>갑자기 드러납니다.</b>' },
-      { at:{N:[4,3], e1:[2,2], e2:[3,5], e3:[1,6]}, lit: inVis([4,3],2), cap:'아직 <b>안 보이는 적</b>도 있습니다. 나이트·킹은 3칸, 나머지는 1칸을 봅니다. 정찰이 곧 정보입니다.' },
+      { at:{N:[4,3], e1:[2,2], e2:[3,5], e3:[1,6]}, lit: inVis([4,3],2), hold:4800, cap:'아직 <b>안 보이는 적</b>도 있습니다. 나이트·킹은 3칸, 나머지는 1칸을 봅니다. 정찰이 곧 정보입니다.' },
     ] },
   { title: '3. 지형 — 부쉬에 매복하고 숲을 활용하세요.',
     terrain: { bush:[[4,2],[4,3]], forest:[[1,6],[2,6],[3,6],[4,6],[5,6]] },
     pieces: { R:{t:'R',o:'W'}, e1:{t:'P',o:'B'} },
     frames: [
-      { at:{R:[6,3], e1:[1,2]}, lit: inVis([6,3],1), cap:'🌿 <b>부쉬</b>는 들어갈 수 있는 매복지, 🌲 <b>숲</b>은 시야·이동·사격을 막는 벽입니다.' },
-      { at:{R:[4,3], e1:[1,2]}, lit: inVis([4,3],1), ghost:['R'], cap:'부쉬 안의 기물은 <b>밖에서 보이지 않습니다.</b>' },
+      { at:{R:[6,3], e1:[1,2]}, lit: inVis([6,3],1), hold:4600, cap:'🌿 <b>부쉬</b>는 들어갈 수 있는 매복지, 🌲 <b>숲</b>은 시야·이동·사격을 막는 벽입니다.' },
+      { at:{R:[4,3], e1:[1,2]}, lit: inVis([4,3],1), ghost:['R'], hold:3200, cap:'부쉬 안의 기물은 <b>밖에서 보이지 않습니다.</b>' },
       { at:{R:[4,3], e1:[3,2]}, lit: inVis([4,3],1), ghost:['R'], cap:'적 폰이 다가옵니다. 나는 적이 보이지만, 적은 나를 <b>못 봅니다.</b>' },
-      { at:{R:[4,3], e1:[4,2]}, lit: inVis([4,3],1), flash:['R','e1'], cap:'같은 덤불에 들어오면 <b>서로 보입니다!</b> (롤의 부쉬처럼) 먼저 움직이는 쪽이 이깁니다.' },
+      { at:{R:[4,3], e1:[4,2]}, lit: inVis([4,3],1), flash:['R','e1'], hold:4800, cap:'같은 덤불에 들어오면 <b>서로 보입니다!</b> (롤의 부쉬처럼) 먼저 움직이는 쪽이 이깁니다.' },
       { at:{R:[4,2], e1:null}, lit: inVis([4,2],1), cap:'<b>매복 성공!</b> 홀로 떨어진 부쉬일수록 안전한 은신처입니다.', fx:{type:'capture', cells:[[4,2]]} },
     ] },
   { title: '4. 목표 — 체크메이트가 아닙니다. 적의 왕을 찾아 처치하세요.',
     pieces: { Q:{t:'Q',o:'W'}, B:{t:'B',o:'W'}, K:{t:'K',o:'B'}, e1:{t:'P',o:'B'} },
     frames: [
       { at:{Q:[6,4], B:[6,1], K:[2,5], e1:[3,2]}, lit: inVis([6,4],1).concat(inVis([6,1],1)), cap:'왕은 안개 속 어딘가에 숨어 있습니다. 왕의 목숨은 <b>단 하나.</b>' },
-      { at:{Q:[6,4], B:[6,1], K:[2,5], e1:[3,2]}, lit: inVis([6,4],1).concat(inVis([6,1],1)), scan:[[2,5],[2,6],[3,5],[3,6]], cap:'퀸 <b>스캔</b>으로 안개 속을 들여다보니 — 왕이 보입니다!', fx:{type:'scan', cells:[[2,5],[2,6],[3,5],[3,6]], extra:[[2,5]]} },
-      { at:{Q:[6,4], B:[6,1], K:[2,5], e1:[3,2]}, lit: inVis([6,4],1).concat(inVis([6,1],1)), scan:[[2,5],[2,6],[3,5],[3,6]], beam:[[5,2],[4,3],[3,4]], cap:'비숍 <b>저격</b> — 보이는 적은 멀리서도 쏠 수 있습니다.' },
-      { at:{Q:[6,4], B:[6,1], K:null, e1:[3,2]}, lit: inVis([6,4],1).concat(inVis([6,1],1)), scan:[[2,5],[2,6],[3,5],[3,6]], cap:'<b>왕 처치 = 승리!</b> 한 방이면 끝납니다.', fx:{type:'kill', cells:[[2,5]], from:[6,1]} },
+      { at:{Q:[6,4], B:[6,1], K:[2,5], e1:[3,2]}, lit: inVis([6,4],1).concat(inVis([6,1],1)), scan:[[2,5],[2,6],[3,5],[3,6]], hold:3500, cap:'퀸 <b>스캔</b>으로 안개 속을 들여다보니 — 왕이 보입니다!', fx:{type:'scan', cells:[[2,5],[2,6],[3,5],[3,6]], extra:[[2,5]]} },
+      { at:{Q:[6,4], B:[6,1], K:[2,5], e1:[3,2]}, lit: inVis([6,4],1).concat(inVis([6,1],1)), scan:[[2,5],[2,6],[3,5],[3,6]], beam:[[5,2],[4,3],[3,4]], hold:3500, cap:'비숍 <b>저격</b> — 보이는 적은 멀리서도 쏠 수 있습니다.' },
+      { at:{Q:[6,4], B:[6,1], K:null, e1:[3,2]}, lit: inVis([6,4],1).concat(inVis([6,1],1)), scan:[[2,5],[2,6],[3,5],[3,6]], hold:3200, cap:'<b>왕 처치 = 승리!</b> 한 방이면 끝납니다.', fx:{type:'kill', cells:[[2,5]], from:[6,1]} },
     ] },
 ];
 let introIdx = 0, introStop = null;
@@ -930,8 +931,10 @@ function introBuild(spec){
     if(has(tr.forest, r, c)){ const t=document.createElement('div'); t.className='terrain'; t.innerHTML=forestTile((r+c)%2); d.appendChild(t); }
     else if(has(tr.bush, r, c)){ const t=document.createElement('div'); t.className='terrain bushfront'; t.innerHTML=bushTile(r, c); d.appendChild(t); }
   });
-  grid.classList.add('obDemo'); stage.appendChild(grid);
-  const fx = window.FxLayer ? new FxLayer(stage, grid, {border:2, cols:IN_SZ}) : null;
+  grid.classList.add('obDemo');
+  const board = document.createElement('div'); board.className = 'intro-board';   // 보드 크기의 position:relative 상자 — 이펙트 캔버스·흔들림의 기준
+  board.appendChild(grid); stage.appendChild(board);                              // (stage 는 가운데 정렬용 flex 라 기준으로 쓰면 캔버스가 카드 왼쪽 위로 감)
+  const fx = window.FxLayer ? new FxLayer(board, grid, {border:2, cols:IN_SZ}) : null;
   const cellAt=(r,c)=>grid.querySelector(`[data-rc="${r}_${c}"]`);
   const imgs = {};
   for(const [id, p] of Object.entries(spec.pieces)){
@@ -965,11 +968,20 @@ function introBuild(spec){
     if(f.flash && fx && fxOn() && !first){ fx.resize(); f.flash.forEach(id=>{ const pos=f.at[id]; if(!pos) return;
       fx.flash(fx.cx(pos[1]), fx.cy(pos[0]), fx.cw*1.1, 0.25, 'rgba(255,230,160,.95)'); fx.ring(fx.cx(pos[1]), fx.cy(pos[0]), fx.cw*0.2, fx.cw*1.2, 0.5, 'rgba(255,220,140,.9)', 3); }); }
     if(f.fx && fx && fxOn() && !first){ fx.resize(); fx.play(f.fx.type, f.fx.cells, f.fx.from||null, f.fx.extra||null); }
-    document.getElementById('introSub').innerHTML = f.cap || '';
+    const sub = document.getElementById('introSub'), cap = f.cap || '';
+    if(sub.dataset.cap !== cap){ sub.classList.remove('show'); void sub.offsetWidth; sub.innerHTML = cap; sub.dataset.cap = cap; sub.classList.add('show'); }   // 자막이 바뀔 때만 페이드 인
   };
   apply(spec.frames[0], true);
-  let idx = 1, iv = setInterval(()=>{ const f = spec.frames[idx % spec.frames.length]; apply(f, idx % spec.frames.length === 0); idx++; }, 1500);
-  return ()=>{ clearInterval(iv); if(fx) fx.clear(); };
+  // 장면마다 hold(자막 읽을 시간)만큼 머물고, 마지막 장면 뒤엔 IN_LOOP_PAUSE 쉬었다가 처음부터 반복
+  let idx = 1, tm = null, stopped = false;
+  const step = ()=>{
+    if(stopped) return;
+    const n = spec.frames.length, k = idx % n, f = spec.frames[k];
+    apply(f, k === 0); idx++;
+    tm = setTimeout(step, (f.hold || IN_HOLD) + (k === n-1 ? IN_LOOP_PAUSE : 0));
+  };
+  tm = setTimeout(step, spec.frames[0].hold || IN_HOLD);
+  return ()=>{ stopped = true; clearTimeout(tm); if(fx) fx.clear(); };
 }
 function introShow(i){
   introIdx = Math.max(0, Math.min(INTRO_SLIDES.length-1, i));
@@ -978,17 +990,33 @@ function introShow(i){
   document.getElementById('introTitle').textContent = spec.title;
   document.getElementById('introDots').innerHTML = INTRO_SLIDES.map((_,k)=>'<span class="'+(k===introIdx?'on':'')+'"></span>').join('');
   introStop = introBuild(spec);
+  if(!document.getElementById('introTitle').style.minHeight) introFit();   // 열 때 폭이 0이었으면(숨은 탭 등) 장을 넘길 때 다시 맞춤
   const nav = document.getElementById('introNav'); nav.innerHTML = '';
   const mk = (txt, fn, cls)=>{ const b=document.createElement('button'); b.className=cls||'seg-b'; b.innerHTML=txt; b.onclick=fn; nav.appendChild(b); return b; };
   if(introIdx > 0) mk('← 이전', ()=>introShow(introIdx-1));
   if(introIdx < INTRO_SLIDES.length-1) mk('다음 →', ()=>introShow(introIdx+1), 'seg-b on');
-  else {
-    mk('<span class="mi">💻</span><span class="mt"><b>컴퓨터(쉬움)와 첫 판 두기</b><small>지금 배운 것만으로 충분해요</small></span>', ()=>{ closeIntro(); botStart('easy'); }, 'menu-btn primary');
+  else if(document.getElementById('game').style.display !== 'flex'){   // 홈(첫 접속·다시 보기): 바로 첫 판으로
+    mk(INTRO_CTA, ()=>{ closeIntro(); botStart('easy'); }, 'menu-btn primary');
     mk('나중에', closeIntro);
   }
+  else mk('닫기 ✓', closeIntro, 'seg-b on');                                // 게임 중 [❔ 규칙]로 열었을 땐 닫기만
 }
-function openIntro(){ document.getElementById('introModal').style.display='flex'; introShow(0); }
-function closeIntro(){ if(introStop){ introStop(); introStop=null; } document.getElementById('introModal').style.display='none'; }
+const INTRO_CTA = '<span class="mi">💻</span><span class="mt"><b>컴퓨터(쉬움)와 첫 판 두기</b><small>지금 배운 것만으로 충분해요</small></span>';
+// 카드 크기 고정: 제목·자막·버튼 줄의 높이를 전체 슬라이드 최대치로 미리 잡아 둔다 → 자막이 길어지거나 장이 바뀌어도 카드·보드가 안 움직임
+function introFit(){
+  const title = document.getElementById('introTitle'), box = document.getElementById('introSubBox'), nav = document.getElementById('introNav');
+  const w = title.clientWidth; if(!w) return;
+  const m = document.createElement('div'); m.style.cssText = `position:absolute; left:0; top:0; width:${w}px; visibility:hidden; pointer-events:none; min-height:0`;
+  title.parentElement.appendChild(m);
+  const h = (cls, html)=>{ m.className = cls; m.innerHTML = html; return m.offsetHeight; };
+  let t = 0, s = 0;
+  INTRO_SLIDES.forEach(sp=>{ t = Math.max(t, h('intro-title', sp.title)); sp.frames.forEach(f=>{ s = Math.max(s, h('intro-sub show', f.cap || '')); }); });
+  const n = h('intro-nav', `<button class="seg-b">← 이전</button><button class="menu-btn primary">${INTRO_CTA}</button><button class="seg-b">나중에</button>`);
+  m.remove();
+  title.style.minHeight = t + 'px'; box.style.minHeight = s + 'px'; nav.style.minHeight = n + 'px';
+}
+function openIntro(){ document.getElementById('introModal').style.display='flex'; introShow(0); introFit(); window.addEventListener('resize', introFit); }
+function closeIntro(){ if(introStop){ introStop(); introStop=null; } document.getElementById('introModal').style.display='none'; window.removeEventListener('resize', introFit); }
 
 // ---------- 기물 설명 보기(상세 가이드 · 설정에서 염) ----------
 let guideStops = [];   // 데모 애니메이션 정지 함수들
@@ -1662,6 +1690,6 @@ document.addEventListener('pointerdown', (e)=>{
   }else{                                                    // 그 외 → 시작 메뉴
     showScreen('home');
   }
-  // 첫 방문이면 '규칙 요약' 카드 하나만 자동으로(팝업은 최대 1개). 기물 상세는 설정 → 기물 설명 보기.
-  if(!localStorage.getItem('fog_intro_seen')){ openIntro(); localStorage.setItem('fog_intro_seen','1'); }   // 첫 접속: 30초 인트로(슬라이드 3장)
+  // 첫 방문이면 인트로(슬라이드 4장, ≈1분) 한 번만 자동으로(팝업은 최대 1개). 기물 상세는 사이드바 📖 기물 설명.
+  if(!localStorage.getItem('fog_intro_seen')){ openIntro(); localStorage.setItem('fog_intro_seen','1'); }
 })();
