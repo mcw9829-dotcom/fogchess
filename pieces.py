@@ -88,6 +88,29 @@ def dead_types(st, color):
 
 
 # ------------------------- 안개(시야) -------------------------
+def bush_cluster(r, c):
+    """(r,c)가 속한 부쉬 덤불(상하좌우로 붙은 부쉬 칸 전체). 부쉬가 아니면 빈 집합."""
+    if (r, c) not in BUSHES:
+        return set()
+    seen, stack = {(r, c)}, [(r, c)]
+    while stack:
+        cr, cc = stack.pop()
+        for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            n = (cr + dr, cc + dc)
+            if n in BUSHES and n not in seen:
+                seen.add(n); stack.append(n)
+    return seen
+
+
+def bush_shared_cells(st, color):
+    """롤식 부쉬: color의 기물이 서 있는 덤불 전체 — 그 안의 기물은 서로 보인다(밖에서는 여전히 안 보임)."""
+    out = set()
+    for p in st['pieces'].values():
+        if p['alive'] and p['o'] == color and (p['r'], p['c']) in BUSHES:
+            out |= bush_cluster(p['r'], p['c'])
+    return out
+
+
 def visible_cells(st, color):
     vis = set()
     srcs = []
@@ -110,6 +133,7 @@ def visible_cells(st, color):
             for (r, c) in s['cells']:
                 if in_board(r, c):
                     vis.add((r, c))
+    vis |= bush_shared_cells(st, color)       # 내가 들어가 있는 덤불 안은 전부 보임(롤식)
     return vis
 
 
@@ -137,7 +161,7 @@ def enemy_visible_at(st, color, r, c, vis=None):
         return None
     if revealed(st, color, q['id']) or scanning(st, color, r, c):
         return q                               # 노출됐거나 내가 스캔 중이면 보임(부쉬 무시)
-    if (r, c) in BUSHES:                        # 부쉬 속 적: 그 외엔 저격 불가
+    if (r, c) in BUSHES and (r, c) not in bush_shared_cells(st, color):   # 부쉬 속 적: 같은 덤불에 있지 않으면 저격 불가
         return None
     if vis is None:
         vis = visible_cells(st, color)
@@ -543,6 +567,7 @@ def player_view(st, color, reveal=False):
         vis = {(r, c) for r in range(N) for c in range(N)}  # 전체 보기(디버그)
     else:
         vis = visible_cells(st, color)
+    shared = set() if spectator else bush_shared_cells(st, color)     # 내가 들어가 있는 덤불(롤식: 안에서는 서로 보임)
     grid = []
     for r in range(N):
         row = []
@@ -556,8 +581,8 @@ def player_view(st, color, reveal=False):
                         cell['p'] = {'t': q['t'], 'o': q['o'], 'id': q['id']}
                     else:
                         rv = revealed(st, color, q['id'])
-                        if (r, c) in BUSHES:            # 부쉬 속 적: 완전 은폐 — 인접·시야로는 안 보임.
-                            show = rv or reveal or scanning(st, color, r, c)  # 스캔 감시 지역이면 뚫어봄
+                        if (r, c) in BUSHES:            # 부쉬 속 적: 밖에서는 인접·시야로도 안 보임.
+                            show = rv or reveal or scanning(st, color, r, c) or (r, c) in shared   # 스캔 감시 지역 · 같은 덤불 안이면 보임
                         else:                          #  (rv=공격 노출, reveal=디버그 전체보기, vis에 스캔 지역 포함)
                             show = rv or (r, c) in vis
                         if show:

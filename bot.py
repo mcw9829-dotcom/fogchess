@@ -318,7 +318,7 @@ def _evade_king(st, me, king, danger, known):
 
     def score(m):
         r, c = m
-        s = 3.0 if (r, c) in BUSHES else 0.0                     # 부쉬로 숨으면 최고(적이 못 봄)
+        s = (3.0 if len(pieces.bush_cluster(r, c)) == 1 else 2.2) if (r, c) in BUSHES else 0.0   # 부쉬로 숨으면 최고 — 홀로 떨어진 부쉬가 더 안전(같은 덤불에 들어오면 서로 보이는 롤식 규칙)
         if known:
             s += min(abs(r - e[0]) + abs(c - e[1]) for e in known) * 0.3
         s -= abs(r - own_back) * 0.1

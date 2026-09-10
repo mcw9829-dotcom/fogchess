@@ -145,6 +145,19 @@
   </div><!-- /#game -->
   </main><!-- /.appmain -->
 
+  <!-- ===== 첫 접속 인트로(30초, 슬라이드 3장) ===== -->
+  <div id="introModal" class="modal" style="display:none">
+    <div class="modalCard introCard">
+      <button id="introClose" class="modalX">✕</button>
+      <div class="intro-head"><span>⚔️ 안개전장 체스 · 40초 안내</span><span class="intro-dots" id="introDots"></span></div>
+      <div class="intro-stage" id="introStage"></div>
+      <div class="intro-title" id="introTitle"></div>
+      <div class="intro-sub" id="introSub"></div>
+      <div class="intro-nav" id="introNav"></div>
+      <p class="note intro-foot">규칙 전체와 기물별 설명은 언제든 왼쪽 사이드바 <b>📖 규칙 · 기물</b>에서 볼 수 있어요.</p>
+    </div>
+  </div>
+
   <div id="promoModal" class="modal" style="display:none">
     <div class="modalCard" style="max-width:320px; text-align:center">
       <h2>♟ 폰 승격</h2>
@@ -159,20 +172,19 @@
       <button id="guideClose" class="modalX">✕</button>
       <h2>📖 규칙 · 기물 설명</h2>
       <!-- 규칙 카드 섹션: 규칙은 이 창 한 곳에서만(첫 접속 팝업·게임 화면 [❔ 규칙]도 이 창) -->
-      <div class="gSec"><span>📜 규칙</span><small>한 장 요약 · 처음이면 여기부터</small></div>
+      <div class="gSec"><span>📜 규칙</span><small>한 장 요약 · <a href="#" id="introAgain">처음 안내(30초) 다시 보기</a></small></div>
       <div class="gRules">
         <div class="gr"><b>🎯 목표</b>안개 속에 숨은 적 <b>왕</b>을 찾아 처치하면 승리(왕 목숨 1). 기권·접속 끊김·연속 3회 미행동도 패배. 200턴이 지나면 무승부.</div>
         <div class="gr"><b>🌫️ 안개</b>내 기물 주변만 보인다(나이트·킹은 3칸, 나머지는 1칸). 기물이 죽으면 그 시야도 사라짐.</div>
         <div class="gr"><b>🧭 배치</b>시작 후 70초 동안 내 진영 3줄에 기물을 놓는다(왕을 잘 숨기기!). 내 기물 위에 놓거나 탭하면 자리 교환.</div>
         <div class="gr"><b>⏳ 턴 30초</b>넘기면 그 턴은 상대에게 자동으로 넘어감(기물 그대로). 연속 3회 미행동 = 패배. 접속이 90초 넘게 끊기면 기권.</div>
         <div class="gr"><b>🌲 숲</b>시야·이동·사격을 모두 막는다.</div>
-        <div class="gr"><b>🌿 부쉬(매복지)</b>들어갈 수 있고, 안의 기물은 상대에게 보이지 않음. 확인하려면 들어가 잡거나 전차 돌파 사격으로 수색. 안에서 공격하면 위치 노출.</div>
+        <div class="gr"><b>🌿 부쉬(매복지)</b>들어갈 수 있고, 안의 기물은 <b>밖에서 보이지 않음</b>. 단, 붙어 있는 <b>같은 덤불에 들어가면 서로 보임</b>(롤의 부쉬처럼). 밖에서 확인하려면 퀸 스캔·전차 돌파 사격·직접 들어가기. 안에서 공격하면 위치 노출.</div>
         <div class="gr"><b>🔫 노출</b>비숍 저격·전차 돌파로 쏘면 그 기물의 <b>칸이 상대에게 2턴 동안 보임</b>(움직여도 따라감). 쏘는 타이밍이 곧 심리전.</div>
         <div class="gr"><b>🏅 레이팅</b>랭크 매칭은 레이팅전(이기면 오르고 지면 내려감). 컴퓨터 대국은 이기면만 오름. 친구 방·혼자 연습은 미반영. 게임 중 [나가기]는 기권.</div>
       </div>
       <div class="gSec"><span>♟ 기물</span><small>폰 · 나이트 · 비숍 · 전차 · 퀸 · 킹</small></div>
       <p class="note" style="margin:0 0 14px">기물 카드에 <b>마우스를 올리면</b>(모바일은 <b>탭</b>) <span style="color:rgba(var(--sig-move),1);font-weight:700">행마</span>(예시 이동) → <span style="color:rgba(var(--sig-impact),1);font-weight:700">공격</span>(움직여서 포획) → <span style="color:rgba(var(--sig-scan),1);font-weight:700">능력</span>(비숍 저격 · 전차 돌파 · 퀸 스캔) 순으로 애니메이션을 보여줍니다. 공격·능력 장면의 이펙트와 효과음은 설정의 켜기/끄기를 따릅니다.</p>
-      <div class="gDemos" id="gDemos"></div>
       <div class="gStrip">
         <button class="gArrow l" id="gPrev" title="이전 기물">◀</button>
         <div class="gPieces" id="gPieces"></div>

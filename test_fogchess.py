@@ -1005,6 +1005,47 @@ def test_reveal_shows_only_that_cell():
     assert (3, 5) not in pieces.visible_cells(st, 'W')
 
 
+
+def test_bush_cluster_shared_vision():
+    """롤식 부쉬: 같은 덤불(붙어 있는 부쉬)에 들어가면 그 안의 기물은 서로 보이고 저격도 가능. 밖에서·다른 덤불은 여전히 안 보임."""
+    _set_terrain(bushes={(3, 3), (3, 4), (4, 4), (0, 0)})     # 덤불 {(3,3),(3,4),(4,4)} + 홀로 떨어진 (0,0)
+    assert pieces.bush_cluster(3, 3) == {(3, 3), (3, 4), (4, 4)} and pieces.bush_cluster(0, 0) == {(0, 0)}
+    assert pieces.bush_cluster(5, 5) == set()
+    st = bare()
+    put(st, 'W_R1', 'W', 'R', 3, 3)                         # 내 룩이 덤불 안
+    put(st, 'B_P1', 'B', 'P', 4, 4)                         # 같은 덤불 안의 적
+    put(st, 'B_P2', 'B', 'P', 0, 0)                         # 다른(홀로 떨어진) 부쉬의 적
+    put(st, 'W_N1', 'W', 'N', 1, 0)                         # 그 부쉬에 인접한 내 나이트(밖)
+    vis = pieces.visible_cells(st, 'W')
+    assert {(3, 3), (3, 4), (4, 4)} <= vis
+    v = pieces.player_view(st, 'W')
+    assert v['grid'][4][4]['p'] and v['grid'][4][4]['p']['t'] == 'P'          # 같은 덤불 안의 적은 보임
+    assert v['grid'][0][0]['p'] is None                                        # 인접해도 밖에서는 안 보임(기존 규칙 유지)
+    assert pieces.enemy_visible_at(st, 'W', 4, 4) is not None                  # 저격 표적
+    assert pieces.enemy_visible_at(st, 'W', 0, 0) is None
+    vb = pieces.player_view(st, 'B')                                           # 대칭: 상대도 나를 본다
+    assert vb['grid'][3][3]['p'] and vb['grid'][3][3]['p']['t'] == 'R'
+    st['pieces']['B_P1']['r'], st['pieces']['B_P1']['c'] = 5, 4               # 적이 덤불 밖으로 나가면(비부쉬 칸)
+    assert pieces.player_view(st, 'B')['grid'][3][3]['p'] is None              # 다시 내 룩은 안 보임
+
+
+
+def test_bush_clusters_are_separate():
+    """대각선으로만 닿은 부쉬는 다른 덤불: 내가 든 덤불의 시야가 옆 덤불로 새지 않는다. 노출·스캔 규칙과도 독립."""
+    _set_terrain(bushes={(3, 3), (3, 4), (4, 5), (4, 6)})      # {(3,3),(3,4)} 와 {(4,5),(4,6)} — (3,4)·(4,5)는 대각선 접촉
+    assert pieces.bush_cluster(3, 3) == {(3, 3), (3, 4)} and pieces.bush_cluster(4, 6) == {(4, 5), (4, 6)}
+    st = bare()
+    put(st, 'W_Q1', 'W', 'Q', 3, 3)                         # 내 퀸이 덤불 A 안
+    put(st, 'B_N1', 'B', 'N', 4, 5)                         # 적 나이트가 덤불 B 안(인접 칸)
+    v = pieces.player_view(st, 'W')
+    assert v['grid'][4][5]['p'] is None                     # 다른 덤불 → 안 보임
+    assert v['grid'][3][4]['f'] == 0                        # 내 덤불 칸은 밝음(퀸 시야 1칸 밖인 (4,5)는 안개)
+    assert pieces.enemy_visible_at(st, 'W', 4, 5) is None
+    st['pieces']['B_N1']['c'] = 4; st['pieces']['B_N1']['r'] = 3   # 적이 내 덤불 A로 들어오면
+    assert pieces.player_view(st, 'W')['grid'][3][4]['p']['t'] == 'N'
+    assert pieces.player_view(st, 'B')['grid'][3][3]['p']['t'] == 'Q'   # 서로 보임
+
+
 # ------------------------- 신규 규칙 -------------------------
 def test_king_vision_3():
     st = bare()

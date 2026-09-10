@@ -15,7 +15,6 @@ let FX_LAST = null;
 let PENDING_FX = null;   // /action 응답으로 받은 내 액션의 fx — 다음 폴링(새 그리드)에서 먼저 재생   // 내가 방금 쏜 사격 {type, from:[r,c]} — 탄도선 출발점(상대 사격은 머즐 노출된 기물로 추정)
 const PIECE_KR = {K:'킹', Q:'퀸', R:'전차', B:'비숍', N:'나이트', P:'폰'};
 const METHOD_ICON = {melee:'⚔️', artillery:'💥', barrage:'🚜'};
-function SIDE(c){ return c==='W'?'백':'흑'; }
 function pieceSrc(t, o){
   const letter = {K:'k', Q:'q', R:'r', B:'b', N:'n', P:'p'}[t];
   return `/img/Chess_${letter}${o === 'W' ? 'l' : 'd'}t45.svg`;
@@ -91,7 +90,6 @@ function applyTheme(t){
   if(l) l.classList.toggle('on', t==='light');
   const ri=document.getElementById('railThemeIco'); if(ri) ri.textContent = (t==='light') ? '🌙' : '☀️';
 }
-function themeIsDark(){ const t=document.documentElement.dataset.theme; return t ? t==='dark' : matchMedia('(prefers-color-scheme:dark)').matches; }
 let settingsFrom = 'home';                 // 설정을 어디서 열었나(뒤로 갈 곳)
 function applyCb(on){                        // 색약 모드: 신호색 팔레트 교체
   if(on) document.documentElement.dataset.cb = 'on';
@@ -881,10 +879,118 @@ function renderCoords(){
 // 백 군대가 전진(나이트 정찰), 안개 가장자리에 적 2기 포착, 위쪽은 안개, 지형 몇 개.
 // 규칙 요약 모달(입장 시 1회 자동 + 상단 ❔규칙)
 function openHelp(){ openGuide(); }             // 규칙은 [규칙 · 기물 설명] 창 한 곳에서(첫 접속 팝업·게임 화면 [❔ 규칙] 공용)
-function closeHelp(){ closeGuide(); }
+
+// ---------- 첫 접속 인트로: 30초, 슬라이드 3장(시야 · 지형 · 목표). 각 장은 미니 보드 애니메이션 + 자막 ----------
+// 장면은 프레임 배열: {at:{id:[r,c]|null}, lit:[[r,c]..], ghost:[id], scan:[[r,c]..], beam:[[r,c]..], cap:'자막', fx:{...}}
+const IN_SZ = 8, IN_CELL = 26;
+function inVis(c, rad){ const o=[]; for(let r=c[0]-rad;r<=c[0]+rad;r++) for(let k=c[1]-rad;k<=c[1]+rad;k++) if(r>=0&&r<IN_SZ&&k>=0&&k<IN_SZ) o.push([r,k]); return o; }
+const INTRO_SLIDES = [
+  { title: '1. 배치 — 정해진 자리가 없습니다. 지형을 보고 직접 놓으세요.',
+    terrain: { forest:[[1,1],[1,2],[2,5],[3,5]], bush:[[6,1],[3,7],[4,7]] },
+    zone: [5,6,7],
+    pieces: { R:{t:'R',o:'W'}, N:{t:'N',o:'W'}, B:{t:'B',o:'W'}, Q:{t:'Q',o:'W'}, K:{t:'K',o:'W'}, p1:{t:'P',o:'W'}, p2:{t:'P',o:'W'}, p3:{t:'P',o:'W'}, p4:{t:'P',o:'W'} },
+    frames: [
+      { at:{}, cap:'체스와 달리 <b>정해진 시작 자리가 없습니다.</b> 맵(숲·부쉬)은 매 판 새로 생성됩니다.' },
+      { at:{R:[7,0], N:[7,2], B:[7,4], Q:[7,6], p1:[5,1], p2:[5,3], p3:[5,5], p4:[6,4]}, cap:'시작 후 <b>70초</b> 동안 내 진영 <b>3줄</b> 안에 자유롭게 놓습니다. 지형을 보고 배치를 정하세요.' },
+      { at:{R:[7,0], N:[7,2], B:[7,4], Q:[7,6], p1:[5,1], p2:[5,3], p3:[5,5], p4:[6,4], K:[7,3]}, cap:'왕을 <b>어디에 숨길지</b>가 첫 번째 심리전입니다.' },
+      { at:{R:[7,0], N:[7,2], B:[7,4], Q:[7,6], p1:[5,1], p2:[5,3], p3:[5,5], p4:[6,4], K:[6,1]}, ghost:['K'], cap:'부쉬 안, 숲 뒤, 폰 사이… 상대는 왕이 어디 있는지 모릅니다.' },
+    ] },
+  { title: '2. 시야 — 적은 안개 속에 숨어 있습니다.',
+    pieces: { N:{t:'N',o:'W'}, e1:{t:'P',o:'B'}, e2:{t:'R',o:'B'}, e3:{t:'B',o:'B'} },
+    frames: [
+      { at:{N:[6,3], e1:[2,2], e2:[3,5], e3:[1,6]}, lit: inVis([6,3],2), cap:'내 기물 <b>주변만</b> 보입니다. 어둠 속에 무엇이 있는지 알 수 없습니다.' },
+      { at:{N:[4,3], e1:[2,2], e2:[3,5], e3:[1,6]}, lit: inVis([4,3],2), cap:'나이트가 나아가자 숨어 있던 적이 <b>갑자기 드러납니다.</b>' },
+      { at:{N:[4,3], e1:[2,2], e2:[3,5], e3:[1,6]}, lit: inVis([4,3],2), cap:'아직 <b>안 보이는 적</b>도 있습니다. 나이트·킹은 3칸, 나머지는 1칸을 봅니다. 정찰이 곧 정보입니다.' },
+    ] },
+  { title: '3. 지형 — 부쉬에 매복하고 숲을 활용하세요.',
+    terrain: { bush:[[4,2],[4,3]], forest:[[1,6],[2,6],[3,6],[4,6],[5,6]] },
+    pieces: { R:{t:'R',o:'W'}, e1:{t:'P',o:'B'} },
+    frames: [
+      { at:{R:[6,3], e1:[1,2]}, lit: inVis([6,3],1), cap:'🌿 <b>부쉬</b>는 들어갈 수 있는 매복지, 🌲 <b>숲</b>은 시야·이동·사격을 막는 벽입니다.' },
+      { at:{R:[4,3], e1:[1,2]}, lit: inVis([4,3],1), ghost:['R'], cap:'부쉬 안의 기물은 <b>밖에서 보이지 않습니다.</b>' },
+      { at:{R:[4,3], e1:[3,2]}, lit: inVis([4,3],1), ghost:['R'], cap:'적 폰이 다가옵니다. 나는 적이 보이지만, 적은 나를 <b>못 봅니다.</b>' },
+      { at:{R:[4,3], e1:[4,2]}, lit: inVis([4,3],1), flash:['R','e1'], cap:'같은 덤불에 들어오면 <b>서로 보입니다!</b> (롤의 부쉬처럼) 먼저 움직이는 쪽이 이깁니다.' },
+      { at:{R:[4,2], e1:null}, lit: inVis([4,2],1), cap:'<b>매복 성공!</b> 홀로 떨어진 부쉬일수록 안전한 은신처입니다.', fx:{type:'capture', cells:[[4,2]]} },
+    ] },
+  { title: '4. 목표 — 체크메이트가 아닙니다. 적의 왕을 찾아 처치하세요.',
+    pieces: { Q:{t:'Q',o:'W'}, B:{t:'B',o:'W'}, K:{t:'K',o:'B'}, e1:{t:'P',o:'B'} },
+    frames: [
+      { at:{Q:[6,4], B:[6,1], K:[2,5], e1:[3,2]}, lit: inVis([6,4],1).concat(inVis([6,1],1)), cap:'왕은 안개 속 어딘가에 숨어 있습니다. 왕의 목숨은 <b>단 하나.</b>' },
+      { at:{Q:[6,4], B:[6,1], K:[2,5], e1:[3,2]}, lit: inVis([6,4],1).concat(inVis([6,1],1)), scan:[[2,5],[2,6],[3,5],[3,6]], cap:'퀸 <b>스캔</b>으로 안개 속을 들여다보니 — 왕이 보입니다!', fx:{type:'scan', cells:[[2,5],[2,6],[3,5],[3,6]], extra:[[2,5]]} },
+      { at:{Q:[6,4], B:[6,1], K:[2,5], e1:[3,2]}, lit: inVis([6,4],1).concat(inVis([6,1],1)), scan:[[2,5],[2,6],[3,5],[3,6]], beam:[[5,2],[4,3],[3,4]], cap:'비숍 <b>저격</b> — 보이는 적은 멀리서도 쏠 수 있습니다.' },
+      { at:{Q:[6,4], B:[6,1], K:null, e1:[3,2]}, lit: inVis([6,4],1).concat(inVis([6,1],1)), scan:[[2,5],[2,6],[3,5],[3,6]], cap:'<b>왕 처치 = 승리!</b> 한 방이면 끝납니다.', fx:{type:'kill', cells:[[2,5]], from:[6,1]} },
+    ] },
+];
+let introIdx = 0, introStop = null;
+function introBuild(spec){
+  const stage = document.getElementById('introStage'); stage.innerHTML = '';
+  const tr = spec.terrain || {};
+  const has = (list, r, c) => (list||[]).some(([a,b])=>a===r&&b===c);
+  const grid = obMiniGrid(IN_SZ, IN_SZ, IN_CELL, (d, r, c)=>{
+    if(has(tr.forest, r, c)){ const t=document.createElement('div'); t.className='terrain'; t.innerHTML=forestTile((r+c)%2); d.appendChild(t); }
+    else if(has(tr.bush, r, c)){ const t=document.createElement('div'); t.className='terrain bushfront'; t.innerHTML=bushTile(r, c); d.appendChild(t); }
+  });
+  grid.classList.add('obDemo'); stage.appendChild(grid);
+  const fx = window.FxLayer ? new FxLayer(stage, grid, {border:2, cols:IN_SZ}) : null;
+  const cellAt=(r,c)=>grid.querySelector(`[data-rc="${r}_${c}"]`);
+  const imgs = {};
+  for(const [id, p] of Object.entries(spec.pieces)){
+    const im = document.createElement('img'); im.className = p.o==='W' ? 'demop' : 'demoe'; im.src = pieceSrc(p.t, p.o);
+    im.style.width = im.style.height = IN_CELL+'px'; grid.appendChild(im); imgs[id] = im;
+  }
+  let prevShown = new Set();
+  const apply = (f, first)=>{
+    grid.querySelectorAll('.obCell').forEach(d=>d.classList.remove('fog','scan','beam','vis','hit','zone'));
+    const lit = new Set((f.lit||[]).map(([r,c])=>r+'_'+c));
+    (f.scan||[]).forEach(([r,c])=>lit.add(r+'_'+c));
+    (spec.zone||[]).forEach(r=>{ for(let c=0;c<IN_SZ;c++){ lit.add(r+'_'+c); const el=cellAt(r,c); if(el) el.classList.add('zone'); } });   // 배치 구역(내 진영 3줄)
+    grid.querySelectorAll('.obCell').forEach(d=>{ if(!lit.has(d.dataset.rc)) d.classList.add('fog'); });
+    (f.scan||[]).forEach(([r,c])=>{ const el=cellAt(r,c); if(el) el.classList.add('scan'); });
+    (f.beam||[]).forEach(([r,c])=>{ const el=cellAt(r,c); if(el) el.classList.add('beam'); });
+    const shown = new Set();
+    for(const [id, im] of Object.entries(imgs)){
+      const pos = f.at[id];
+      const mine = spec.pieces[id].o === 'W';
+      const visible = pos && (mine || lit.has(pos[0]+'_'+pos[1]));
+      im.style.display = visible ? '' : 'none';
+      if(pos) im.style.transform = `translate(${pos[1]*IN_CELL}px, ${pos[0]*IN_CELL}px)`;
+      im.classList.toggle('ghost', !!(f.ghost||[]).includes(id));
+      if(visible) shown.add(id);
+      if(visible && !mine && !prevShown.has(id) && !first && fx && fxOn()){          // 새로 드러난 적: 섬광
+        fx.resize(); fx.flash(fx.cx(pos[1]), fx.cy(pos[0]), fx.cw*1.1, 0.25, 'rgba(255,230,160,.95)');
+        fx.ring(fx.cx(pos[1]), fx.cy(pos[0]), fx.cw*0.2, fx.cw*1.2, 0.5, 'rgba(255,220,140,.9)', 3);
+      }
+    }
+    prevShown = shown;
+    if(f.flash && fx && fxOn() && !first){ fx.resize(); f.flash.forEach(id=>{ const pos=f.at[id]; if(!pos) return;
+      fx.flash(fx.cx(pos[1]), fx.cy(pos[0]), fx.cw*1.1, 0.25, 'rgba(255,230,160,.95)'); fx.ring(fx.cx(pos[1]), fx.cy(pos[0]), fx.cw*0.2, fx.cw*1.2, 0.5, 'rgba(255,220,140,.9)', 3); }); }
+    if(f.fx && fx && fxOn() && !first){ fx.resize(); fx.play(f.fx.type, f.fx.cells, f.fx.from||null, f.fx.extra||null); }
+    document.getElementById('introSub').innerHTML = f.cap || '';
+  };
+  apply(spec.frames[0], true);
+  let idx = 1, iv = setInterval(()=>{ const f = spec.frames[idx % spec.frames.length]; apply(f, idx % spec.frames.length === 0); idx++; }, 1500);
+  return ()=>{ clearInterval(iv); if(fx) fx.clear(); };
+}
+function introShow(i){
+  introIdx = Math.max(0, Math.min(INTRO_SLIDES.length-1, i));
+  if(introStop){ introStop(); introStop = null; }
+  const spec = INTRO_SLIDES[introIdx];
+  document.getElementById('introTitle').textContent = spec.title;
+  document.getElementById('introDots').innerHTML = INTRO_SLIDES.map((_,k)=>'<span class="'+(k===introIdx?'on':'')+'"></span>').join('');
+  introStop = introBuild(spec);
+  const nav = document.getElementById('introNav'); nav.innerHTML = '';
+  const mk = (txt, fn, cls)=>{ const b=document.createElement('button'); b.className=cls||'seg-b'; b.innerHTML=txt; b.onclick=fn; nav.appendChild(b); return b; };
+  if(introIdx > 0) mk('← 이전', ()=>introShow(introIdx-1));
+  if(introIdx < INTRO_SLIDES.length-1) mk('다음 →', ()=>introShow(introIdx+1), 'seg-b on');
+  else {
+    mk('<span class="mi">💻</span><span class="mt"><b>컴퓨터(쉬움)와 첫 판 두기</b><small>지금 배운 것만으로 충분해요</small></span>', ()=>{ closeIntro(); botStart('easy'); }, 'menu-btn primary');
+    mk('나중에', closeIntro);
+  }
+}
+function openIntro(){ document.getElementById('introModal').style.display='flex'; introShow(0); }
+function closeIntro(){ if(introStop){ introStop(); introStop=null; } document.getElementById('introModal').style.display='none'; }
 
 // ---------- 기물 설명 보기(상세 가이드 · 설정에서 염) ----------
-const OB_C = 'W';   // 가이드 기물 색(백)
 let guideStops = [];   // 데모 애니메이션 정지 함수들
 
 function obMiniGrid(cols, rows, cellPx, decorate){
@@ -1014,7 +1120,6 @@ const PIECE_GUIDE = [
 ];
 function buildGuide(){
   guideStops.forEach(fn=>fn()); guideStops=[]; guideActive=null;
-  document.getElementById('gDemos').innerHTML='';                 // 상단 데모 영역은 비움(각 카드에 통합)
   const box = document.getElementById('gPieces'); box.innerHTML='';
   PIECE_GUIDE.forEach(spec=>{
     const card=document.createElement('div'); card.className='gp2';
@@ -1060,6 +1165,9 @@ function closeGuide(){ guideStops.forEach(fn=>fn()); guideStops=[]; guideActive=
 
 document.getElementById('rematch').onclick = rematch;
 document.getElementById('helpBtn').onclick = openHelp;
+document.getElementById('introClose').onclick = closeIntro;
+document.getElementById('introModal').onclick = (e)=>{ if(e.target.id==='introModal') closeIntro(); };
+document.getElementById('introAgain').onclick = (e)=>{ e.preventDefault(); closeGuide(); openIntro(); };
 document.getElementById('guideClose').onclick = closeGuide;
 document.getElementById('gPrev').onclick = ()=>guideGo(Math.max(0, (guideSync()||0) - 1));
 document.getElementById('gNext').onclick = ()=>guideGo(Math.min(PIECE_GUIDE.length-1, (guideSync()||0) + 1));
@@ -1555,5 +1663,5 @@ document.addEventListener('pointerdown', (e)=>{
     showScreen('home');
   }
   // 첫 방문이면 '규칙 요약' 카드 하나만 자동으로(팝업은 최대 1개). 기물 상세는 설정 → 기물 설명 보기.
-  if(!localStorage.getItem('fog_help_seen')){ openHelp(); localStorage.setItem('fog_help_seen','1'); }
+  if(!localStorage.getItem('fog_intro_seen')){ openIntro(); localStorage.setItem('fog_intro_seen','1'); }   // 첫 접속: 30초 인트로(슬라이드 3장)
 })();
