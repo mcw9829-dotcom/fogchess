@@ -1131,3 +1131,150 @@ def test_resign_gives_win_to_opponent():
     st['phase'] = 'play'
     ok, _ = pieces.apply_resign(st, 'W')
     assert ok and st['phase'] == 'over' and st['winner'] == 'B'
+
+
+# ------------------------- 이메일 인증 · 비밀번호 찾기 · 복구 코드 (v1.50) -------------------------
+import time as _time
+import mailer
+
+
+def _last_code():
+    """개발 모드 발송 기록(mailer.SENT)에서 6자리 코드 추출"""
+    return re.search(r'\b(\d{6})\b', mailer.SENT[-1]['body']).group(1)
+
+
+def _wrong(code):
+    return '000000' if code != '000000' else '111111'
+
+
+@pytest.fixture
+def mail_dev(tmp_db, monkeypatch):
+    monkeypatch.setenv('FOG_MAIL_DEV', '1')
+    monkeypatch.delenv('FOG_SMTP_HOST', raising=False)
+    mailer.SENT.clear(); accounts._sends.clear()
+    return accounts
+
+
+def test_signup_with_email_verification(mail_dev):
+    assert accounts.signup_start('메일가입', 'Test123!', 'not-an-email')[1]                       # 이메일 형식
+    assert accounts.signup_start('a', 'Test123!', 'x@y.com')[1] and accounts.signup_start('메일가입', 'weak', 'x@y.com')[1]
+    res, err = accounts.signup_start('메일가입', 'Test123!', 'Moon@Example.com', ip='1.1.1.1')
+    assert err is None and res['pending'] and res['email'] == 'Mo***@Example.com' and mailer.SENT[-1]['to'] == 'Moon@Example.com'
+    assert accounts.login('메일가입', 'Test123!')[0] is None                                        # 인증 전엔 계정 없음
+    code = _last_code()
+    assert accounts.signup_verify('moon@example.com', _wrong(code))[1].startswith('인증 코드가 맞지 않아요')
+    res, err = accounts.signup_verify('moon@example.com', code)                                    # 대소문자 무시
+    assert err is None and res['session'] and res['user']['name'] == '메일가입' and res['user']['emailVerified'] is True
+    assert res['user']['email'] == 'Mo***@Example.com' and re.fullmatch(r'FOG-[A-Z2-9]{4}-[A-Z2-9]{4}', res['recovery'])
+    assert accounts.signup_verify('moon@example.com', code)[1]                                     # 코드는 1회용
+    me = accounts.user_by_token(res['session'], private_info=True)
+    assert me['emailVerified'] and me['hasRecovery'] and 'email' not in accounts.user_by_token(res['session'])   # 공개 정보엔 이메일 없음
+    assert accounts.login('메일가입', 'Test123!')[0]['user']['id'] == me['id']
+    assert accounts.signup_start('다른사람', 'Test123!', 'MOON@example.com')[1]                      # 이메일 하나에 계정 하나
+    us = accounts.users_list(); assert us[0]['email'] == 'Moon@Example.com' and us[0]['emailVerified'] and us[0]['hasRecovery']
+
+
+def test_code_attempts_expiry_and_resend(mail_dev):
+    accounts.signup_start('코드시험', 'Test123!', 'c@t.com', ip='2.2.2.2')
+    assert accounts.signup_resend('c@t.com', ip='2.2.2.2')[1].startswith('잠시 후')                  # 60초 쿨다운
+    assert accounts.signup_resend('nobody@t.com')[1]                                               # 진행 중 가입 없음
+    for _ in range(5):
+        assert accounts.signup_verify('c@t.com', _wrong(_last_code()))[1]
+    assert '무효' in accounts.signup_verify('c@t.com', _last_code())[1]                              # 5회 틀리면 맞는 코드도 무효
+    accounts._sends.clear()
+    res, err = accounts.signup_resend('c@t.com', ip='2.2.2.2'); assert err is None and res['pending']   # 재발송 → 새 코드
+    with accounts._db() as c:
+        c.execute('UPDATE mail_codes SET expires=?', (_time.time() - 1,))
+    assert '만료' in accounts.signup_verify('c@t.com', _last_code())[1]
+
+
+def test_send_rate_limit_per_ip(mail_dev, monkeypatch):
+    monkeypatch.setattr(accounts, 'SEND_MAX_IP_HOUR', 3)
+    for i in range(3):
+        assert accounts.signup_start(f'유저{i}', 'Test123!', f'u{i}@t.com', ip='9.9.9.9')[1] is None
+    assert '너무 많아요' in accounts.signup_start('마지막', 'Test123!', 'last@t.com', ip='9.9.9.9')[1]
+    assert accounts.signup_start('마지막', 'Test123!', 'last@t.com', ip='8.8.8.8')[1] is None        # 다른 IP는 OK
+
+
+def test_reset_by_email(mail_dev):
+    accounts.signup_start('찾기유저', 'Test123!', 'find@t.com', ip='3.3.3.3')
+    tok = accounts.signup_verify('find@t.com', _last_code())[0]['session']
+    n = len(mailer.SENT)
+    res, err = accounts.reset_start('nobody@t.com', ip='3.3.3.3'); assert err is None and res['sent'] and len(mailer.SENT) == n   # 없는 주소: 같은 응답·발송 없음
+    accounts._sends.clear()
+    res, err = accounts.reset_start('FIND@t.com', ip='3.3.3.3'); assert err is None and len(mailer.SENT) == n + 1
+    code = _last_code()
+    assert accounts.reset_verify('find@t.com', code, 'weak')[1]                                    # 새 비밀번호 규칙
+    assert accounts.reset_verify('find@t.com', _wrong(code), 'NewPass1!')[1]
+    res, err = accounts.reset_verify('find@t.com', code, 'NewPass1!')
+    assert err is None and res['user']['name'] == '찾기유저' and res['session']
+    assert accounts.user_by_token(tok) is None                                                      # 모든 기기 로그아웃
+    assert accounts.login('찾기유저', 'Test123!')[0] is None and accounts.login('찾기유저', 'NewPass1!')[0]
+    assert accounts.reset_start('find@t.com')[1].startswith('잠시 후')                               # 쿨다운
+
+
+def test_recovery_code_reset_and_reissue(tmp_db):
+    res, err = accounts.signup('복구유저', 'Test123!'); assert err is None
+    tok, code = res['session'], res['recovery']
+    assert re.fullmatch(r'FOG-[A-Z2-9]{4}-[A-Z2-9]{4}', code)
+    assert accounts.recover_with_code('FOG-AAAA-AAAA', 'NewPass1!', ip='4.4.4.4')[1]                 # 틀린 코드
+    assert accounts.recover_with_code(code, 'weak', ip='4.4.4.4')[1]                                # 새 비밀번호 규칙
+    res2, err = accounts.recover_with_code(code.lower().replace('-', ' '), 'NewPass1!', ip='4.4.4.4')   # 소문자·공백 허용
+    assert err is None and res2['user']['name'] == '복구유저' and res2['recovery'] != code
+    assert accounts.user_by_token(tok) is None and accounts.user_by_token(res2['session'])          # 옛 세션 종료 · 새 세션
+    assert accounts.recover_with_code(code, 'NewPass2!', ip='4.4.4.4')[1]                           # 쓴 코드는 무효
+    assert accounts.login('복구유저', 'NewPass1!')[0]
+    assert accounts.recovery_reissue('bogus', 'NewPass1!')[1] and accounts.recovery_reissue(res2['session'], 'wrong')[1]
+    new, err = accounts.recovery_reissue(res2['session'], 'NewPass1!'); assert err is None and new != res2['recovery']
+    assert accounts.recover_with_code(res2['recovery'], 'NewPass3!', ip='5.5.5.5')[1]               # 이전 코드 무효
+    assert accounts.recover_with_code(new, 'NewPass3!', ip='5.5.5.5')[0]
+
+
+def test_recovery_code_lockout(tmp_db):
+    for _ in range(accounts.RECOV_MAX_FAILS):
+        assert accounts.recover_with_code('FOG-ZZZZ-ZZZZ', 'NewPass1!', ip='6.6.6.6')[1]
+    assert '잠겼' in accounts.recover_with_code('FOG-ZZZZ-ZZZZ', 'NewPass1!', ip='6.6.6.6')[1]
+    assert '잠겼' not in accounts.recover_with_code('FOG-ZZZZ-ZZZZ', 'NewPass1!', ip='7.7.7.7')[1]
+
+
+def test_email_link_from_profile(mail_dev):
+    res, _ = accounts.signup('링크유저', 'Test123!'); tok = res['session']
+    assert accounts.user_by_token(tok, private_info=True)['emailVerified'] is False
+    assert accounts.email_link_start(tok, 'wrong', 'l@t.com', ip='1.2.3.4')[1] == '현재 비밀번호가 맞지 않습니다.'
+    assert accounts.email_link_start(tok, 'Test123!', 'bad', ip='1.2.3.4')[1]
+    assert accounts.email_link_verify(tok, '123456')[1]                                             # 아직 요청 없음
+    res, err = accounts.email_link_start(tok, 'Test123!', 'L@t.com', ip='1.2.3.4'); assert err is None and res['sent']
+    assert accounts.email_link_verify(tok, _wrong(_last_code()))[1]
+    user, err = accounts.email_link_verify(tok, _last_code())
+    assert err is None and user['emailVerified'] and user['email'] == 'L***@t.com'
+    res2, _ = accounts.signup('링크유저2', 'Test123!'); accounts._sends.clear()
+    assert '다른 계정' in accounts.email_link_start(res2['session'], 'Test123!', 'l@t.com')[1]        # 이메일 하나에 계정 하나
+    accounts._sends.clear()
+    assert accounts.reset_start('l@t.com')[0]['sent'] and accounts.reset_verify('l@t.com', _last_code(), 'NewPass1!')[0]['user']['name'] == '링크유저'
+
+
+def test_users_migration_adds_email_columns(tmp_path):
+    """옛 DB(users에 이메일 컬럼 없음)를 열면 컬럼과 인덱스가 자동으로 추가된다(멱등)."""
+    import sqlite3
+    p = str(tmp_path / 'old2.db'); c = sqlite3.connect(p)
+    c.execute('CREATE TABLE users(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, name_lc TEXT NOT NULL UNIQUE, salt BLOB NOT NULL, '
+              'pw_hash BLOB NOT NULL, rating INTEGER NOT NULL, wins INTEGER NOT NULL DEFAULT 0, losses INTEGER NOT NULL DEFAULT 0, '
+              'draws INTEGER NOT NULL DEFAULT 0, created REAL NOT NULL)')
+    c.execute("INSERT INTO users(name, name_lc, salt, pw_hash, rating, created) VALUES('old', 'old', x'00', x'00', 1000, 1)"); c.commit()
+    accounts._migrate(c); accounts._migrate(c)
+    cols = {row[1] for row in c.execute('PRAGMA table_info(users)')}
+    assert {'email', 'email_lc', 'email_verified', 'recov_hash'} <= cols
+    assert c.execute('SELECT email_verified FROM users').fetchone()[0] == 0
+    c.close()
+
+
+def test_mailer_disabled_and_dev(monkeypatch):
+    for k in ('FOG_SMTP_HOST', 'FOG_SMTP_USER', 'FOG_SMTP_PASS', 'FOG_MAIL_DEV'):
+        monkeypatch.delenv(k, raising=False)
+    assert mailer.enabled() is False and mailer.send('a@b.c', 's', 'b') is False                    # 미설정: 로그만, False
+    monkeypatch.setenv('FOG_MAIL_DEV', '1')
+    assert mailer.enabled() and mailer.send('a@b.c', 's', 'body 123456') is True and mailer.SENT[-1]['mode'] == 'dev'
+    st = mailer.status(); assert st['enabled'] and st['dev'] and st['sent'][-1]['body'] == 'body 123456'
+    monkeypatch.setenv('FOG_SMTP_HOST', 'smtp.example.com'); monkeypatch.setenv('FOG_SMTP_USER', 'u'); monkeypatch.setenv('FOG_SMTP_PASS', 'p')
+    monkeypatch.setenv('FOG_MAIL_DEV', '')
+    assert mailer.smtp_ready() and mailer.enabled() and mailer.config()['sender'] == 'u'
