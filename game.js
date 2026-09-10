@@ -1270,11 +1270,9 @@ async function fetchMe(){                       // 세션이 있으면 서버에
   if(!ME) localStorage.removeItem('fog_session');   // 만료/무효 세션 정리
   renderProfile();
 }
-let MAIL_ON = false;                       // 서버에 메일 발송이 설정됐나(/version.mail) → 이메일 인증 가입 · 이메일로 찾기 · 프로필 이메일 행
 let authMode = 'login';                    // 'login' | 'signup'
-let PENDING_EMAIL = '';                    // 가입 인증 코드를 기다리는 이메일
 let recovBack = 'close';                   // 복구 코드 화면 [저장했어요] 뒤: 'close' | 'profile'
-function authView(v){ ['authForm','authCode','authRecov','authFind','authProfile'].forEach(id=>{ $(id).style.display = id===v ? '' : 'none'; }); }
+function authView(v){ ['authForm','authRecov','authFind','authProfile'].forEach(id=>{ $(id).style.display = id===v ? '' : 'none'; }); }
 function openAuth(){
   $('authModal').style.display='flex';
   $('authErr').textContent = '';
@@ -1292,18 +1290,15 @@ function setAuthMode(m){
   $('tabLogin').classList.toggle('on', !su); $('tabSignup').classList.toggle('on', su);
   $('authGoIcon').textContent = su ? '🪖' : '🔑';                       // 회원가입=입대(헬멧) / 로그인=열쇠
   $('authGoText').textContent = su ? '회원가입' : '로그인';
-  $('authGoSub').textContent = su ? (MAIL_ON ? '이메일로 받은 인증 코드로 가입 · 레이팅 1000부터 시작' : '닉네임과 비밀번호만 있으면 끝 · 레이팅 1000부터 시작') : '닉네임과 비밀번호로 입장';
+  $('authGoSub').textContent = su ? '닉네임과 비밀번호만 있으면 끝 · 레이팅 1000부터 시작' : '닉네임과 비밀번호로 입장';
   $('authGo').classList.toggle('primary', su);
-  $('authEmail').style.display = (su && MAIL_ON) ? '' : 'none';
   $('authPw').autocomplete = su ? 'new-password' : 'current-password';
   $('authPw').placeholder = su ? '비밀번호 (8자 이상 · 영문+숫자+특수문자)' : '비밀번호';
   $('pwChecks').style.display = su ? '' : 'none';
   $('authForgot').style.display = su ? 'none' : '';
-  $('authNote').textContent = (su && MAIL_ON) ? '이메일은 인증과 비밀번호 찾기에만 쓰고 공개되지 않아요. 비밀번호는 해시로만 저장돼요.' : '비밀번호는 해시로만 저장돼요(서버에 평문 없음).';
   if(su) pwChecks($('pwChecks'), $('authPw').value);
   $('authErr').textContent = '';
 }
-function emailOk(e){ return /^[^\s@]+@[^\s@]+\.[A-Za-z0-9-]{2,}$/.test(e) && e.length <= 120; }
 function loggedIn(r){                                 // 로그인/가입/재설정 응답 공통: 세션 저장 + 프로필 갱신
   localStorage.setItem('fog_session', r.session); ME = r.user; ME.weakPw = !!r.weakPw;
   localStorage.setItem('fog_last_name', ME.name);
@@ -1326,44 +1321,18 @@ function pwProblem(pw){
 function pwChecks(box, pw){ box.querySelectorAll('span[data-k]').forEach(s=>s.classList.toggle('ok', PW_RULE[s.dataset.k](pw||''))); }
 // ---------- 프로필 편집: 닉네임 변경 · 비밀번호 변경 ----------
 function profMsg(t){ const el=$('profMsg'); el.textContent=t; el.style.display = t ? '' : 'none'; }
-function openProfSection(which){                       // 'name' | 'pw' | 'email' | 'recov' | null
-  const map = {name:'nameForm', pw:'pwForm', email:'emailForm', recov:'recovForm'};
+function openProfSection(which){                       // 'name' | 'pw' | 'recov' | null
+  const map = {name:'nameForm', pw:'pwForm', recov:'recovForm'};
   Object.values(map).forEach(id=>{ $(id).style.display='none'; });
   if(which && map[which]) $(map[which]).style.display='';
   $('pwNotice').style.display = (ME && ME.weakPw) ? '' : 'none';
-  ['nameErr','pwErr','emailErr','recovErr'].forEach(id=>$(id).textContent='');
+  ['nameErr','pwErr','recovErr'].forEach(id=>$(id).textContent='');
   if(which==='name'){ $('newName').value = ME ? ME.name : ''; setTimeout(()=>$('newName').focus(), 50); }
   if(which==='pw'){ ['pwOld','pwNew','pwNew2'].forEach(id=>$(id).value=''); pwChecks($('pwChecks2'), ''); setTimeout(()=>$('pwOld').focus(), 50); }
-  if(which==='email'){ EMAIL_PENDING=false; ['emailIn','emailPw','emailCodeIn'].forEach(id=>$(id).value=''); $('emailStep2').style.display='none'; $('emailSave').textContent='코드 보내기'; setTimeout(()=>$('emailIn').focus(), 50); }
   if(which==='recov'){ $('recovPw').value=''; setTimeout(()=>$('recovPw').focus(), 50); }
 }
-function renderProfileExtras(){                        // 이메일 행(메일 설정 서버만) · 등록 안내 · 복구 코드 버튼 문구
-  if(!ME) return;
-  $('profEmailRow').style.display = MAIL_ON ? '' : 'none';
-  $('profEmail').textContent = ME.email ? ME.email + (ME.emailVerified ? ' ✓' : '') : '미등록';
-  $('btnEmail').textContent = ME.email ? '변경' : '등록';
-  $('emailNotice').style.display = (MAIL_ON && !ME.emailVerified) ? '' : 'none';
-  $('btnRecov').textContent = ME.hasRecovery ? '🗝️ 복구 코드 재발급' : '🗝️ 복구 코드 발급';
-}
-let EMAIL_PENDING = false;                              // 프로필 이메일 등록: 코드 입력 단계인가
-async function emailSave(){
-  $('emailErr').textContent='';
-  if(!EMAIL_PENDING){
-    const email=$('emailIn').value.trim(), pw=$('emailPw').value;
-    if(!emailOk(email)){ $('emailErr').textContent='이메일 주소를 확인해 주세요.'; $('emailIn').focus(); return; }
-    if(!pw){ $('emailErr').textContent='현재 비밀번호를 입력하세요.'; $('emailPw').focus(); return; }
-    const r = await post('/account/email', {session: session(), pw, email});
-    if(!r.ok){ $('emailErr').textContent = r.msg || '실패했습니다.'; return; }
-    EMAIL_PENDING = true; $('emailStep2').style.display=''; $('emailSave').textContent='인증'; setTimeout(()=>$('emailCodeIn').focus(), 50); return;
-  }
-  const code=$('emailCodeIn').value.trim();
-  if(!/^\d{6}$/.test(code)){ $('emailErr').textContent='인증 코드 6자리를 입력하세요.'; $('emailCodeIn').focus(); return; }
-  const r = await post('/account/email/verify', {session: session(), code});
-  if(!r.ok){ $('emailErr').textContent = r.msg || '실패했습니다.'; return; }
-  const weak = !!(ME && ME.weakPw); ME = r.user; ME.weakPw = weak; EMAIL_PENDING = false;
-  renderProfileCard(); openProfSection(null); profMsg('✅ 이메일을 등록했어요: ' + ME.email);
-}
-async function recovIssue(){
+function renderProfileExtras(){ if(ME) $('btnRecov').textContent = ME.hasRecovery ? '🗝️ 복구 코드 재발급' : '🗝️ 복구 코드 발급'; }
+async function recovIssue(){                           // 프로필: 복구 코드 (재)발급 — 현재 비밀번호 확인
   const pw=$('recovPw').value; $('recovErr').textContent='';
   if(!pw){ $('recovErr').textContent='현재 비밀번호를 입력하세요.'; $('recovPw').focus(); return; }
   const r = await post('/account/recovery', {session: session(), pw});
@@ -1458,37 +1427,17 @@ function renderTierLadder(curTier, rating, box){
   }).join('');
 }
 async function authSubmit(){
-  const name=$('authName').value.trim(), pw=$('authPw').value, email=$('authEmail').value.trim();
+  const name=$('authName').value.trim(), pw=$('authPw').value;
   $('authErr').textContent='';
   if(!name){ $('authErr').textContent='닉네임을 입력하세요.'; $('authName').focus(); return; }
-  if(authMode==='signup'){
-    const p=pwProblem(pw); if(p){ $('authErr').textContent=p; $('authPw').focus(); return; }
-    if(MAIL_ON && !emailOk(email)){ $('authErr').textContent='이메일 주소를 확인해 주세요.'; $('authEmail').focus(); return; }
-  }
+  if(authMode==='signup'){ const p=pwProblem(pw); if(p){ $('authErr').textContent=p; $('authPw').focus(); return; } }
   else if(!pw){ $('authErr').textContent='비밀번호를 입력하세요.'; $('authPw').focus(); return; }
-  const r = await post(authMode==='login' ? '/login' : '/signup', authMode==='login' ? {name, pw} : {name, pw, email});
+  const r = await post(authMode==='login' ? '/login' : '/signup', {name, pw});
   if(!r.ok){ $('authErr').textContent = r.msg || '실패했습니다.'; return; }
-  if(r.pending){                                      // 이메일 인증 대기 → 코드 입력 화면
-    PENDING_EMAIL = email; $('codeEmail').textContent = r.email || email; $('codeIn').value=''; $('codeErr').textContent=''; $('codeMsg').style.display='none';
-    authView('authCode'); setTimeout(()=>$('codeIn').focus(), 50); return;
-  }
   loggedIn(r);
-  if(r.recovery){ showRecovery(r.recovery, '가입 완료! 이 코드는 지금 한 번만 보여요.'); return; }
+  if(r.recovery){ showRecovery(r.recovery, '가입 완료! 이 코드는 지금 한 번만 보여요.'); return; }   // 가입: 복구 코드 1회 표시
   if(ME.weakPw) openAuth();                       // 옛 4자리 비밀번호 → 프로필의 비밀번호 변경 폼을 바로 열어 안내
   else closeAuth();
-}
-async function codeSubmit(){                          // 가입 2단계: 인증 코드 확인
-  const code=$('codeIn').value.trim(); $('codeErr').textContent='';
-  if(!/^\d{6}$/.test(code)){ $('codeErr').textContent='인증 코드 6자리를 입력하세요.'; $('codeIn').focus(); return; }
-  const r = await post('/signup/verify', {email: PENDING_EMAIL, code});
-  if(!r.ok){ $('codeErr').textContent = r.msg || '실패했습니다.'; return; }
-  loggedIn(r); showRecovery(r.recovery, '가입 완료! 이 코드는 지금 한 번만 보여요.');
-}
-async function codeResend(){
-  $('codeErr').textContent=''; $('codeMsg').style.display='none';
-  const r = await post('/signup/resend', {email: PENDING_EMAIL});
-  if(!r.ok){ $('codeErr').textContent = r.msg || '실패했습니다.'; return; }
-  $('codeMsg').textContent='새 코드를 보냈어요. 이전 코드는 무효예요.'; $('codeMsg').style.display='';
 }
 function recovDone(){
   if(recovBack==='profile' && ME){ openAuth(); return; }
@@ -1500,37 +1449,12 @@ async function recovCopy(){
   catch(e){ const r=document.createRange(); r.selectNodeContents($('recovCode')); const s=getSelection(); s.removeAllRanges(); s.addRange(r); $('recovMsg').textContent='선택됐어요 — 복사(Ctrl+C)하세요.'; }
   $('recovMsg').style.display='';
 }
-// ---------- 비밀번호 · 닉네임 찾기 ----------
-let findBy = 'email';
-function openFind(by){
-  authView('authFind'); $('findErr').textContent='';
-  findBy = by || (MAIL_ON ? 'email' : 'code');
-  $('findEmail').style.display = MAIL_ON ? '' : 'none';
-  $('findEmail').classList.toggle('on', findBy==='email'); $('findCode').classList.toggle('on', findBy==='code');
-  $('findByEmail').style.display = findBy==='email' ? '' : 'none'; $('findByCode').style.display = findBy==='code' ? '' : 'none';
-  $('findStep2').style.display='none';
-  pwChecks($('pwChecks3'), $('findNewPw').value); pwChecks($('pwChecks4'), $('findNewPw2').value);
-  setTimeout(()=>$(findBy==='email' ? 'findEmailIn' : 'findRecovIn').focus(), 50);
-}
-async function findSend(){
-  const email=$('findEmailIn').value.trim(); $('findErr').textContent='';
-  if(!emailOk(email)){ $('findErr').textContent='이메일 주소를 확인해 주세요.'; $('findEmailIn').focus(); return; }
-  const r = await post('/recover/email', {email});
-  if(!r.ok){ $('findErr').textContent = r.msg || '실패했습니다.'; return; }
-  $('findStep2').style.display=''; $('findCodeIn').value=''; setTimeout(()=>$('findCodeIn').focus(), 50);
-}
+// ---------- 비밀번호 · 닉네임 찾기(복구 코드) ----------
+function openFind(){ authView('authFind'); $('findErr').textContent=''; pwChecks($('pwChecks3'), $('findNewPw').value); setTimeout(()=>$('findRecovIn').focus(), 50); }
 async function findReset(){
-  const email=$('findEmailIn').value.trim(), code=$('findCodeIn').value.trim(), pw=$('findNewPw').value; $('findErr').textContent='';
-  if(!/^\d{6}$/.test(code)){ $('findErr').textContent='인증 코드 6자리를 입력하세요.'; $('findCodeIn').focus(); return; }
-  const p=pwProblem(pw); if(p){ $('findErr').textContent=p; $('findNewPw').focus(); return; }
-  const r = await post('/recover/verify', {email, code, new: pw});
-  if(!r.ok){ $('findErr').textContent = r.msg || '실패했습니다.'; return; }
-  loggedIn(r); openAuth(); profMsg('✅ 비밀번호를 바꿨어요. 닉네임은 ' + ME.name + ' · 다른 기기의 로그인은 풀렸어요.');
-}
-async function findReset2(){
-  const code=$('findRecovIn').value.trim(), pw=$('findNewPw2').value; $('findErr').textContent='';
+  const code=$('findRecovIn').value.trim(), pw=$('findNewPw').value; $('findErr').textContent='';
   if(code.replace(/[^A-Za-z0-9]/g,'').replace(/^FOG/i,'').length !== 8){ $('findErr').textContent='복구 코드(FOG-XXXX-XXXX)를 입력하세요.'; $('findRecovIn').focus(); return; }
-  const p=pwProblem(pw); if(p){ $('findErr').textContent=p; $('findNewPw2').focus(); return; }
+  const p=pwProblem(pw); if(p){ $('findErr').textContent=p; $('findNewPw').focus(); return; }
   const r = await post('/recover/code', {code, new: pw});
   if(!r.ok){ $('findErr').textContent = r.msg || '실패했습니다.'; return; }
   loggedIn(r); showRecovery(r.recovery, '비밀번호를 바꿨어요. 닉네임은 ' + ME.name + ' · 쓴 코드는 무효가 되고 새 코드가 발급됐어요.');
@@ -1779,23 +1703,17 @@ $('btnName').onclick = ()=>openProfSection($('nameForm').style.display==='none' 
 $('btnPw').onclick   = ()=>openProfSection($('pwForm').style.display==='none' ? 'pw' : null);
 $('nameCancel').onclick = $('pwCancel').onclick = ()=>openProfSection(null);
 $('nameSave').onclick = saveName; $('pwSave').onclick = savePw;
-// 이메일 인증 · 찾기 · 복구 코드(v1.50)
+// 찾기 · 복구 코드(v1.50~)
 $('authForgot').onclick = (e)=>{ e.preventDefault(); openFind(); };
 $('findBack').onclick = (e)=>{ e.preventDefault(); authView('authForm'); setAuthMode('login'); };
-$('findEmail').onclick = ()=>openFind('email'); $('findCode').onclick = ()=>openFind('code');
-$('findSend').onclick = findSend; $('findReset').onclick = findReset; $('findReset2').onclick = findReset2;
+$('findReset').onclick = findReset;
 $('findNewPw').addEventListener('input', e=>pwChecks($('pwChecks3'), e.target.value));
-$('findNewPw2').addEventListener('input', e=>pwChecks($('pwChecks4'), e.target.value));
-$('codeGo').onclick = codeSubmit; $('codeResend').onclick = (e)=>{ e.preventDefault(); codeResend(); };
-$('codeBack').onclick = (e)=>{ e.preventDefault(); authView('authForm'); setAuthMode('signup'); setTimeout(()=>$('authEmail').focus(), 50); };
-$('codeIn').addEventListener('keydown', e=>{ if(e.key==='Enter') codeSubmit(); });
-$('findCodeIn').addEventListener('keydown', e=>{ if(e.key==='Enter') findReset(); });
+$('findNewPw').addEventListener('keydown', e=>{ if(e.key==='Enter') findReset(); });
 $('recovCopy').onclick = recovCopy; $('recovDone').onclick = recovDone;
-$('btnEmail').onclick = ()=>openProfSection($('emailForm').style.display==='none' ? 'email' : null);
 $('btnRecov').onclick = ()=>openProfSection($('recovForm').style.display==='none' ? 'recov' : null);
-$('emailCancel').onclick = $('recovCancel').onclick = ()=>openProfSection(null);
-$('emailSave').onclick = emailSave; $('recovIssue').onclick = recovIssue;
-$('emailCodeIn').addEventListener('keydown', e=>{ if(e.key==='Enter') emailSave(); });
+$('recovCancel').onclick = ()=>openProfSection(null);
+$('recovIssue').onclick = recovIssue;
+$('recovPw').addEventListener('keydown', e=>{ if(e.key==='Enter') recovIssue(); });
 $('newName').addEventListener('keydown', e=>{ if(e.key==='Enter') saveName(); });
 ['pwOld','pwNew','pwNew2'].forEach(id=>$(id).addEventListener('keydown', e=>{ if(e.key==='Enter') savePw(); }));
 $('pwNew').addEventListener('input', e=>pwChecks($('pwChecks2'), e.target.value));
@@ -1817,7 +1735,7 @@ document.addEventListener('pointerdown', (e)=>{
   applyTheme(localStorage.getItem('fog_theme') || 'dark');
   applyCb(localStorage.getItem('fog_cb') === '1');
   fetchMe();                                                // 로그인 세션이 있으면 레일 프로필(레이팅·티어) 표시
-  api('/version').then(v=>{ if(v && v.version){ $('verBadge').textContent = 'WW1 Fog Chess · v' + v.version; $('railVer').textContent = 'v' + v.version + ' · 패치노트'; MAIL_ON = !!v.mail; renderProfileExtras(); } }).catch(()=>{});
+  api('/version').then(v=>{ if(v && v.version){ $('verBadge').textContent = 'WW1 Fog Chess · v' + v.version; $('railVer').textContent = 'v' + v.version + ' · 패치노트'; } }).catch(()=>{});
   renderCoords();
   setInterval(poll, 900);
   const hash = (location.hash || '').replace('#','');

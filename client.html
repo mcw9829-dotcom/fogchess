@@ -190,54 +190,31 @@
         <h2>🎖️ 계정</h2>
         <div class="authTabs"><button id="tabLogin" class="seg-b on">로그인</button><button id="tabSignup" class="seg-b">회원가입</button></div>
         <input id="authName" class="auth-in" placeholder="닉네임 (2~12자 · 한글/영문/숫자/_)" maxlength="12" autocomplete="username">
-        <input id="authEmail" class="auth-in" type="email" placeholder="이메일 (인증 코드를 받아요)" maxlength="120" autocomplete="email" style="display:none">
         <input id="authPw" class="auth-in" type="password" maxlength="64" placeholder="비밀번호" autocomplete="current-password">
         <div id="pwChecks" class="pwChecks" style="display:none"><span data-k="len">8자 이상</span><span data-k="alpha">영문</span><span data-k="digit">숫자</span><span data-k="special">특수문자</span></div>
         <div id="authErr" class="auth-err"></div>
         <button id="authGo" class="menu-btn"><span class="mi" id="authGoIcon">🔑</span><span class="mt"><b id="authGoText">로그인</b><small id="authGoSub">닉네임과 비밀번호로 입장</small></span></button>
         <a href="#" id="authForgot" class="auth-link">비밀번호나 닉네임을 잊었나요?</a>
-        <p class="note" id="authNote" style="margin:10px 0 0">비밀번호는 해시로만 저장돼요(서버에 평문 없음).</p>
-      </div>
-      <!-- 회원가입 2단계: 이메일 인증 코드 -->
-      <div id="authCode" style="display:none">
-        <h2>📨 이메일 인증</h2>
-        <p class="note" style="margin:0 0 10px"><b id="codeEmail"></b>(으)로 6자리 코드를 보냈어요. <b>10분</b> 안에 입력해 주세요. 안 보이면 스팸함도 확인!</p>
-        <input id="codeIn" class="auth-in code-in" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="인증 코드 6자리" autocomplete="one-time-code">
-        <div id="codeErr" class="auth-err"></div>
-        <div id="codeMsg" class="auth-ok"></div>
-        <button id="codeGo" class="menu-btn primary"><span class="mi">✅</span><span class="mt"><b>인증하고 가입 완료</b><small>확인되면 바로 로그인돼요</small></span></button>
-        <div class="row-links"><a href="#" id="codeResend">코드 다시 보내기</a><span>·</span><a href="#" id="codeBack">이메일 바꾸기</a></div>
+        <p class="note" style="margin:10px 0 0">비밀번호는 해시로만 저장돼요(서버에 평문 없음).</p>
       </div>
       <!-- 복구 코드 1회 표시(가입 완료 · 재발급 · 복구 코드로 재설정 뒤) -->
       <div id="authRecov" style="display:none">
         <h2>🗝️ 복구 코드</h2>
         <div id="recovSub" class="auth-ok" style="display:block; margin:0 0 6px"></div>
-        <p class="note" style="margin:0 0 8px">비밀번호와 이메일을 둘 다 잃어도 계정을 되찾는 <b>1회용 열쇠</b>예요. <b>지금 한 번만</b> 보여드리니 메모장이나 비밀번호 관리자에 저장하세요.</p>
+        <p class="note" style="margin:0 0 8px">비밀번호를 잊었을 때 계정을 되찾는 <b>1회용 열쇠</b>예요. <b>지금 한 번만</b> 보여드리니 메모장이나 비밀번호 관리자에 저장하세요.</p>
         <div class="recovBox"><code id="recovCode"></code><button class="seg-b" id="recovCopy">복사</button></div>
         <div id="recovMsg" class="auth-ok"></div>
         <button id="recovDone" class="menu-btn primary"><span class="mi">🪖</span><span class="mt"><b>저장했어요</b><small>프로필 [🗝️ 복구 코드]에서 언제든 새로 발급할 수 있어요</small></span></button>
       </div>
-      <!-- 비밀번호 · 닉네임 찾기 -->
+      <!-- 비밀번호 · 닉네임 찾기(복구 코드) -->
       <div id="authFind" style="display:none">
         <h2>🔎 비밀번호 · 닉네임 찾기</h2>
-        <div class="authTabs"><button id="findEmail" class="seg-b on">이메일로</button><button id="findCode" class="seg-b">복구 코드로</button></div>
-        <div id="findByEmail">
-          <input id="findEmailIn" class="auth-in" type="email" placeholder="가입할 때 인증한 이메일" maxlength="120" autocomplete="email">
-          <button id="findSend" class="menu-btn"><span class="mi">📨</span><span class="mt"><b>인증 코드 보내기</b><small>등록된 이메일이면 6자리 코드가 가요</small></span></button>
-          <div id="findStep2" style="display:none">
-            <input id="findCodeIn" class="auth-in code-in" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="인증 코드 6자리" autocomplete="one-time-code">
-            <input id="findNewPw" class="auth-in" type="password" maxlength="64" placeholder="새 비밀번호 (8자 이상 · 영문+숫자+특수문자)" autocomplete="new-password">
-            <div id="pwChecks3" class="pwChecks"><span data-k="len">8자 이상</span><span data-k="alpha">영문</span><span data-k="digit">숫자</span><span data-k="special">특수문자</span></div>
-            <button id="findReset" class="menu-btn primary"><span class="mi">🔑</span><span class="mt"><b>새 비밀번호로 바꾸고 로그인</b><small>닉네임도 알려드려요 · 다른 기기는 로그아웃</small></span></button>
-          </div>
-        </div>
-        <div id="findByCode" style="display:none">
-          <input id="findRecovIn" class="auth-in" placeholder="복구 코드 (FOG-XXXX-XXXX)" maxlength="16" autocapitalize="characters" autocomplete="off">
-          <input id="findNewPw2" class="auth-in" type="password" maxlength="64" placeholder="새 비밀번호 (8자 이상 · 영문+숫자+특수문자)" autocomplete="new-password">
-          <div id="pwChecks4" class="pwChecks"><span data-k="len">8자 이상</span><span data-k="alpha">영문</span><span data-k="digit">숫자</span><span data-k="special">특수문자</span></div>
-          <button id="findReset2" class="menu-btn primary"><span class="mi">🗝️</span><span class="mt"><b>새 비밀번호로 바꾸고 로그인</b><small>코드는 1회용 · 새 코드가 발급돼요</small></span></button>
-        </div>
+        <p class="note" style="margin:0 0 10px">가입할 때 받은 <b>복구 코드</b>(FOG-XXXX-XXXX)를 넣으면 새 비밀번호를 정하고 닉네임을 알려드려요. 코드는 1회용이라 새 코드가 다시 발급돼요.</p>
+        <input id="findRecovIn" class="auth-in" placeholder="복구 코드 (FOG-XXXX-XXXX)" maxlength="16" autocapitalize="characters" autocomplete="off">
+        <input id="findNewPw" class="auth-in" type="password" maxlength="64" placeholder="새 비밀번호 (8자 이상 · 영문+숫자+특수문자)" autocomplete="new-password">
+        <div id="pwChecks3" class="pwChecks"><span data-k="len">8자 이상</span><span data-k="alpha">영문</span><span data-k="digit">숫자</span><span data-k="special">특수문자</span></div>
         <div id="findErr" class="auth-err"></div>
+        <button id="findReset" class="menu-btn primary"><span class="mi">🗝️</span><span class="mt"><b>새 비밀번호로 바꾸고 로그인</b><small>닉네임도 알려드려요 · 다른 기기는 로그아웃</small></span></button>
         <a href="#" id="findBack" class="auth-link">← 로그인으로</a>
       </div>
       <div id="authProfile" style="display:none">
@@ -254,15 +231,6 @@
         <div id="histSpark" class="spark" style="display:none"></div>
         <div id="histList" class="histList"><p class="note">불러오는 중…</p></div>
         <div id="pwNotice" class="notice" style="display:none">🔒 지금 비밀번호는 옛 규칙(숫자 4자리)이에요. 아래에서 새 규칙(8자 이상 · 영문+숫자+특수문자)으로 바꿔주세요.</div>
-        <div id="emailNotice" class="notice" style="display:none">📧 이메일을 등록해 두면 비밀번호를 잊어도 이메일로 되찾을 수 있어요. 복구 코드도 함께 보관하세요.</div>
-        <div class="profRow" id="profEmailRow"><span>📧 이메일</span><b id="profEmail">미등록</b><button class="seg-b" id="btnEmail">등록</button></div>
-        <div id="emailForm" class="subform" style="display:none">
-          <input id="emailIn" class="auth-in" type="email" placeholder="이메일" maxlength="120" autocomplete="email">
-          <input id="emailPw" class="auth-in" type="password" maxlength="64" placeholder="현재 비밀번호 (본인 확인)" autocomplete="current-password">
-          <div id="emailStep2" style="display:none"><p class="note" style="margin:0 0 8px">코드를 보냈어요. 10분 안에 입력해 주세요(스팸함도 확인).</p><input id="emailCodeIn" class="auth-in code-in" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="인증 코드 6자리" autocomplete="one-time-code"></div>
-          <div id="emailErr" class="auth-err"></div>
-          <div class="row"><button class="seg-b" id="emailCancel">취소</button><button class="seg-b on" id="emailSave">코드 보내기</button></div>
-        </div>
         <div class="profActs">
           <button id="btnName" class="pbtn">✏️ 닉네임 변경</button>
           <button id="btnPw" class="pbtn">🔑 비밀번호 변경</button>
@@ -282,7 +250,7 @@
           <div class="row"><button class="seg-b" id="pwCancel">취소</button><button class="seg-b on" id="pwSave">변경</button></div>
         </div>
         <div id="recovForm" class="subform" style="display:none">
-          <p class="note" style="margin:0 0 8px">복구 코드는 비밀번호·이메일 없이 계정을 되찾는 1회용 열쇠예요. 새로 발급하면 이전 코드는 무효가 돼요.</p>
+          <p class="note" style="margin:0 0 8px">복구 코드는 비밀번호를 잊었을 때 계정을 되찾는 1회용 열쇠예요. 새로 발급하면 이전 코드는 무효가 돼요.</p>
           <input id="recovPw" class="auth-in" type="password" maxlength="64" placeholder="현재 비밀번호 (본인 확인)" autocomplete="current-password">
           <div id="recovErr" class="auth-err"></div>
           <div class="row"><button class="seg-b" id="recovCancel">취소</button><button class="seg-b on" id="recovIssue">발급</button></div>

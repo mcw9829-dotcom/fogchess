@@ -38,7 +38,6 @@ import accounts
 import game_map
 import pieces
 import matchmaking
-import mailer
 
 BOT_TOKEN = '__bot__'   # 컴퓨터(봇) 좌석 토큰
 MAX_BODY = 64 * 1024    # 요청 본문 상한(바이트) — 게임 액션은 수백 바이트면 충분
@@ -618,10 +617,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if self._admin():
                 self._json({'rows': accounts.users_list()})
             return
-        if u.path == '/admin/mail':                            # 메일 설정 상태 + 최근 발송 기록(관리자)
-            if self._admin():
-                self._json({'ok': True, **mailer.status()})
-            return
         if u.path == '/feedback':                              # 피드백 읽기(관리자): ?all=1 이면 처리된 것도
             if not self._admin():
                 return
@@ -630,7 +625,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                                        include_done=q0.get('all', ['0'])[0] == '1')})
             return
         if u.path == '/version':                               # 배지용 버전(공개)
-            self._json({'version': APP_VERSION, 'mail': mailer.enabled()})   # mail: 이메일 인증 가입·이메일로 찾기 켜짐
+            self._json({'version': APP_VERSION})
             return
         if u.path == '/patchnotes':                            # 패치노트(공개) — 사이드바 버전을 누르면 모달로 표시
             self._json({'version': APP_VERSION, 'entries': load_patchnotes()})
@@ -704,39 +699,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         now = time.time()
 
         # ── 계정(회원가입/로그인/로그아웃/내 정보) — 방 락 불필요(accounts가 자체 락) ──
-        ip = self.client_address[0] if self.client_address else '?'
-        if u.path == '/signup':                                # 메일 설정 서버: 이메일 인증 2단계(/signup → pending → /signup/verify)
-            if mailer.enabled():
-                res, err = accounts.signup_start(data.get('name'), data.get('pw'), data.get('email'), ip)
-            else:                                              # 메일 미설정: 닉네임+비밀번호만 + 복구 코드
-                res, err = accounts.signup(data.get('name'), data.get('pw'))
-            self._json({'ok': res is not None, 'msg': err, **(res or {})})
-            return
-        if u.path == '/signup/verify':                         # 가입 2단계: 코드 확인 → 계정 생성·로그인·복구 코드
-            res, err = accounts.signup_verify(data.get('email'), data.get('code'))
-            self._json({'ok': res is not None, 'msg': err, **(res or {})})
-            return
-        if u.path == '/signup/resend':
-            res, err = accounts.signup_resend(data.get('email'), ip)
-            self._json({'ok': res is not None, 'msg': err, **(res or {})})
-            return
-        if u.path == '/login':
-            res, err = accounts.login(data.get('name'), data.get('pw'))
-            self._json({'ok': res is not None, 'msg': err, **(res or {})})
-            return
-        if u.path == '/recover/email':                         # 비밀번호 찾기(이메일 코드) 1단계
-            if not mailer.enabled():
-                self._json({'ok': False, 'msg': '이 서버는 메일 발송이 꺼져 있어요. 복구 코드로 찾아주세요.'})
-                return
-            res, err = accounts.reset_start(data.get('email'), ip)
-            self._json({'ok': res is not None, 'msg': err, **(res or {})})
-            return
-        if u.path == '/recover/verify':                        # 2단계: 코드 + 새 비밀번호 → 로그인(닉네임 안내)
-            res, err = accounts.reset_verify(data.get('email'), data.get('code'), data.get('new'))
-            self._json({'ok': res is not None, 'msg': err, **(res or {})})
-            return
-        if u.path == '/recover/code':                          # 복구 코드로 비밀번호 재설정(코드는 1회용 → 새 코드)
-            res, err = accounts.recover_with_code(data.get('code'), data.get('new'), ip)
+        if u.path in ('/signup', '/login'):
+            fn = accounts.signup if u.path == '/signup' else accounts.login
+            res, err = fn(data.get('name'), data.get('pw'))
             self._json({'ok': res is not None, 'msg': err, **(res or {})})
             return
         if u.path == '/logout':
@@ -751,22 +716,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             ok, err = accounts.change_password(data.get('session'), data.get('old'), data.get('new'))
             self._json({'ok': ok, 'msg': err})
             return
-        if u.path == '/account/email':                         # 이메일 등록/변경 1단계(현재 비밀번호 확인 → 코드 발송)
-            if not mailer.enabled():
-                self._json({'ok': False, 'msg': '이 서버는 메일 발송이 꺼져 있어요.'})
-                return
-            res, err = accounts.email_link_start(data.get('session'), data.get('pw'), data.get('email'), ip)
+        if u.path == '/recover/code':                          # 복구 코드로 비밀번호 재설정(코드는 1회용 → 새 코드) — 비밀번호·닉네임 찾기
+            ip = self.client_address[0] if self.client_address else '?'
+            res, err = accounts.recover_with_code(data.get('code'), data.get('new'), ip)
             self._json({'ok': res is not None, 'msg': err, **(res or {})})
-            return
-        if u.path == '/account/email/verify':
-            user, err = accounts.email_link_verify(data.get('session'), data.get('code'))
-            self._json({'ok': user is not None, 'msg': err, 'user': user})
             return
         if u.path == '/account/recovery':                      # 복구 코드 (재)발급(현재 비밀번호 확인)
             code, err = accounts.recovery_reissue(data.get('session'), data.get('pw'))
             self._json({'ok': code is not None, 'msg': err, 'recovery': code})
             return
-        if u.path == '/me':                                    # 내 정보(본인용: 이메일 가림·인증·복구 코드 보유)
+        if u.path == '/me':                                    # 내 정보(본인용: 복구 코드 보유 여부 포함)
             user = accounts.user_by_token(data.get('session'), private_info=True)
             self._json({'ok': user is not None, 'user': user})
             return

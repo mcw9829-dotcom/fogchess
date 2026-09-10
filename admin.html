@@ -68,7 +68,6 @@
 <header>
   <h1>🛠 안개전장 체스 · 관리자</h1>
   <span class="cnt" id="cnt">불러오는 중…</span>
-  <span class="cnt" id="mailSt" title="메일 발송 설정(FOG_SMTP_* 시크릿) — 켜져 있어야 회원가입에 이메일 인증이 붙어요"></span>
   <span class="sp"></span>
   <label class="chk"><input type="checkbox" id="showDone"> 처리된 것도 보기</label>
   <button id="refresh">↻ 새로고침</button>
@@ -143,7 +142,7 @@ $('loginForm').onsubmit = (ev) => { ev.preventDefault(); const v = $('pw').value
 $('logout').onclick = () => { KEY = ''; try { sessionStorage.removeItem('fog_admin_key'); } catch (e) {} showLogin(''); };
 
 // ---- 대시보드 ----
-let ROWS = [], USERS = null, MAIL = null;
+let ROWS = [], USERS = null;
 function renderFb() {
   const showDone = $('showDone').checked, box = $('fb');
   const rows = ROWS.filter(r => showDone || !r.done);
@@ -161,26 +160,17 @@ function renderFb() {
 function renderUsers() {
   const box = $('users');
   if (!USERS || !USERS.length) { box.innerHTML = '<div class="empty">회원이 없어요</div>'; return; }
-  box.innerHTML = '<div class="tbl"><table><thead><tr><th>#</th><th>닉네임</th><th>레이팅</th><th>티어</th><th>승</th><th>패</th><th>무</th><th>가입일</th><th>이메일</th><th>복구</th></tr></thead><tbody>'
+  box.innerHTML = '<div class="tbl"><table><thead><tr><th>#</th><th>닉네임</th><th>레이팅</th><th>티어</th><th>승</th><th>패</th><th>무</th><th>가입일</th><th title="복구 코드 보유">복구</th></tr></thead><tbody>'
     + USERS.map((u, i) => `<tr><td>${i + 1}</td><td><b>${esc(u.name)}</b></td><td>${u.rating}</td><td>${TIER[u.tier] || esc(u.tier)}</td>
-      <td>${u.wins}</td><td>${u.losses}</td><td>${u.draws}</td><td>${when(u.created).slice(0, 10)}</td>
-      <td>${u.email ? esc(u.email) + (u.emailVerified ? ' ✓' : ' (미인증)') : '<span style="color:var(--dim)">-</span>'}</td><td>${u.hasRecovery ? '🗝️' : ''}</td></tr>`).join('')
+      <td>${u.wins}</td><td>${u.losses}</td><td>${u.draws}</td><td>${when(u.created).slice(0, 10)}</td><td>${u.hasRecovery ? '🗝️' : ''}</td></tr>`).join('')
     + '</tbody></table></div>';
-}
-function renderMail() {                      // 헤더: 메일 발송 상태(켜짐/개발/꺼짐) + 최근 발송·오류 수
-  const el = $('mailSt');
-  if (!MAIL) { el.textContent = ''; return; }
-  const sent = MAIL.sent || [], fails = sent.filter(s => s.error).length;
-  el.textContent = !MAIL.enabled ? '📨 메일 꺼짐(시크릿 없음 → 가입에 이메일 인증 없음)'
-    : MAIL.dev ? '📨 메일 개발 모드(로그 출력)' : `📨 메일 ${MAIL.host} · 최근 발송 ${sent.length}건` + (fails ? ` · 실패 ${fails}` : '');
-  el.title = sent.slice(-10).reverse().map(s => `${when(s.at)} → ${s.to}${s.error ? ' ✗ ' + s.error : ''}`).join('\n') || el.title;
 }
 async function load() {
   try {
     $('err').style.display = 'none';
-    const [f, u, m] = await Promise.all([get('/feedback?all=1&limit=300'), get('/admin/users'), get('/admin/mail').catch(() => null)]);
-    ROWS = f.rows || []; USERS = u.rows || []; MAIL = m;
-    renderFb(); renderUsers(); renderMail();
+    const [f, u] = await Promise.all([get('/feedback?all=1&limit=300'), get('/admin/users')]);
+    ROWS = f.rows || []; USERS = u.rows || [];
+    renderFb(); renderUsers();
   } catch (e) {
     if (e instanceof AuthError) { showLogin(e.message); return; }
     $('err').textContent = e.message; $('err').style.display = 'block';
