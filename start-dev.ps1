@@ -7,7 +7,7 @@ if (-not $PythonPath) {
     else { $PythonPath = (Get-Command python -ErrorAction Stop).Source }
 }
 if (-not $ServerOnly -and -not $GodotPath) {
-    $GodotPath = (& $PythonPath (Join-Path $PSScriptRoot 'godot_runtime.py')).Trim()
+    $GodotPath = (& $PythonPath (Join-Path $PSScriptRoot 'tools/godot_runtime.py')).Trim()
 }
 if (-not $ServerOnly -and -not (Test-Path -LiteralPath $GodotPath)) { throw 'Godot was not found. Pass -GodotPath with your installation path.' }
 $health = $null

@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1450" viewBox="0 0 1800 1450"><title>FOG CHESS · 실제 시스템 구조</title><rect width="100%" height="100%" fill="#F6F5F0"/>
+<text x="60" y="88" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="44" font-weight="700" fill="#1B302F">FOG CHESS · 실제 시스템 구조</text>
+<text x="60" y="135" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="23" font-weight="400" fill="#566460">현재 개발 코드 d400d05 기준  |  Godot 화면 + Python 판정 서버  |  실선은 현재 연결</text>
+<polyline points="60,165 1740,165" fill="none" stroke="#D8DED8" stroke-width="2"/>
+<rect x="60" y="205" width="1680" height="245" rx="15" fill="#E4F0E7" stroke="none"/>
+<text x="82" y="244" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="24" font-weight="700" fill="#1C6C53">Godot 클라이언트 · Windows 실행 / 브라우저 Web 내보내기</text>
+<rect x="85" y="265" width="470" height="155" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="85" y="265" width="5" height="155" rx="2" fill="#1C6C53" stroke="none"/>
+<text x="107" y="307" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#1C6C53">시작과 공통 상태</text>
+<text x="107" y="343" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">main + app_state</text>
+<text x="107" y="374" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">14개 features 연결 / 설정·세션</text>
+<rect x="650" y="265" width="500" height="155" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="650" y="265" width="5" height="155" rx="2" fill="#1C6C53" stroke="none"/>
+<text x="672" y="307" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#1C6C53">UI · 입력 · 보드 · 연출</text>
+<text x="672" y="343" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">기물 선택 → 공격 / 능력 / 이동</text>
+<text x="672" y="374" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">보드·기물·숲·부쉬 / FX / 음향</text>
+<rect x="1245" y="265" width="470" height="155" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="1245" y="265" width="5" height="155" rx="2" fill="#1C6C53" stroke="none"/>
+<text x="1267" y="307" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#1C6C53">net.gd · HTTPRequest</text>
+<text x="1267" y="343" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">행동 POST /action · 후보 GET /moves</text>
+<text x="1267" y="374" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">상태 GET /state · 0.7초 타이머</text>
+<polyline points="555,342 650,342" fill="none" stroke="#7B8984" stroke-width="3"/>
+<polygon points="650,342 638.2941876694152,347.654551943446 638.2941876694152,336.345448056554" fill="#7B8984"/>
+<polyline points="1150,342 1245,342" fill="none" stroke="#7B8984" stroke-width="3"/>
+<polygon points="1245,342 1233.2941876694151,347.654551943446 1233.2941876694151,336.345448056554" fill="#7B8984"/>
+<polygon points="1150,342 1161.7058123305849,336.345448056554 1161.7058123305849,347.654551943446" fill="#7B8984"/>
+<polyline points="1480,420 1480,495 305,495 305,540" fill="none" stroke="#7B8984" stroke-width="3"/>
+<polygon points="305,540 299.345448056554,528.2941876694152 310.654551943446,528.2941876694152" fill="#7B8984"/>
+<polygon points="1480,420 1485.654551943446,431.7058123305848 1474.345448056554,431.7058123305848" fill="#7B8984"/>
+<text x="630" y="483" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#255B82">HTTP JSON · 클라이언트 입력을 서버에서 다시 검증</text>
+<rect x="60" y="540" width="1130" height="465" rx="15" fill="#E8EFF5" stroke="none"/>
+<text x="82" y="579" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="24" font-weight="700" fill="#255B82">Python · 권위 서버 — 승패와 숨겨진 정보의 기준</text>
+<rect x="85" y="600" width="475" height="160" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="85" y="600" width="5" height="160" rx="2" fill="#255B82" stroke="none"/>
+<text x="107" y="642" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#255B82">server.py · API / 방 관리</text>
+<text x="107" y="678" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">입장·재접속·턴 시계·좌석 인증</text>
+<text x="107" y="709" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">방 전체 상태·종료·정산 호출</text>
+<rect x="655" y="600" width="510" height="160" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="655" y="600" width="5" height="160" rx="2" fill="#255B82" stroke="none"/>
+<text x="677" y="642" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#255B82">pieces.py + game_map.py</text>
+<text x="677" y="678" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">이동 / 포획 / 저격 / 돌파 / 스캔</text>
+<text x="677" y="709" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">숲 LOS · 연결 부쉬 · 개인 시야</text>
+<rect x="85" y="805" width="475" height="165" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="85" y="805" width="5" height="165" rx="2" fill="#255B82" stroke="none"/>
+<text x="107" y="847" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#255B82">matchmaking / match_social</text>
+<text x="107" y="883" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">랭크 대기·15초 수락 / 채팅</text>
+<text x="107" y="914" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">먼저 2승 · 무승부는 승수 제외</text>
+<rect x="655" y="805" width="510" height="165" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="655" y="805" width="5" height="165" rx="2" fill="#255B82" stroke="none"/>
+<text x="677" y="847" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#255B82">bot.py · 관측 정보로 판단</text>
+<text x="677" y="883" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">전술 규칙 + 기억·정찰 + 미니맥스</text>
+<text x="677" y="914" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">난이도별 탐색 예산 0.5 / 1.2 / 3초</text>
+<polyline points="560,680 655,680" fill="none" stroke="#7B8984" stroke-width="3"/>
+<polygon points="655,680 643.2941876694152,685.654551943446 643.2941876694152,674.345448056554" fill="#7B8984"/>
+<polygon points="560,680 571.7058123305848,674.345448056554 571.7058123305848,685.654551943446" fill="#7B8984"/>
+<polyline points="320,760 320,805" fill="none" stroke="#7B8984" stroke-width="3"/>
+<polygon points="320,805 314.345448056554,793.2941876694152 325.654551943446,793.2941876694152" fill="#7B8984"/>
+<polygon points="320,760 325.654551943446,771.7058123305848 314.345448056554,771.7058123305848" fill="#7B8984"/>
+<polyline points="910,760 910,805" fill="none" stroke="#7B8984" stroke-width="3"/>
+<polygon points="910,805 904.345448056554,793.2941876694152 915.654551943446,793.2941876694152" fill="#7B8984"/>
+<polygon points="910,760 915.654551943446,771.7058123305848 904.345448056554,771.7058123305848" fill="#7B8984"/>
+<rect x="1240" y="540" width="500" height="465" rx="15" fill="#E8EFF5" stroke="none"/>
+<text x="1262" y="579" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="24" font-weight="700" fill="#255B82">관전과 기록 · 서버가 생성</text>
+<rect x="1265" y="600" width="450" height="160" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="1265" y="600" width="5" height="160" rx="2" fill="#255B82" stroke="none"/>
+<text x="1287" y="642" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#255B82">spectator.py</text>
+<text x="1287" y="678" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">전체 보드 스냅샷 → 180초 지연</text>
+<text x="1287" y="709" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">관전자 수는 현재 접속 기준</text>
+<rect x="1265" y="805" width="450" height="165" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="1265" y="805" width="5" height="165" rx="2" fill="#255B82" stroke="none"/>
+<text x="1287" y="847" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#255B82">replays.py</text>
+<text x="1287" y="883" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">기보 + 전체/백/흑 화면 저장</text>
+<text x="1287" y="914" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">종료 시 gzip JSON으로 보존</text>
+<polyline points="1190,680 1265,680" fill="none" stroke="#7B8984" stroke-width="3"/>
+<polygon points="1265,680 1253.2941876694151,685.654551943446 1253.2941876694151,674.345448056554" fill="#7B8984"/>
+<polyline points="1490,760 1490,805" fill="none" stroke="#7B8984" stroke-width="3"/>
+<polygon points="1490,805 1484.345448056554,793.2941876694152 1495.654551943446,793.2941876694152" fill="#7B8984"/>
+<rect x="60" y="1060" width="1680" height="270" rx="15" fill="#F8EDD7" stroke="none"/>
+<text x="82" y="1099" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="24" font-weight="700" fill="#97611F">데이터 수명 · RAM과 디스크를 구분해야 함</text>
+<rect x="85" y="1120" width="475" height="175" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="85" y="1120" width="5" height="175" rx="2" fill="#97611F" stroke="none"/>
+<text x="107" y="1162" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#97611F">프로세스 메모리</text>
+<text x="107" y="1198" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">ROOMS · 대기열 · 채팅 · 시리즈</text>
+<text x="107" y="1229" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">진행 중 리플레이 / 지연 중계</text>
+<text x="107" y="1260" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">재시작하면 진행 상태 소실</text>
+<rect x="655" y="1120" width="510" height="175" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="655" y="1120" width="5" height="175" rx="2" fill="#97611F" stroke="none"/>
+<text x="677" y="1162" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#97611F">accounts.py → 계정 SQLite</text>
+<text x="677" y="1198" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">회원·세션·전적·레이팅·피드백</text>
+<text x="677" y="1229" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">정산과 영수증은 같은 트랜잭션</text>
+<text x="677" y="1260" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">Fly 설정: /data/fogchess.db</text>
+<rect x="1265" y="1120" width="450" height="175" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="1265" y="1120" width="5" height="175" rx="2" fill="#97611F" stroke="none"/>
+<text x="1287" y="1162" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#97611F">리플레이 SQLite / 기기 설정</text>
+<text x="1287" y="1198" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">replays.sqlite3: 종료 기보</text>
+<text x="1287" y="1229" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">user://client.cfg: 로컬 설정·목록</text>
+<text x="1287" y="1260" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">DB와 로컬 설정은 Git 제외</text>
+<polyline points="320,1005 320,1060" fill="none" stroke="#7B8984" stroke-width="3"/>
+<polygon points="320,1060 314.345448056554,1048.2941876694151 325.654551943446,1048.2941876694151" fill="#7B8984"/>
+<polyline points="910,1005 910,1060" fill="none" stroke="#7B8984" stroke-width="3"/>
+<polygon points="910,1060 904.345448056554,1048.2941876694151 915.654551943446,1048.2941876694151" fill="#7B8984"/>
+<text x="922" y="1044" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="20" font-weight="400" fill="#97611F">정산 호출</text>
+<polyline points="1490,1005 1490,1060" fill="none" stroke="#7B8984" stroke-width="3"/>
+<polygon points="1490,1060 1484.345448056554,1048.2941876694151 1495.654551943446,1048.2941876694151" fill="#7B8984"/>
+<polyline points="60,1370 1740,1370" fill="none" stroke="#D8DED8" stroke-width="2"/>
+<text x="60" y="1410" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="20" font-weight="400" fill="#566460">주의: 서버는 전역 lock + 전역 지형 교체 방식. 봇 계산이 다른 방을 막는 현상을 임시 서버에서 재현함.</text>
+</svg>

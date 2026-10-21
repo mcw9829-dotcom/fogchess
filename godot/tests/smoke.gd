@@ -144,6 +144,14 @@ func _run() -> void:
 		if app.view.get("phase")=="setup": break
 		await create_timer(.05).timeout
 	check(app.view.get("phase")=="setup","bot setup loaded")
+	check(app.view.get("setupSeconds")==70,"server supplies the full setup duration")
+	var saved_seconds: Variant = app.view.get("secondsLeft")
+	for seconds in [70,60,35,1,0]:
+		app.view["secondsLeft"] = seconds
+		app.match_ui.render()
+		check(app.match_ui.turn_strip.max_value==70 and app.match_ui.turn_strip.value==seconds,"setup bar uses 70 seconds at %d remaining" % seconds)
+	app.view["secondsLeft"] = saved_seconds
+	app.match_ui.render()
 	check(not app.subpage.visible and app.game.visible,"difficulty selection opens game page")
 	check(app.view.get("grid",[]).size()==12,"12x12 server board")
 	check(not app.chat.card.get_parent().visible,"bot game hides the entire unavailable chat panel")
@@ -165,6 +173,11 @@ func _run() -> void:
 	if not app.moves.get("moves",[]).is_empty():
 		var target: Array = app.moves.moves[0]
 		await app._tap(Vector2i(int(target[0]),int(target[1])))
+	# AI search is asynchronous: poll until its authoritative move arrives.
+	for attempt in range(150):
+		if int(app.view.get("turnCount",0))>=2: break
+		await create_timer(.1).timeout
+		await app._poll()
 	check(int(app.view.get("turnCount",0))>=2,"human move and AI response")
 	await capture("play")
 	if "--capture" in OS.get_cmdline_user_args():

@@ -1,6 +1,6 @@
 """Real Godot client -> local HTTP -> existing Python rules; temporary account DB.
 
-Usage: python run_godot_smoke.py [--capture]
+Usage: python tests/run_godot_smoke.py [--capture]
 The fixture endpoints exist only in this test process, never in dev_server.py.
 """
 import json
@@ -13,12 +13,13 @@ import threading
 import time
 import uuid
 
-from godot_runtime import default_godot
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools.godot_runtime import default_godot
 
 import dev_server
 
 server = dev_server.server
-ROOT = Path(__file__).resolve().parent
 
 
 class FixtureHandler(dev_server.DevHandler):

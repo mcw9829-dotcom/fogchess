@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1610" viewBox="0 0 1800 1610"><title>FOG CHESS · 대국·시야·관전·리플레이 흐름</title><rect width="100%" height="100%" fill="#F6F5F0"/>
+<text x="60" y="88" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="44" font-weight="700" fill="#1B302F">FOG CHESS · 대국·시야·관전·리플레이 흐름</text>
+<text x="60" y="135" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="23" font-weight="400" fill="#566460">현재 구현을 기준으로 작성  |  표준 체스 체크메이트가 아닌 적 왕 처치 게임</text>
+<polyline points="60,165 1740,165" fill="none" stroke="#D8DED8" stroke-width="2"/>
+<rect x="60" y="205" width="1680" height="265" rx="15" fill="#E4F0E7" stroke="none"/>
+<text x="82" y="244" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="24" font-weight="700" fill="#1C6C53">입장 → 배치 → 전투</text>
+<rect x="85" y="265" width="470" height="175" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="85" y="265" width="5" height="175" rx="2" fill="#1C6C53" stroke="none"/>
+<text x="107" y="307" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#1C6C53">홈 / 모드 선택</text>
+<text x="107" y="343" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">랭크 · 친구 코드 · 컴퓨터 3단계</text>
+<text x="107" y="374" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">혼자 연습 / 관전 / 저장 리플레이</text>
+<text x="107" y="405" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">계정·도움말·순위·피드백·설정</text>
+<rect x="650" y="265" width="500" height="175" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="650" y="265" width="5" height="175" rx="2" fill="#1C6C53" stroke="none"/>
+<text x="672" y="307" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#1C6C53">매칭과 배치 · setup</text>
+<text x="672" y="343" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">랭크: 로그인 → 수락 15초</text>
+<text x="672" y="374" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">서로 준비 또는 배치 70초 경과</text>
+<text x="672" y="405" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">랭크 맵 180° 대칭 / 백 선공</text>
+<rect x="1245" y="265" width="470" height="175" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="1245" y="265" width="5" height="175" rx="2" fill="#1C6C53" stroke="none"/>
+<text x="1267" y="307" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#1C6C53">전투 · play</text>
+<text x="1267" y="343" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">12×12 / 진영당 16개 기물</text>
+<text x="1267" y="374" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">한 턴 30초 · 연속 미행동 3회 패배</text>
+<text x="1267" y="405" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">혼자 연습은 배치·턴 시계 제외</text>
+<polyline points="555,350 650,350" fill="none" stroke="#7B8984" stroke-width="3"/>
+<polygon points="650,350 638.2941876694152,355.654551943446 638.2941876694152,344.345448056554" fill="#7B8984"/>
+<polyline points="1150,350 1245,350" fill="none" stroke="#7B8984" stroke-width="3"/>
+<polygon points="1245,350 1233.2941876694151,355.654551943446 1233.2941876694151,344.345448056554" fill="#7B8984"/>
+<rect x="60" y="525" width="1680" height="260" rx="15" fill="#E8EFF5" stroke="none"/>
+<text x="82" y="564" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="24" font-weight="700" fill="#255B82">한 수의 처리 · 화면이 먼저 승패를 결정하지 않음</text>
+<rect x="85" y="585" width="470" height="165" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="85" y="585" width="5" height="165" rx="2" fill="#255B82" stroke="none"/>
+<text x="107" y="627" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#255B82">① 선택 / 목표 지정</text>
+<text x="107" y="663" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">기물 → 행동 아이콘 → 목표</text>
+<text x="107" y="694" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">공격은 이동 포획 / B·R·Q 능력</text>
+<text x="107" y="725" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">잘못된 목표는 서버에서 거부</text>
+<rect x="650" y="585" width="500" height="165" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="650" y="585" width="5" height="165" rx="2" fill="#255B82" stroke="none"/>
+<text x="672" y="627" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#255B82">② 규칙 판정 / 상태 변경</text>
+<text x="672" y="663" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">소유권·차례·승격·지형 검사</text>
+<text x="672" y="694" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">행동 적용 → 턴 전환 / 승리 판정</text>
+<text x="672" y="725" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">기보·포획 기록·FX 갱신</text>
+<rect x="1245" y="585" width="470" height="165" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="1245" y="585" width="5" height="165" rx="2" fill="#255B82" stroke="none"/>
+<text x="1267" y="627" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#255B82">③ 보이는 정보만 응답</text>
+<text x="1267" y="663" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">player_view: 안개·부쉬 필터</text>
+<text x="1267" y="694" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">서버 결과를 받은 뒤 이동·효과음</text>
+<text x="1267" y="725" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">킬로그 / 내 수순 / 상태 HUD</text>
+<polyline points="555,665 650,665" fill="none" stroke="#7B8984" stroke-width="3"/>
+<polygon points="650,665 638.2941876694152,670.654551943446 638.2941876694152,659.345448056554" fill="#7B8984"/>
+<polyline points="1150,665 1245,665" fill="none" stroke="#7B8984" stroke-width="3"/>
+<polygon points="1245,665 1233.2941876694151,670.654551943446 1233.2941876694151,659.345448056554" fill="#7B8984"/>
+<rect x="60" y="835" width="1680" height="275" rx="15" fill="#F8EDD7" stroke="none"/>
+<text x="82" y="874" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="24" font-weight="700" fill="#97611F">같은 원본 상태를 세 가지 목적에 맞게 투영</text>
+<rect x="85" y="895" width="470" height="180" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="85" y="895" width="5" height="180" rx="2" fill="#97611F" stroke="none"/>
+<text x="107" y="937" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#97611F">플레이어 시야</text>
+<text x="107" y="973" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">기물별 시야 + 숲 차단</text>
+<text x="107" y="1004" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">상하좌우 연결 부쉬는 함께 보임</text>
+<text x="107" y="1035" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">스캔 감시 / 사격 후 위치 노출</text>
+<rect x="650" y="895" width="500" height="180" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="650" y="895" width="5" height="180" rx="2" fill="#97611F" stroke="none"/>
+<text x="672" y="937" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#97611F">실시간 관전 ≠ 현재 전장</text>
+<text x="672" y="973" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">방 코드 → 공개 대기 180초</text>
+<text x="672" y="1004" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">보드·기록 모두 3분 전 시점</text>
+<text x="672" y="1035" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">전체 보드 / 조작·채팅 불가</text>
+<rect x="1245" y="895" width="470" height="180" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="1245" y="895" width="5" height="180" rx="2" fill="#97611F" stroke="none"/>
+<text x="1267" y="937" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#97611F">종료 후 리플레이</text>
+<text x="1267" y="973" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">당사자는 즉시 / 비당사자 3분 후</text>
+<text x="1267" y="1004" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">이전·다음·자동 1.5초·사건 점프</text>
+<text x="1267" y="1035" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">전체 / 백 시야 / 흑 시야</text>
+<rect x="60" y="1165" width="1680" height="305" rx="15" fill="#E8EFF5" stroke="none"/>
+<text x="82" y="1204" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="24" font-weight="700" fill="#255B82">종료 · over → 기록 / 재대결</text>
+<rect x="85" y="1225" width="470" height="205" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="85" y="1225" width="5" height="205" rx="2" fill="#255B82" stroke="none"/>
+<text x="107" y="1267" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#255B82">종료 조건</text>
+<text x="107" y="1303" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">왕 처치 / 기권 / 접속 끊김 90초</text>
+<text x="107" y="1334" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">연속 미행동 3회 / 200수 무승부</text>
+<text x="107" y="1365" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">레이팅·전적은 매 경기 정산</text>
+<text x="107" y="1396" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">친구·게스트·솔로는 비레이팅</text>
+<rect x="650" y="1225" width="500" height="205" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="650" y="1225" width="5" height="205" rx="2" fill="#255B82" stroke="none"/>
+<text x="672" y="1267" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#255B82">랭크 시리즈</text>
+<text x="672" y="1303" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">양쪽 재대결 수락 → 새 배치</text>
+<text x="672" y="1334" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">누군가 2승하면 시리즈 종료</text>
+<text x="672" y="1365" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">1:1이면 최종전 / 무승부 재대결</text>
+<text x="672" y="1396" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">무승부 때문에 총 3경기 초과 가능</text>
+<rect x="1245" y="1225" width="470" height="205" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="1245" y="1225" width="5" height="205" rx="2" fill="#255B82" stroke="none"/>
+<text x="1267" y="1267" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#255B82">복기 / 다음 대국</text>
+<text x="1267" y="1303" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">기보는 변형 체스용 JSON 기록</text>
+<text x="1267" y="1334" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">표준 PGN으로 간주하지 않음</text>
+<text x="1267" y="1365" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">서버에 프레임, 기기에 목록 저장</text>
+<text x="1267" y="1396" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">다른 PC의 목록 자동 복원은 없음</text>
+<polyline points="555,1320 650,1320" fill="none" stroke="#7B8984" stroke-width="3"/>
+<polygon points="650,1320 638.2941876694152,1325.654551943446 638.2941876694152,1314.345448056554" fill="#7B8984"/>
+<polyline points="1150,1320 1245,1320" fill="none" stroke="#7B8984" stroke-width="3"/>
+<polygon points="1245,1320 1233.2941876694151,1325.654551943446 1233.2941876694151,1314.345448056554" fill="#7B8984"/>
+<polyline points="60,1530 1740,1530" fill="none" stroke="#D8DED8" stroke-width="2"/>
+<text x="60" y="1570" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="20" font-weight="400" fill="#566460">턴·시간 정책과 모드 차이는 현재 코드 기준. 그림은 기능 연결 설명이며 모든 사용자 환경에서의 품질 보증은 아님.</text>
+</svg>

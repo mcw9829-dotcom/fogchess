@@ -9,7 +9,7 @@ import random
 
 from config import (N, VISION, KING_LIVES, ROOK_RANGE, ROOK_FIRE, BISHOP_MOVE,
                     BISHOP_RANGE, QUEEN_MOVE, SCAN_RANGE, SCAN_DUR, MUZZLE,
-                    ZONE, TURN_LIMIT, TURN_SECONDS, MAX_MISSES)
+                    ZONE, TURN_LIMIT, TURN_SECONDS, SETUP_SECONDS, MAX_MISSES)
 from game_map import FORESTS, RIVERS, BUSHES, IMPASSABLE, in_board, los_clear
 
 # 비숍 X자 5칸 착탄 / 폰 전진 방향 / 한글 이름
@@ -660,6 +660,8 @@ def player_view(st, color, reveal=False):
         'ready': st['ready'].get(color, False) if not spectator else False,
         'oppReady': st['ready'].get(opp, False) if not spectator else False,
         'secondsLeft': seconds,
+        'setupSeconds': SETUP_SECONDS,
+        'turnSeconds': TURN_SECONDS,
         'aliveMe': count_alive(st, color) if not spectator else 0,
         'aliveOpp': count_alive(st, opp) if not spectator else 0,
         'deadMe': [] if spectator else dead_types(st, color),     # 내가 잃은 기물(상대의 전리품)

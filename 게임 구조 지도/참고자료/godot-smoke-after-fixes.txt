@@ -1,0 +1,244 @@
+Godot Engine v4.7.1.stable.official.a13da4feb - https://godotengine.org
+
+PASS: home created
+PASS: settings is a page, not a popup
+PASS: theme choice applies and marks only the selected option
+PASS: colorblind switch applies the preview palette to the board
+PASS: theme switch refreshes existing setting card backgrounds
+PASS: theme switch refreshes existing setting card backgrounds
+PASS: theme switch refreshes existing setting card backgrounds
+PASS: theme switch refreshes existing setting card backgrounds
+PASS: theme switch refreshes existing setting card backgrounds
+PASS: theme switch refreshes existing setting card backgrounds
+PASS: theme switch refreshes existing setting card backgrounds
+PASS: friend join page opens
+PASS: guide card announces playback
+PASS: switching guide cards clears the previous highlight and status
+PASS: guide status follows the demonstrated phase
+PASS: all deployed intro and guide scenes imported
+PASS: intro JSON coordinates preserve zone and terrain membership
+PASS: intro holds use original millisecond timeline
+PASS: intro loop keeps final 1.2 second pause
+PASS: guide exposes six original cards
+PASS: hovering a new card stops the previous demo
+PASS: guide movement capture and ability frames restored
+PASS: guide advances every 850ms
+PASS: intro final action starts original easy bot flow
+PASS: intro final navigation fits mobile viewport
+PASS: patch notes initially expand only latest three entries
+PASS: patch note disclosure collapses on click
+PASS: rating rules disclosure available
+PASS: descending server tiers display increasing valid intervals
+PASS: bot suggestion hidden before 30 seconds
+PASS: bot suggestion appears at 30 seconds
+PASS: match offer exposes accept and decline
+PASS: match countdown preserves accept button instance
+PASS: match offer resizes inside mobile viewport
+PASS: accepted match cannot submit twice
+PASS: result preserves rating reason and cancel proposal
+PASS: opponent rematch offer exposes both responses
+PASS: departed opponent prevents rematch
+PASS: solo result never presents player defeat
+PASS: tutorial bush enemy initially hidden
+PASS: tutorial connected bush reveals distant enemy
+PASS: guided tutorial completes
+PASS: signup form establishes session
+PASS: signup form hands off to recovery dialog
+PASS: password accepts Unicode letters like original
+PASS: password rejects whitespace
+PASS: password requires special character
+PASS: preview uses original 8x8 board
+PASS: native FX preview: 포획
+PASS: native FX preview: 저격
+PASS: native FX preview: 돌파
+PASS: native FX preview: 스캔
+PASS: native FX preview: 킹 처치
+PASS: native FX preview: 승리
+PASS: native FX preview: 패배
+PASS: native FX preview: 무승부
+PASS: flipped FX tracks black board coordinates
+PASS: particle budget stays at original 600 cap
+PASS: reduced motion suppresses shake/slowmo and lowers particles
+PASS: closing FX cancels delayed particles
+PASS: original synthesized sound: move
+PASS: original synthesized sound: place
+PASS: original synthesized sound: capture
+PASS: original synthesized sound: fire
+PASS: original synthesized sound: barrage
+PASS: original synthesized sound: kill
+PASS: original synthesized sound: victory
+PASS: original synthesized sound: defeat
+PASS: original synthesized sound: drawend
+PASS: original synthesized sound: yourturn
+PASS: original synthesized sound: scan
+PASS: muted effects do not play
+PASS: feedback has all four original categories
+PASS: feedback short-message validation stays in form
+PASS: feedback enforces 1000-character limit
+PASS: open feedback resizes within mobile viewport
+PASS: feedback successful submission shows confirmation
+PASS: profile fits mobile viewport
+PASS: nickname rejects invalid characters
+PASS: nickname update refreshes profile
+PASS: password confirmation mismatch blocked
+PASS: password change succeeds and closes inline form
+PASS: reissue displays one-time code screen
+PASS: recovery code format retained
+PASS: recovery resets password and logs in
+PASS: used recovery code becomes invalid
+PASS: invitation fills visible room field
+PASS: native admin dialog opens
+PASS: invalid admin key stays at login
+PASS: admin authenticated users and feedback loaded
+PASS: admin fixture comes from real API
+PASS: admin marks feedback as processed
+PASS: admin reopens processed feedback
+PASS: feedback deletion requires confirmation
+PASS: cancelled delete keeps feedback
+PASS: confirmed API deletion removes only fixture feedback
+PASS: admin logout clears credentials and private data
+PASS: original-style difficulty card is actionable
+PASS: bot setup loaded
+PASS: server supplies the full setup duration
+PASS: setup bar uses 70 seconds at 70 remaining
+PASS: setup bar uses 70 seconds at 60 remaining
+PASS: setup bar uses 70 seconds at 35 remaining
+PASS: setup bar uses 70 seconds at 1 remaining
+PASS: setup bar uses 70 seconds at 0 remaining
+PASS: difficulty selection opens game page
+PASS: 12x12 server board
+PASS: bot game hides the entire unavailable chat panel
+PASS: setup swaps own pieces
+PASS: ready starts actual game
+PASS: legal moves loaded
+PASS: piece selection opens action fan before showing targets
+PASS: pawn has no active special ability
+PASS: movement icon closes fan and shows legal destinations
+PASS: human move and AI response
+PASS: bot game closed before rule fixtures
+PASS: P has movement icon in open position
+PASS: P has capture icon for legal visible target
+PASS: P correct unique ability mapping
+PASS: P movement executes on server
+PASS: P capture executes on server
+PASS: captured pieces shown instead of hidden opponent composition
+PASS: own move record visible below kill feed
+PASS: N has movement icon in open position
+PASS: N has capture icon for legal visible target
+PASS: N correct unique ability mapping
+PASS: N movement executes on server
+PASS: N capture executes on server
+PASS: captured pieces shown instead of hidden opponent composition
+PASS: own move record visible below kill feed
+PASS: B has movement icon in open position
+PASS: B has capture icon for legal visible target
+PASS: B correct unique ability mapping
+PASS: B movement executes on server
+PASS: B capture executes on server
+PASS: captured pieces shown instead of hidden opponent composition
+PASS: own move record visible below kill feed
+PASS: R has movement icon in open position
+PASS: R has capture icon for legal visible target
+PASS: R correct unique ability mapping
+PASS: R movement executes on server
+PASS: R capture executes on server
+PASS: captured pieces shown instead of hidden opponent composition
+PASS: own move record visible below kill feed
+PASS: Q has movement icon in open position
+PASS: Q has capture icon for legal visible target
+PASS: Q correct unique ability mapping
+PASS: Q movement executes on server
+PASS: Q capture executes on server
+PASS: captured pieces shown instead of hidden opponent composition
+PASS: own move record visible below kill feed
+PASS: K has movement icon in open position
+PASS: K has capture icon for legal visible target
+PASS: K correct unique ability mapping
+PASS: K movement executes on server
+PASS: K capture executes on server
+PASS: captured pieces shown instead of hidden opponent composition
+PASS: own move record visible below kill feed
+PASS: trophies count only captured pawns
+PASS: pawns grouped and four major pieces displayed individually
+PASS: pawn trophy smaller than major piece trophy
+PASS: move record positioned below kill feed
+PASS: mobile kill log and trophies have a nonzero scrollable panel
+PASS: blocked bishop cannot move or capture
+PASS: blocked bishop explains range-preview-only ability
+PASS: invalid target preserves selection and explains no turn spent
+PASS: sniper without target displays range but cannot fire
+PASS: bush king is hidden before scan
+PASS: queen center icon selects scan
+PASS: fan stays inside board at edge
+PASS: fan stays inside board at edge
+PASS: fan stays inside board at edge
+PASS: fan stays inside board at edge
+PASS: fan stays inside board at edge
+PASS: fan stays inside board at edge
+PASS: fan stays inside board at edge
+PASS: fan stays inside board at edge
+PASS: fan stays inside board at edge
+PASS: fan stays inside board at edge
+PASS: fan stays inside board at edge
+PASS: fan stays inside board at edge
+PASS: scan reveals hidden king
+PASS: fire captures king
+PASS: kill feed uses real attacker piece icon
+PASS: captured pieces shown below kill feed
+PASS: result UI visible
+PASS: barrage captures king
+PASS: kill feed uses real attacker piece icon
+PASS: captured pieces shown below kill feed
+PASS: result UI visible
+PASS: attack icon available for visible legal capture
+PASS: attack filters legal moves to visible enemy targets
+PASS: attack icon executes existing server capture action
+PASS: promotion pauses turn
+PASS: promotion window shown
+PASS: promotion resolved
+PASS: resign ends game
+PASS: friend joins private room
+PASS: participant chat is visible
+PASS: new room chat starts collapsed
+PASS: poll preserves chat draft caret and editing
+PASS: chat retains editing after Enter
+PASS: native draft callback retains every Hangul syllable
+PASS: stale native draft cannot overwrite another room
+PASS: chat reaches other participant
+PASS: chat does not interpret player markup
+PASS: successful send clears input
+PASS: incoming chat renders
+PASS: collapsed chat counts new messages
+PASS: expanding chat clears unread count
+PASS: reconnect retains seat
+PASS: two player ready flow
+PASS: clock and move count remain a single line
+PASS: chat input outside scrolling match records
+PASS: collapsed history shows only the last three compact moves
+PASS: expanded history is bounded to ten moves with full history access
+PASS: chat input remains inside sidebar with long history
+PASS: internal resignation event has player-facing notation
+PASS: rematch waits for opponent
+PASS: mutual rematch creates setup
+PASS: private rematch closed before ranked scenario
+PASS: signup through Godot HTTP
+PASS: rank match found
+PASS: accepted match opens room
+PASS: black board orientation
+PASS: first ranked result updates series
+PASS: opponent rematch invitation received
+PASS: accepted rematch preserves series score
+PASS: one each unlocks final round
+PASS: one each result announces final
+PASS: final setup keeps series score
+PASS: second victory completes ranked series
+PASS: completed series hides sidebar rematch
+PASS: completed series has no result rematch button
+PASS: result explains final series outcome
+PASS: result explains pending settlement without claiming a saved rating
+PASS: server refuses post-series rematch
+PASS: ranked result recorded
+PASS: leaderboard renders headers and player data in a five-column grid
+PASS: solo mode
+PASS: solo reveal toggle
+GODOT_SMOKE_FAILURES=0

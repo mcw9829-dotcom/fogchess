@@ -255,7 +255,7 @@ func render() -> void:
 	if low: fill = Color("#fbe5dc") if light else Color("#412d26")
 	turn_panel.add_theme_stylebox_override("panel",_surface(fill,0,10))
 	turn_strip.visible = seconds!=null and phase!="over" and not app.replay.active
-	turn_strip.max_value = maxi(1,int(view.get("setupSeconds",60) if phase=="setup" else view.get("turnSeconds",60)))
+	turn_strip.max_value = maxi(1,int(view.get("setupSeconds",70) if phase=="setup" else view.get("turnSeconds",30)))
 	turn_strip.value = float(seconds) if seconds!=null else 0.0
 	turn_strip.add_theme_stylebox_override("background",StyleBoxEmpty.new())
 	turn_strip.add_theme_stylebox_override("fill",_surface(palette.danger if low else (palette.accent if mine else palette.muted),0,0))

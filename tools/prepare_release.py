@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / 'godot' / 'build' / 'web'
 
 
@@ -37,7 +37,7 @@ def main():
         manifest[file.name] = {'bytes': len(content), 'sha256': hashlib.sha256(content).hexdigest()}
     (WEB.parent / 'release-manifest.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
     print(f'Ready: {len(manifest)} assets; {sum(f.stat().st_size for f in WEB.glob("*.gz")) / 1048576:.1f} MiB compressed JS/WASM/PCK.')
-    print('No deployment performed. Run python test_web_host.py before reviewing deployment.')
+    print('No deployment performed. Run python tests/test_web_host.py before reviewing deployment.')
 
 
 if __name__ == '__main__':

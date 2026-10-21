@@ -1,0 +1,29 @@
+{
+  "date": "2026-10-22",
+  "baseline_commit": "d400d05",
+  "state": "uncommitted development changes; no Fly deployment",
+  "fixed": [
+    "internal bot seat credential rejected",
+    "AI search isolated from room lock",
+    "setup/turn duration contract"
+  ],
+  "python": {
+    "passed": 179,
+    "subtests_passed": 12
+  },
+  "godot": {
+    "passed": 241,
+    "failures": 0
+  },
+  "other_room_request_max_seconds_local_sample": 0.047,
+  "limitations": [
+    "single AI process; bot matches queue fairly",
+    "existing development processes need restart to load code",
+    "native Hangul IME remains a previously known issue"
+  ],
+  "safety": [
+    "temporary test databases",
+    "no production DB changes",
+    "no commit/push/deploy"
+  ]
+}

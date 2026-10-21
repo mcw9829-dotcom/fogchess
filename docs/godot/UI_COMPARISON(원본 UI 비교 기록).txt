@@ -7,7 +7,7 @@
   키는 HTTP 헤더로만 전송하고 디스크에 저장하지 않음. 로그아웃 중인 요청 응답도 무효화.
 - 기존 #방코드 초대 주소를 보존하고 Godot 참가 입력란에 표시.
 - Docker/Fly 환경 및 GitHub 자동 배포에 Web 빌드/검증을 연결.
-  기존 운영 DB 볼륨/경로 유지. prepare_release.py로 내보내기와 gzip 생성.
+  기존 운영 DB 볼륨/경로 유지. tools/prepare_release.py로 내보내기와 gzip 생성.
 - 원본 HTML은 /classic, /admin-classic으로 유지. FOG_CLIENT=classic으로 기본 화면 복귀 가능.
 
 검증: Godot 112개 PASS (실제 렌더링/캡처 및 headless 모두), Python 규칙 88개 PASS,
@@ -41,7 +41,7 @@
   서버의 내림차순 티어 구간이 역전되던 문제를 실제 렌더링 검토로 수정.
 
 검증
-- python run_godot_smoke.py --capture: 101개 PASS, GODOT_SMOKE_FAILURES=0.
+- python tests/run_godot_smoke.py --capture: 101개 PASS, GODOT_SMOKE_FAILURES=0.
 - 기존 실제 HTTP/임시 DB 대국·계정 테스트에 안내 프레임, 한 카드 재생,
   패치 접기, 티어 구간, 30초 경계, 수락 잠금, 재대결 상태, 모바일 모달 검사 추가.
 - 1280×720 및 390×844 엔진 캡처. intro_final_mobile / match_found_mobile 포함.
@@ -88,7 +88,7 @@ Fly.io ↔ Godot UI/UX 비교 기록 · 2026-10-14
 - 로그인한 운영 계정의 전적·랭크 대기/수락·종료 화면은 운영 서버에 데이터 생성 없이
   로컬 테스트 서버에서 기능 검증. 운영판의 이 상태들에 대한 픽셀 단위 동등성은 미확인.
 
-검증: python run_godot_smoke.py --capture
+검증: python tests/run_godot_smoke.py --capture
 실제 Godot 엔진+임시 Python 서버/DB로 대국·학습·계정·매칭·화면 전환 검사.
 캡처: tests/home.png, home_mobile.png, play.png, mobile.png,
 settings.png, difficulty.png, friend.png, guide.png, intro.png, login.png, scan.png.
@@ -111,14 +111,14 @@ settings.png, difficulty.png, friend.png, guide.png, intro.png, login.png, scan.
 - 액션 응답은 최신 보드 상태를 받은 뒤 재생. 스캔의 적 표시와 상대 탄도 추정은 서버가 공개한 정보만 사용.
 - 브라우저 prefers-reduced-motion을 적용. 네이티브 실행은 OS 설정 자동 감지를 제공하지 않음.
 
-음향 → build_audio.py, godot/audio(배경음·효과음).gd, godot/sounds/
+음향 → tools/build_audio.py, godot/audio(배경음·효과음).gd, godot/sounds/
 - 이동/배치/포획/저격/돌파/킹 처치/승리/패배/무승부/내 차례/스캔의 11종 합성 효과음.
 - sound.js의 주파수·파형·지수 슬라이드·감쇠·겹침·지연 값을 PCM 음원으로 생성.
 - 110/164.81/220Hz 화음, 520Hz 로우패스와 .05Hz LFO, Q=5의 배경음악.
 - 대국 진입/종료 페이드, 음악/효과음 별도 토글, 볼륨과 놓을 때 미리듣기. 초기 음악 ON/볼륨 100%.
 - 새 외부 에셋 없이 원본 합성식을 사용. 재생 엔진·오실레이터의 안티앨리어싱·노이즈 샘플 차이로
   브라우저 음원과 비트 단위로 같지는 않으며, 동일 타이밍/주파수/볼륨 사양을 재현함.
-- 재생성: 개발 작업트리 루트에서 python build_audio.py 실행 후 Godot 재임포트.
+- 재생성: 개발 작업트리 루트에서 python tools/build_audio.py 실행 후 Godot 재임포트.
 
 관리 폼 → godot/main(게임 시작·기능 연결).gd
 - 로그인/가입 탭, 실시간 비밀번호 규칙 체크, Enter 제출, 오류 시 입력 유지.
@@ -130,7 +130,7 @@ settings.png, difficulty.png, friend.png, guide.png, intro.png, login.png, scan.
 - 열린 관리 모달도 화면 크기 변경에 따라 재배치. 390×844에서 잘림 없음 확인.
 
 검증 결과:
-- python run_godot_smoke.py --capture: 78개 검사 통과, GODOT_SMOKE_FAILURES=0.
+- python tests/run_godot_smoke.py --capture: 78개 검사 통과, GODOT_SMOKE_FAILURES=0.
 - 임시 SQLite DB로 닉네임 변경·암호 확인 오류·암호 변경·복구 코드 발급/사용/재사용 거부·피드백 제출 검사.
 - 8종 파티클, 음원 리소스, 음소거, 파티클 제한, 흑 방향, 동작 줄이기, 모바일 모달 검사.
 - 실제 Godot 렌더링 캡처로 킹 처치 비네트 오류 발견/수정 후 재검증.

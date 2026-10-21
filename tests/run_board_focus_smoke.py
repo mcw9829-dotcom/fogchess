@@ -1,10 +1,10 @@
 from pathlib import Path
 import json, os, subprocess, sys, tempfile, threading, time, uuid
 
-ROOT=Path(__file__).resolve().parent
+ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 from run_godot_smoke import FixtureHandler, server
-from godot_runtime import default_godot
+from tools.godot_runtime import default_godot
 
 class FocusFixture(FixtureHandler):
     def _post(self):

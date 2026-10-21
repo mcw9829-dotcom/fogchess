@@ -6,13 +6,13 @@ Fog Chess — Godot 개발 클라이언트
 Git과 Python 3.12 이상을 설치하고 새 터미널에서 다음 순서로 실행합니다.
   git clone --branch codex/godot-development https://github.com/mcw9829-dotcom/fogchess.git
   cd fogchess
-  python setup_godot_runtime.py
+  python tools/setup_godot_runtime.py
   .\start-dev.ps1
 
 처음에는 Godot 편집기에서 리소스 가져오기가 끝날 때까지 기다린 뒤 F5로 실행합니다.
 이후에는 .\start-dev.ps1 -Play로 게임을 바로 실행할 수 있습니다.
 
-setup_godot_runtime.py는 공식 Godot 4.7.1 Windows 실행 파일을 다운로드하고
+tools/setup_godot_runtime.py는 공식 Godot 4.7.1 Windows 실행 파일을 다운로드하고
 공식 SHA-512 체크섬을 검증하여 .dev-data/tools/ 안에 설치합니다.
 직접 설치한 Godot을 사용하려면 start-dev.ps1 -GodotPath <실행 파일 경로>를 지정합니다.
 Godot 편집기에서 godot/project.godot을 가져와 열어도 됩니다.
@@ -26,7 +26,7 @@ Godot 소스·기물·지형·폰트·음원·라이선스는 Git에 포함합�
 .dev-data/, .godot/, Web 빌드, 로컬 DB, .env, Godot 로그인 설정은 포함하지 않습니다.
 따라서 새 PC의 테스트 DB는 처음 실행할 때 새로 생성됩니다.
 Fly.io 회원/전적 DB를 개발 PC에 복사할 필요는 없습니다.
-웹 빌드는 별도로 Godot Web 내보내기 템플릿을 설치하고 prepare_release.py를 실행합니다.
+웹 빌드는 별도로 Godot Web 내보내기 템플릿을 설치하고 tools/prepare_release.py를 실행합니다.
 현재 CI의 웹 내보내기는 Godot 4.7.2와 일치하는 템플릿을 사용합니다.
 네이티브 채팅의 한글 IME 문제는 개선 예정 사항으로 남아 있습니다.
 
@@ -86,13 +86,13 @@ board(보드·기물·이동 연출).gd    서버 뷰를 그리는 보드, 입�
 net(서버 요청·응답).gd      비동기 HTTP, JSON/오류 처리
 audio(배경음·효과음).gd    합성 효과음/배경음악
 ../dev_server.py  격리된 DB/포트와 로컬 웹 빌드 제공
-../run_godot_smoke.py + tests/smoke.gd  실제 클라이언트와 HTTP 서버 통합 검증
+tests/run_godot_smoke.py + godot/tests/smoke.gd  실제 클라이언트와 HTTP 서버 통합 검증
 
 검증 명령
 ---------
 python -m pytest -q
-python run_godot_smoke.py
-python run_godot_smoke.py --capture  실제 렌더 화면을 tests/*.png에 저장
+python tests/run_godot_smoke.py
+python tests/run_godot_smoke.py --capture  실제 렌더 화면을 tests/*.png에 저장
 통합 테스트는 임시 DB와 임의 localhost 포트를 사용합니다. 테스트 전용 fixture
 엔드포인트는 테스트 프로세스 안에만 있으며 개발/운영 서버에는 없습니다.
 
@@ -117,7 +117,7 @@ Godot Engine: https://godotengine.org/license/ (MIT)
 - 강의 물결·연결된 물가, 안개, 부쉬의 기물 앞 잎, 이동 점/잡기 링, 저격·스캔 연출.
 - 좁은 화면은 메뉴와 리더보드를 세로 배치하고 대국 패널을 보드 아래에 표시.
 - Noto Sans KR의 가변 굵기를 Godot 정수 OpenType 태그로 지정해 가는 글꼴 문제 수정.
-검증: python run_godot_smoke.py --capture (33개 기능 검사 및 데스크톱/모바일 폭 렌더링).
+검증: python tests/run_godot_smoke.py --capture (33개 기능 검사 및 데스크톱/모바일 폭 렌더링).
 원본 웹 화면의 디자인/흐름을 재구성한 버전이며 HTML/CSS를 그대로 실행하는 방식은 아닙니다.
 이 단계 이후 파티클/음향 후속 이식은 아래 최신 항목 참조.
 
@@ -128,7 +128,7 @@ Godot Engine: https://godotengine.org/license/ (MIT)
 
 2026-10-14 · 원본 파티클·음향·관리 폼 후속 이식
 - 설정 → 이펙트 미리보기에서 원본 8종을 재생할 수 있습니다.
-- 11종 효과음과 원본 화음/LFO 배경음악을 포함했습니다. 음원 재생성은 루트의 build_audio.py.
+- 11종 효과음과 원본 화음/LFO 배경음악을 포함했습니다. 음원 재생성은 tools/build_audio.py.
 - 프로필의 티어/전적/변경 폼, 비밀번호 규칙/확인, 복구 코드 흐름, 피드백 4분류/1000자 입력을 이식했습니다.
 - 기능·폼 제출·연출·모바일 크기 변경을 포함한 실제 엔진 검사 78개 통과.
 - 운영 원본 검증 방법과 남은 렌더링 차이는 UI_COMPARISON(원본 UI 비교 기록).txt에 기록했습니다.

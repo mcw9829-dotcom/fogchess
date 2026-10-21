@@ -32,12 +32,12 @@ Godot 소스: godot/ (개발용/운영용 복제본을 따로 만들지 않음)
 로컬 준비/검증
 --------------
 개발 작업트리 루트에서:
-  python -m pytest -q test_fogchess.py
-  python test_web_host.py
-  python run_godot_smoke.py --capture
-  python prepare_release.py
+  python -m pytest -q tests/test_fogchess.py
+  python tests/test_web_host.py
+  python tests/run_godot_smoke.py --capture
+  python tools/prepare_release.py
 다른 설치 위치는 --godot <Godot 실행 파일> 옵션 또는 GODOT_EXE 환경변수 사용.
-prepare_release.py는 내보내기, 필수 파일 검증, gzip, SHA-256 목록 생성만 수행.
+tools/prepare_release.py는 내보내기, 필수 파일 검증, gzip, SHA-256 목록 생성만 수행.
 산출물: godot/build/web/, godot/build/release-manifest.json (Git 제외).
 Web export는 단일 스레드 Compatibility 방식이며 .wasm MIME은 application/wasm.
 큰 파일은 64 KiB씩 전송하여 256 MB 서버에서 파일 전체를 메모리에 올리지 않음.

@@ -1,0 +1,48 @@
+2026-10-22 · 폴더 정리
+
+기존 위치 → 현재 위치 (저장소 루트 기준)
+
+test_bot_isolation.py → tests/test_bot_isolation.py
+test_bush_visibility.py → tests/test_bush_visibility.py
+test_compact_notation.py → tests/test_compact_notation.py
+test_fogchess.py → tests/test_fogchess.py
+test_king_outcome.py → tests/test_king_outcome.py
+test_match_integrity.py → tests/test_match_integrity.py
+test_match_social.py → tests/test_match_social.py
+test_qa_revision.py → tests/test_qa_revision.py
+test_replays.py → tests/test_replays.py
+test_settlement_reliability.py → tests/test_settlement_reliability.py
+test_spectator.py → tests/test_spectator.py
+test_web_host.py → tests/test_web_host.py
+run_board_focus_smoke.py → tests/run_board_focus_smoke.py
+run_godot_smoke.py → tests/run_godot_smoke.py
+run_native_chat_smoke.py → tests/run_native_chat_smoke.py
+run_replay_smoke.py → tests/run_replay_smoke.py
+run_watch_smoke.py → tests/run_watch_smoke.py
+build_audio.py → tools/build_audio.py
+godot_runtime.py → tools/godot_runtime.py
+setup_godot_runtime.py → tools/setup_godot_runtime.py
+prepare_release.py → tools/prepare_release.py
+client.html → web/client.html
+admin.html → web/admin.html
+style.css → web/style.css
+game.js → web/game.js
+fx.js → web/fx.js
+sound.js → web/sound.js
+tutorial.js → web/tutorial.js
+godot/CHAT_SERIES(채팅·2선승 재대결 안내).txt → docs/godot/CHAT_SERIES(채팅·2선승 재대결 안내).txt
+godot/CODE_STRUCTURE(코드 구조 안내).txt → docs/godot/CODE_STRUCTURE(코드 구조 안내).txt
+godot/DEPLOYMENT(배포 안내).txt → docs/godot/DEPLOYMENT(배포 안내).txt
+godot/PIECE_UI_FIX(기물 UI 수정 기록).txt → docs/godot/PIECE_UI_FIX(기물 UI 수정 기록).txt
+godot/QA_IMPLEMENTATION(QA 반영·향후 기보 정책).txt → docs/godot/QA_IMPLEMENTATION(QA 반영·향후 기보 정책).txt
+godot/README(개발·실행 안내).txt → docs/godot/README(개발·실행 안내).txt
+godot/REPLAY(기보 저장·리플레이 안내).txt → docs/godot/REPLAY(기보 저장·리플레이 안내).txt
+godot/SPECTATING(관전 기능·검증 안내).txt → docs/godot/SPECTATING(관전 기능·검증 안내).txt
+godot/UI_COMPARISON(원본 UI 비교 기록).txt → docs/godot/UI_COMPARISON(원본 UI 비교 기록).txt
+26-08-22피드백.txt → docs/feedback/26-08-22피드백.txt
+README.md → docs/classic/README.md
+img/ → web/img/ (파일 내용 유지)
+
+QA/와 게임 구조 지도/는 유지.
+서버 핵심 모듈, DB 경로, Godot 에셋 내용은 유지.
+커밋·push·배포 없음.

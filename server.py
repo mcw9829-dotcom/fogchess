@@ -8,6 +8,7 @@
 서버는 '진짜 상태'를 들고, 각 플레이어에겐 pieces.player_view 로 '보이는 것만' 내려준다.
 """
 import http.server
+import copy
 import socketserver
 import json
 import os
@@ -34,6 +35,7 @@ from pieces import (new_game, legal_moves, fire_cells, fire_range, barrage_reach
                     player_view, advance_turn, apply_promote, apply_resign,
                     scan_cells, apply_scan, time_out, SIDE_KR)
 import bot
+from bot_worker import BotWorker, MEMORY_KEYS
 import accounts
 import game_map
 import pieces
@@ -42,7 +44,7 @@ import spectator
 import replays
 import match_social
 
-BOT_TOKEN = '__bot__'   # 컴퓨터(봇) 좌석 토큰
+BOT_TOKEN = '__bot__'   # 내부 봇 좌석 표식. 외부 인증 토큰으로 사용하지 않는다.
 MAX_BODY = 64 * 1024    # 요청 본문 상한(바이트) — 게임 액션은 수백 바이트면 충분
 FB_LAST = {}            # 피드백 도배 방지: ip -> 마지막 전송 시각
 FB_COOLDOWN = 10        # 같은 IP는 이 시간(초)에 한 번만
@@ -109,6 +111,7 @@ def admin_gate(ip, key_given, now=None):
     return 'forbidden'
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+CLASSIC_ROOT = os.path.join(HERE, 'web')
 lock = threading.Lock()
 LAN_URL = f"http://localhost:{PORT}/"   # __main__에서 실제 내부IP로 교체
 
@@ -328,9 +331,19 @@ def rematch_decline(room, color):
     return {'ok': True}
 
 
+def valid_client_token(room, token):
+    """Only issued client credentials authenticate; the internal bot seat never does."""
+    if not isinstance(token, str) or not token or token == BOT_TOKEN:
+        return False
+    color = room['tokens'].get(token)
+    return color in ('W', 'B', 'solo', 'spectator') and color != room.get('bot')
+
+
 def effective_color(room, token):
     """실제로 조작 권한이 있는 색. solo 토큰은 '지금 둘 차례'의 색을 갖는다."""
-    c = room['tokens'].get(token, 'spectator')
+    if not valid_client_token(room, token):
+        return 'spectator'
+    c = room['tokens'][token]
     if c == 'solo':
         return room['state']['turn']
     return c
@@ -412,6 +425,95 @@ def maybe_start(st):
         st['log'].append('배치 완료 — 전투 시작! (백 선공)')
 
 
+_bot_worker = None
+
+
+def bot_job_current(room, job):
+    """Called with lock held; rematches, resignations and removed rooms invalidate jobs."""
+    st = room['state']
+    return (ROOMS.get(room['code']) is room and room.get('_bot_job') is job
+            and st is job['state'] and st['phase'] == 'play'
+            and st['turn'] == job['color'] == room.get('bot')
+            and st['turnCount'] == job['turn'])
+
+
+def schedule_bot(room):
+    """Queue at most one decision for the current turn. Never search while holding lock."""
+    global _bot_worker
+    st = room['state']
+    if st['phase'] != 'play' or not room.get('bot') or st['turn'] != room['bot']:
+        return
+    previous = room.get('_bot_job')
+    if previous and bot_job_current(room, previous):
+        return
+    if time.monotonic() < room.get('_bot_retry_at', 0):
+        return
+    job = {'state': st, 'turn': st['turnCount'], 'color': room['bot']}
+    room['_bot_job'] = job
+
+    def current():
+        with lock:
+            return bot_job_current(room, job)
+
+    def complete(result, error):
+        with lock:
+            if not bot_job_current(room, job):
+                if room.get('_bot_job') is job:
+                    room.pop('_bot_job', None)
+                return
+            room.pop('_bot_job', None)
+            if error:
+                # Infrastructure failure does not forfeit the bot's turn.
+                room['_bot_retry_at'] = time.monotonic() + 2
+                print('[bot] decision retry:', error, flush=True)
+                return
+            use_terrain(room)
+            action = result['action']
+            color = job['color']
+            if action is None:
+                advance_turn(st)
+                ok = True
+            elif action[0] == 'promote':
+                ok, _ = apply_promote(st, color, action[2])
+            else:
+                handlers = {'move': apply_move, 'fire': apply_fire,
+                            'barrage': apply_barrage, 'scan': apply_scan}
+                handler = handlers.get(action[0])
+                ok = handler(st, color, *action[1:])[0] if handler else False
+            if not ok:
+                room['_bot_retry_at'] = time.monotonic() + 2
+                print('[bot] rejected stale or invalid decision', flush=True)
+                return
+            for key, value in result['memory'].items():
+                if key in MEMORY_KEYS:
+                    st[key] = value
+            spectator.capture(room)
+            # Promotion may need a second action without advancing the turn.
+            schedule_bot(room)
+
+    if _bot_worker is None:
+        _bot_worker = BotWorker()
+    level = room.get('botlevel', 'normal')
+    accepted = _bot_worker.submit(copy.deepcopy(st), copy.deepcopy(room['terrain']),
+                                  room['bot'], level, BOT_MIN_THINK.get(level, 1.0),
+                                  current, complete)
+    if not accepted:
+        room.pop('_bot_job', None)  # Full queue: the next poll/sweep retries admission.
+
+
+def shutdown_bot_worker():
+    global _bot_worker
+    with lock:
+        worker = _bot_worker
+    if worker is not None:
+        worker.close()  # Never join the dispatcher while holding its callback lock.
+        with lock:
+            if _bot_worker is worker:
+                _bot_worker = None
+                for room in ROOMS.values():
+                    room.pop('_bot_job', None)
+
+
 def enforce_clock(room, now):
     """플레이 중 턴 제한시간을 넘겼으면 자동으로 상대 턴으로 넘긴다(time_out).
     솔로(핫시트)는 제외. 봇 차례는 자동 응수가 처리하므로 사람 차례만 검사한다."""
@@ -421,19 +523,14 @@ def enforce_clock(room, now):
     if st['phase'] != 'play' or not st.get('turn_deadline'):
         return
     if room.get('bot') and st['turn'] == room['bot']:
+        schedule_bot(room)
         return
     if now <= st['turn_deadline']:
         return
     time_out(st)
     spectator.capture(room)                                # 미행동 1회(또는 3회째면 패배)
-    if st['phase'] == 'play' and room.get('bot'):          # 넘긴 뒤 봇 차례면 봇이 응수
-        guard = 0
-        while st['phase'] == 'play' and st['turn'] == room['bot'] and guard < 8:
-            if not bot.act(st, room['bot'], room.get('botlevel', 'normal')):
-                advance_turn(st); break
-            spectator.capture(room)
-            guard += 1
-    spectator.capture(room)
+    schedule_bot(room)
+
 
 
 def _sweep_rooms(now):
@@ -576,7 +673,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def _file(self, relpath, mime):
         try:
-            with open(os.path.join(HERE, relpath), 'rb') as f:
+            with open(os.path.join(CLASSIC_ROOT, relpath), 'rb') as f:
                 body = f.read()
         except FileNotFoundError:
             self._json({'error': 'not found'}, 404)
@@ -686,7 +783,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._json({'gone': True})
                 return
             use_terrain(room)
-            if token not in room['tokens']:
+            if not valid_client_token(room, token):
                 self._json({'ok': False, 'msg': '유효한 입장 정보가 필요합니다.'}, 403)
                 return
             color = effective_color(room, token)
@@ -740,6 +837,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not isinstance(data, dict):                          # 본문은 JSON 객체만 받는다
             data = {}
         now = time.time()
+
+        if data.get('token') == BOT_TOKEN:
+            self._json({'ok': False, 'msg': '유효한 입장 정보가 필요합니다.'}, 403)
+            return
 
         # ── 계정(회원가입/로그인/로그아웃/내 정보) — 방 락 불필요(accounts가 자체 락) ──
         if u.path in ('/signup', '/login'):
@@ -911,7 +1012,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     room['seats']['W'] = htok
                     room['seats']['B'] = BOT_TOKEN
                     room['tokens'][htok] = 'W'
-                    room['tokens'][BOT_TOKEN] = 'B'
                     room['seen'][htok] = now
                     room['seen'][BOT_TOKEN] = now
                     st = room['state']
@@ -935,7 +1035,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     code = code if code else gen_code()
                     room = new_room(code)
                     ROOMS[code] = room
-                elif token and token in room['tokens']:
+                elif valid_client_token(room, token):
                     room['seen'][token] = now
                     c = room['tokens'][token]
                     # Seat credentials reconnect without rewriting participant identity.
@@ -983,6 +1083,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 use_terrain(room)
                 token = data.get('token')
+                if not valid_client_token(room, token):
+                    self._json({'ok': False, 'msg': '유효한 입장 정보가 필요합니다.'}, 403)
+                    return
                 room['seen'][token] = now
                 color = effective_color(room, token)
                 st = room['state']
@@ -1042,25 +1145,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if ok and st.get('fx') and st['fx'].get('actor') == color:
                     f = st['fx']
                     fx_mine = {'seq': f['seq'], 'type': f['type'], 'cells': [[r, c] for (r, c) in f['cells']]}
-                bot_moved, bot_spent, bot_lvl = False, 0.0, room.get('botlevel', 'normal')
-                if ok and room.get('bot'):
-                    t0 = time.time()
-                    guard = 0                      # 봇 차례면 응수(교착 방지 상한)
-                    while st['phase'] == 'play' and st['turn'] == room['bot'] and guard < 8:
-                        bot_moved = True
-                        if not bot.act(st, room['bot'], bot_lvl):
-                            advance_turn(st)       # 봇이 둘 수 없으면 패스
-                            break
-                        spectator.capture(room)
-                        guard += 1
-                    bot_spent = time.time() - t0
-                spectator.capture(room)
+                if ok:
+                    schedule_bot(room)
                 resp = {'ok': ok, 'msg': msg, 'fx': fx_mine}
-            # ── 락 해제 후 ── 봇이 실제로 뒀으면 '최소 생각시간'까지 대기(다른 방/배치 안 막음)
-            if bot_moved:
-                delay = BOT_MIN_THINK.get(bot_lvl, 1.0) - bot_spent
-                if delay > 0:
-                    time.sleep(delay)
             self._json(resp)
             return
 
@@ -1069,6 +1156,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 class ThreadingServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
+
+    def server_close(self):
+        super().server_close()
+        shutdown_bot_worker()
 
 
 def lan_ip():

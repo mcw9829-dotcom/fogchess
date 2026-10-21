@@ -1,5 +1,5 @@
 extends Node
-## Synthesized from sound.js by build_audio.py; all original event schedules retained.
+## Synthesized from sound.js by tools/build_audio.py; all original event schedules retained.
 var enabled := true
 var level := 1.0
 var background: AudioStreamPlayer

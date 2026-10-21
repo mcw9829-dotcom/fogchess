@@ -24,4 +24,4 @@
 서버에는 종료 기보가 지속 저장되며, 홈 목록은 현재 기기에 저장된 열람 이력이다.
 
 파일: replays.py, features/replay(기보 저장·수순 재생).gd
-검증: test_replays.py, run_replay_smoke.py, tests/replay_smoke.gd
+검증: tests/test_replays.py, tests/run_replay_smoke.py, tests/replay_smoke.gd

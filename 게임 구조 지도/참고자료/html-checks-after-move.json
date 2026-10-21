@@ -1,0 +1,26 @@
+{
+  "errors": [],
+  "images": [
+    {
+      "src": "01-system-architecture.png",
+      "ok": true
+    },
+    {
+      "src": "02-game-and-view-flow.png",
+      "ok": true
+    },
+    {
+      "src": "03-code-ownership.png",
+      "ok": true
+    },
+    {
+      "src": "04-build-and-review.png",
+      "ok": true
+    }
+  ],
+  "inventory_rows": 556,
+  "search_symbol": "1개 파일",
+  "search_replay": "2개 파일",
+  "desktop_fits": true,
+  "mobile_fits": true
+}

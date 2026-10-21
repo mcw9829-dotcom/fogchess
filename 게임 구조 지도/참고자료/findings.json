@@ -1,0 +1,265 @@
+[
+  {
+    "priority": "P0",
+    "status": "재현됨",
+    "title": "봇 좌석을 외부 참가자 인증으로 사용할 수 있음",
+    "observation": "봇 방에서 내부 고정 식별자가 tokens 사전에 실제 좌석 자격으로 들어간다. GET 상태와 POST 행동은 해당 식별자를 유효한 흑 좌석으로 받아들인다. 별도 임시 서버에서 봇 소유 기물 16개를 조회했고 봇 기권 요청도 성공해 백 승리로 바뀌었다. 회원 봇전은 레이팅 대상이므로 점수 정산 무결성까지 영향을 줄 수 있다. 실제 회원 DB의 점수 조작은 실행하지 않았다.",
+    "recommendation": "외부 요청 인증에서 내부 봇 좌석을 명시적으로 거부하고, 봇 행동은 내부 호출 전용으로 분리한다. /state·/moves·/action·/join 재접속 경로에 거부 회귀 테스트를 추가한다.",
+    "evidence": [
+      [
+        "server.py",
+        45
+      ],
+      [
+        "server.py",
+        680
+      ],
+      [
+        "server.py",
+        914
+      ],
+      [
+        "server.py",
+        982
+      ]
+    ]
+  },
+  {
+    "priority": "P1",
+    "status": "격리 실험으로 재현",
+    "title": "봇 계산이 다른 방의 조회를 막음",
+    "observation": "server.lock 안에서 bot.act를 호출하고, 각 방 지형도 모듈 전역 변수에 덮어쓴다. 최소 생각 시간 sleep만 lock 밖이다. 봇 계산을 0.4초 지연시키는 통제 실험에서 다른 연습 방의 /state 응답이 약 0.41초 기다렸다. 실제 hard 봇이 매번 3초를 쓴다는 측정은 아니다.",
+    "recommendation": "먼저 Terrain/Room 컨텍스트를 명시적으로 전달해 전역 지형 의존을 없앤다. 이후 방별 잠금과 격리된 봇 작업을 도입하고, 반환된 수는 방 버전·차례가 일치할 때만 적용한다. CPU 탐색은 프로세스 작업자도 검토한다.",
+    "evidence": [
+      [
+        "server.py",
+        110
+      ],
+      [
+        "server.py",
+        155
+      ],
+      [
+        "server.py",
+        1039
+      ],
+      [
+        "game_map.py",
+        202
+      ]
+    ]
+  },
+  {
+    "priority": "P2",
+    "status": "코드로 확인",
+    "title": "배치 시간 막대의 기준이 70초가 아닌 60초",
+    "observation": "서버 배치는 SETUP_SECONDS=70이다. match_ui는 setupSeconds가 없으면 60을 사용하지만 state_response/player_view는 setupSeconds를 보내지 않는다. 따라서 배치 직후 초 숫자는 70으로 표시돼도 막대는 최대 60 기준으로 고정되는 구간이 생긴다.",
+    "recommendation": "상태 계약에 setupSeconds를 포함해 서버 설정을 표시 코드에 전달하고 70→60→0 구간을 검사한다.",
+    "evidence": [
+      [
+        "config.py",
+        77
+      ],
+      [
+        "server.py",
+        501
+      ],
+      [
+        "pieces.py",
+        608
+      ],
+      [
+        "godot/features/match_ui(대국 HUD·행동 안내·기보).gd",
+        258
+      ]
+    ]
+  },
+  {
+    "priority": "P1",
+    "status": "구조적 위험",
+    "title": "재시작 시 진행 대국과 미완료 저장의 복구 경로가 없음",
+    "observation": "진행 방·매칭·채팅·시리즈·관전 버퍼·미종료 리플레이는 RAM에 있다. 이미 정산된 계정/전적과 저장된 리플레이는 SQLite에 남는다. 하지만 정산 요청을 DB에 넣기 전 실패하거나 미완료 대국 상태에서 프로세스가 끝나면 재시도할 방과 요청 자체가 사라진다. 현재 실행 중 서버를 종료하는 실험은 하지 않았다.",
+    "recommendation": "운영 전 대국 체크포인트 또는 이벤트 저널, 저장 재시도 큐와 시작 시 복구 정책을 정한다. 재배포 때 신규 입장을 막고 기존 대국을 마무리하는 절차도 필요하다.",
+    "evidence": [
+      [
+        "server.py",
+        116
+      ],
+      [
+        "server.py",
+        214
+      ],
+      [
+        "replays.py",
+        33
+      ],
+      [
+        "spectator.py",
+        18
+      ]
+    ]
+  },
+  {
+    "priority": "P2",
+    "status": "현재 기능 범위",
+    "title": "다른 PC에서 로그인해도 리플레이 목록이 자동 복원되지 않음",
+    "observation": "리플레이 본문은 서버 DB에 있고 세션으로 당사자 접근을 판단할 수 있다. 그러나 목록은 client.cfg의 서버별 replays 값에 최대 100개만 기록한다. /me/history는 리플레이 ID를 제공하지 않으며 계정별 리플레이 목록 API가 없다. 새 PC에는 해당 ID 목록이 없다.",
+    "recommendation": "대국 전적과 replay_id를 연결하고 회원별 리플레이 목록 API를 만든다. 로컬 목록은 게스트 캐시로 남긴다.",
+    "evidence": [
+      [
+        "godot/features/replay(기보 저장·수순 재생).gd",
+        121
+      ],
+      [
+        "accounts.py",
+        483
+      ],
+      [
+        "accounts.py",
+        493
+      ],
+      [
+        "replays.py",
+        95
+      ]
+    ]
+  },
+  {
+    "priority": "P2",
+    "status": "설계 부채",
+    "title": "기능 파일은 분리됐지만 공유 app 상태 결합이 큼",
+    "observation": "14개 features는 대부분 RefCounted + 무타입 app을 통해 서로의 UI 노드와 상태를 직접 바꾼다. main은 얇은 전달 계층으로 줄었으나 파일 분리가 책임 격리와 동일하지는 않다. 단독 모듈 테스트, 비동기 응답 취소, 화면 전환 수명 관리가 공통 상태에 의존한다.",
+    "recommendation": "화면 상태·대국 상태·선택 상태를 분리하고 명시적인 요청/응답 타입, 신호, 작은 인터페이스를 단계적으로 도입한다. 현재처럼 facade를 유지하면 한 번에 전체를 갈아엎을 필요가 없다.",
+    "evidence": [
+      [
+        "godot/app_state(공통 상태·변수).gd",
+        1
+      ],
+      [
+        "godot/main(게임 시작·기능 연결).gd",
+        1
+      ],
+      [
+        "godot/features/game_session(입장·재접속·서버 통신).gd",
+        1
+      ]
+    ]
+  },
+  {
+    "priority": "P2",
+    "status": "설정으로 확인",
+    "title": "자동 배포 전 검증이 로컬 전체 회귀 범위보다 좁음",
+    "observation": "GitHub workflow는 Web 호스트 검사와 Godot smoke를 실행하지만 전체 pytest를 실행하지 않는다. 네이티브 기본 실행은 4.7.1, CI/Web export는 4.7.2이다. 버전 차이 자체가 오류라는 뜻은 아니며, 네이티브 입력과 Web 환경의 검증 결과를 별도로 관리해야 한다.",
+    "recommendation": "배포 job 전에 전체 pytest와 핵심 관전·리플레이 회귀 검사를 포함한다. 테스트 job과 배포 job을 분리하고 native/Web 버전 및 템플릿을 명시적으로 고정한다.",
+    "evidence": [
+      [
+        ".github/workflows/fly-deploy.yml",
+        28
+      ],
+      [
+        "godot_runtime.py",
+        6
+      ],
+      [
+        "prepare_release.py",
+        15
+      ]
+    ]
+  },
+  {
+    "priority": "P2",
+    "status": "성능 측정 필요",
+    "title": "전체 상태 반복 전송과 보드 상시 다시 그리기",
+    "observation": "Godot은 0.7초마다 상태를 조회하며 전체 grid와 최대 80개 채팅이 응답에 포함된다. board._process는 정지 상태에서도 queue_redraw를 호출하고 _draw는 보드·숲·부쉬·기물과 프레임 스타일을 다시 처리한다. 리플레이는 매 사건 전체/백/흑 화면을 메모리에 보유한다. 실제 목표 기기 FPS·동시 접속 한계는 이번 검토에서 측정하지 않았다.",
+    "recommendation": "먼저 서버 응답 크기·지연과 브라우저 프레임 시간을 계측한다. 상태 버전/증분 채팅, 정적 배경 캐시, 필요할 때만 redraw, 리플레이 프레임 저장 주기 개선 순으로 검토한다. 보드 외형 변경은 필요 없다.",
+    "evidence": [
+      [
+        "godot/main(게임 시작·기능 연결).gd",
+        42
+      ],
+      [
+        "godot/board(보드·기물·이동 연출).gd",
+        133
+      ],
+      [
+        "server.py",
+        501
+      ],
+      [
+        "replays.py",
+        49
+      ]
+    ]
+  },
+  {
+    "priority": "P2",
+    "status": "기존 미해결",
+    "title": "Windows 한글 IME 실제 입력 품질",
+    "observation": "사용자가 보고한 앞 음절 소실은 해결 완료로 간주하지 않았다. 프로젝트 4.7.1 선택과 별도 네이티브 입력창 대체 경로가 존재한다. 이번 회귀 검사는 실제 한국어 키 조합의 정상 동작을 입증하지 않는다. 사용자의 키보드나 IME 설정을 조작하지 않았다.",
+    "recommendation": "별도 테스트 세션에서 OS·IME·엔진 버전, 조합 중 Enter·공백·포커스 이동을 기록해 재현한다. Web 출시 경로와 네이티브 경로를 구분해 출시 조건을 정한다.",
+    "evidence": [
+      [
+        "godot/features/chat(대전 채팅).gd",
+        51
+      ],
+      [
+        "godot_runtime.py",
+        1
+      ],
+      [
+        "QA/git-upload-review.txt",
+        27
+      ]
+    ]
+  },
+  {
+    "priority": "P2",
+    "status": "근거 부족",
+    "title": "봇 난이도와 인간 체감 밸런스는 아직 검증 범위가 작음",
+    "observation": "AI는 학습 모델이 아니라 규칙·기억·정찰 휴리스틱과 미니맥스 탐색이다. config의 1300/1500/1800은 설정된 상대 레이팅이며 인간 실력으로 검증된 수치가 아니다. 보관된 bounded audit는 0.05초 예산의 봇 6경기 자료로, 무승부 3경기·평균 약 159.7수다. 이를 전체 게임 승률로 일반화할 수 없다. 탐색 트리는 주로 이동이며 능력은 상위 휴리스틱에서 선택한다.",
+    "recommendation": "동일 시드·색 교대·운영 탐색 예산의 봇 비교와 인간 플레이테스트를 따로 진행한다. 승률 외에 첫 교전 수, 평균 종료 수, 능력 사용, 무승부·이탈을 기록한다.",
+    "evidence": [
+      [
+        "bot.py",
+        408
+      ],
+      [
+        "bot.py",
+        552
+      ],
+      [
+        "config.py",
+        101
+      ],
+      [
+        "QA/2026-10-21/balance-audit.json",
+        1
+      ]
+    ]
+  },
+  {
+    "priority": "P3",
+    "status": "문서·중복 관리",
+    "title": "기존 웹 클라이언트와 안내문이 새 Godot 정책을 모두 따르지 않음",
+    "observation": "game.js 등 기존 웹은 /classic 경로로 남아 있고 일부 UI는 상대 병력 수를 표시한다. README에는 나이트 시야 2와 구형 봇 점수 상한 등 현재 config와 다른 설명이 섞여 있다. 원본 비교용·대체 경로가 필요해 유지된 코드이므로 곧바로 미사용 파일로 삭제해서는 안 된다.",
+    "recommendation": "신규 개발 기준 문서를 Godot 안내로 명확히 정하고 README를 동기화한다. /classic의 유지 범위와 종료 시점을 정한 후에만 중복 제거한다.",
+    "evidence": [
+      [
+        "web_server.py",
+        40
+      ],
+      [
+        "game.js",
+        498
+      ],
+      [
+        "README.md",
+        68
+      ],
+      [
+        "config.py",
+        57
+      ]
+    ]
+  }
+]

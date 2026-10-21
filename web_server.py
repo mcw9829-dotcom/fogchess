@@ -49,7 +49,7 @@ class WebHandler(server.Handler):
             base = WEB_ROOT.resolve()
             target = (base / (path[len('/godot/'):] or 'index.html')).resolve()
             if not target.is_relative_to(base) or target.suffix not in MIME or not target.is_file():
-                self._json({'ok': False, 'msg': 'Godot Web file not found. Run prepare_release.py before deployment.'}, 404)
+                self._json({'ok': False, 'msg': 'Godot Web file not found. Run python tools/prepare_release.py before deployment.'}, 404)
                 return
             mime = MIME[target.suffix]
             gzip_ok = False

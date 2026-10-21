@@ -39,10 +39,10 @@ Fog Chess Godot 코드 안내
 
 실행/검증 (개발 저장소 루트)
   .\start-dev.ps1 -Play
-  python run_godot_smoke.py
-  python run_godot_smoke.py --capture
+  python tests/run_godot_smoke.py
+  python tests/run_godot_smoke.py --capture
   Godot --headless --path godot --script res://tests/motion.gd
-  python prepare_release.py  (로컬 Web 빌드만 생성, 배포하지 않음)
+  python tools/prepare_release.py  (로컬 Web 빌드만 생성, 배포하지 않음)
 
 초기 파일 분리는 구조만 변경했다. 이후 채팅 API와 랭크 시리즈 정책은 CHAT_SERIES 안내를 따른다. 운영 DB 구조는 변경하지 않았다.
 Fly.io 배포는 수행하지 않는다.

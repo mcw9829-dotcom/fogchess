@@ -8,6 +8,8 @@ import tempfile
 import threading
 import unittest
 from unittest.mock import patch
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import web_server
 
 
@@ -87,6 +89,16 @@ class WebHostTests(unittest.TestCase):
     def test_legacy_fallback_and_api(self):
         self.assertEqual(self.request('/classic')[0],200)
         self.assertEqual(self.request('/admin-classic')[0],200)
+        # Moving files into web/ must preserve the classic client's public URLs.
+        for path, mime in [('/style.css', 'text/css'), ('/game.js', 'application/javascript'),
+                           ('/sound.js', 'application/javascript'), ('/fx.js', 'application/javascript'),
+                           ('/tutorial.js', 'application/javascript'), ('/img/Chess_klt45.svg', 'image/svg+xml')]:
+            with self.subTest(path=path):
+                status, headers, body = self.request(path)
+                self.assertEqual(status, 200)
+                self.assertIn(mime, headers['Content-Type'])
+                self.assertTrue(body)
+        self.assertTrue(json.loads(self.request('/patchnotes')[2])['entries'])
         with patch.dict(os.environ, {'FOG_CLIENT':'classic'}):
             self.assertEqual(self.request('/')[0],200)
         self.assertIn('version',json.loads(self.request('/version')[2]))

@@ -1,0 +1,10 @@
+{
+  "isolated": true,
+  "live_server_untouched": true,
+  "bot_seat_state_accepted": true,
+  "bot_seat_own_pieces": 16,
+  "bot_seat_resign_accepted": true,
+  "winner_after_bot_seat_resign": "W",
+  "simulated_bot_hold_seconds": 0.4,
+  "other_room_state_wait_seconds": 0.41
+}

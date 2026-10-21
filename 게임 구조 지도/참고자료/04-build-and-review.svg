@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1490" viewBox="0 0 1800 1490"><title>FOG CHESS · 파일·검증·배포 경로</title><rect width="100%" height="100%" fill="#F6F5F0"/>
+<text x="60" y="88" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="44" font-weight="700" fill="#1B302F">FOG CHESS · 파일·검증·배포 경로</text>
+<text x="60" y="135" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="23" font-weight="400" fill="#566460">현재 작업은 검토와 실행만 수행  |  소스 수정·새 커밋·push·Fly.io 배포 없음</text>
+<polyline points="60,165 1740,165" fill="none" stroke="#D8DED8" stroke-width="2"/>
+<rect x="60" y="205" width="1680" height="260" rx="15" fill="#F8EDD7" stroke="none"/>
+<text x="82" y="244" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="24" font-weight="700" fill="#97611F">Git 추적 파일 556개 · 약 20.69 MiB</text>
+<rect x="85" y="265" width="470" height="165" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="85" y="265" width="5" height="165" rx="2" fill="#97611F" stroke="none"/>
+<text x="107" y="307" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#97611F">코드와 실행 설정</text>
+<text x="107" y="343" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">Python 38개 / GDScript 44개</text>
+<text x="107" y="374" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">기존 JS 4개 / HTML 2개 / CSS 1개</text>
+<text x="107" y="405" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">서버·Godot·테스트·실행기 포함</text>
+<rect x="650" y="265" width="500" height="165" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="650" y="265" width="5" height="165" rx="2" fill="#97611F" stroke="none"/>
+<text x="672" y="307" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#97611F">게임 리소스</text>
+<text x="672" y="343" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">SVG 181개 / WAV 12개 / TTF 2개</text>
+<text x="672" y="374" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">부쉬 144개 + 숲 2개 SVG</text>
+<text x="672" y="405" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">기물·아이콘·폰트·음원 유지</text>
+<rect x="1245" y="265" width="470" height="165" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="1245" y="265" width="5" height="165" rx="2" fill="#97611F" stroke="none"/>
+<text x="1267" y="307" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#97611F">Godot 메타데이터</text>
+<text x="1267" y="343" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">import 183개 / UID 44개</text>
+<text x="1267" y="374" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">캐시 자체가 아닌 연결 정보</text>
+<text x="1267" y="405" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">.godot·Web 빌드·DB는 Git 제외</text>
+<rect x="60" y="525" width="1680" height="265" rx="15" fill="#E8EFF5" stroke="none"/>
+<text x="82" y="564" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="24" font-weight="700" fill="#255B82">빌드 → 운영 실행 · 설정에 존재하는 경로</text>
+<rect x="85" y="585" width="470" height="170" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="85" y="585" width="5" height="170" rx="2" fill="#255B82" stroke="none"/>
+<text x="107" y="627" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#255B82">개발 PC</text>
+<text x="107" y="663" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">start-dev.ps1 → dev_server.py</text>
+<text x="107" y="694" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">로컬 7556 / 격리 개발 DB</text>
+<text x="107" y="725" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">기본 네이티브 Godot 4.7.1</text>
+<rect x="650" y="585" width="500" height="170" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="650" y="585" width="5" height="170" rx="2" fill="#255B82" stroke="none"/>
+<text x="672" y="627" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#255B82">Web 빌드</text>
+<text x="672" y="663" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">prepare_release.py / Godot 4.7.2</text>
+<text x="672" y="694" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">HTML · JS · WASM · PCK</text>
+<text x="672" y="725" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">gzip 압축 + SHA256 manifest</text>
+<rect x="1245" y="585" width="470" height="170" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="1245" y="585" width="5" height="170" rx="2" fill="#255B82" stroke="none"/>
+<text x="1267" y="627" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#255B82">Fly 운영 설정</text>
+<text x="1267" y="663" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">Docker: Python 3.13 + Web 파일</text>
+<text x="1267" y="694" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">web_server.py / HTTPS / 8080</text>
+<text x="1267" y="725" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">계정·리플레이 DB → /data 볼륨</text>
+<polyline points="555,670 650,670" fill="none" stroke="#7B8984" stroke-width="3"/>
+<polygon points="650,670 638.2941876694152,675.654551943446 638.2941876694152,664.345448056554" fill="#7B8984"/>
+<polyline points="1150,670 1245,670" fill="none" stroke="#7B8984" stroke-width="3"/>
+<polygon points="1245,670 1233.2941876694151,675.654551943446 1233.2941876694151,664.345448056554" fill="#7B8984"/>
+<rect x="60" y="850" width="1680" height="230" rx="15" fill="#E4F0E7" stroke="none"/>
+<text x="82" y="889" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="24" font-weight="700" fill="#1C6C53">이번 검토의 증거</text>
+<rect x="85" y="910" width="470" height="140" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="85" y="910" width="5" height="140" rx="2" fill="#1C6C53" stroke="none"/>
+<text x="107" y="952" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#1C6C53">전체 파일 목록과 구조 검사</text>
+<text x="107" y="988" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">556개 크기·해시·역할 분류</text>
+<text x="107" y="1019" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">Python AST / 리소스 참조 확인</text>
+<rect x="650" y="910" width="500" height="140" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="650" y="910" width="5" height="140" rx="2" fill="#1C6C53" stroke="none"/>
+<text x="672" y="952" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#1C6C53">기존 회귀 검사 통과</text>
+<text x="672" y="988" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">Python 161개 + 하위 검사 12개</text>
+<text x="672" y="1019" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">Godot 통합 235개 · 실패 0</text>
+<rect x="1245" y="910" width="470" height="140" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="1245" y="910" width="5" height="140" rx="2" fill="#1C6C53" stroke="none"/>
+<text x="1267" y="952" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#1C6C53">별도 임시 서버 재현</text>
+<text x="1267" y="988" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">봇 좌석으로 조회·기권 가능</text>
+<text x="1267" y="1019" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">0.4초 봇 모사 → 타 방 약 0.41초 대기</text>
+<rect x="60" y="1140" width="1680" height="215" rx="15" fill="#FAE9E3" stroke="none"/>
+<text x="82" y="1179" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="24" font-weight="700" fill="#A44336">배포 전 판단 · 기능 통과와 운영 안전은 별개</text>
+<rect x="85" y="1200" width="470" height="125" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="85" y="1200" width="5" height="125" rx="2" fill="#A44336" stroke="none"/>
+<text x="107" y="1242" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#A44336">우선: 봇 좌석 인증 차단</text>
+<text x="107" y="1278" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">내부 봇 식별자를 외부 인증에 사용 불가</text>
+<rect x="650" y="1200" width="500" height="125" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="650" y="1200" width="5" height="125" rx="2" fill="#A44336" stroke="none"/>
+<text x="672" y="1242" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#A44336">다음: 방 격리 / 저장 복구</text>
+<text x="672" y="1278" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">봇 작업·지형·잠금 분리 / 미완료 기록 복원</text>
+<rect x="1245" y="1200" width="470" height="125" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="1245" y="1200" width="5" height="125" rx="2" fill="#A44336" stroke="none"/>
+<text x="1267" y="1242" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#A44336">자동 검증과 실제 입력 QA</text>
+<text x="1267" y="1278" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">CI 전체 pytest 추가 / 한글 IME 재검증</text>
+<polyline points="60,1410 1740,1410" fill="none" stroke="#D8DED8" stroke-width="2"/>
+<text x="60" y="1450" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="20" font-weight="400" fill="#566460">현재 CI는 main/master push에서 배포 실행. 이 개발 브랜치 검토에서는 해당 배포 흐름을 실행하지 않음.</text>
+</svg>

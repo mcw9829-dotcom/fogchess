@@ -3,7 +3,7 @@ import ctypes
 from ctypes import wintypes
 from pathlib import Path
 import subprocess,time
-root=Path(__file__).resolve().parent
+root=Path(__file__).resolve().parents[1]
 user=ctypes.windll.user32
 user.SendMessageW.argtypes=[wintypes.HWND,wintypes.UINT,wintypes.WPARAM,wintypes.LPARAM]
 user.SendMessageW.restype=ctypes.c_ssize_t

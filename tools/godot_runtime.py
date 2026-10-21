@@ -2,7 +2,7 @@
 import os
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 VERSION = "4.7.1"
 LOCAL_EXE = ROOT / ".dev-data" / "tools" / "godot-4.7.1" / "Godot_v4.7.1-stable_win64.exe"
 STEAM_EXE = Path(r"C:\Program Files (x86)\Steam\steamapps\common\Godot Engine\godot.windows.opt.tools.64.exe")

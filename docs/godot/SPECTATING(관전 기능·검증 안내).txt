@@ -16,8 +16,8 @@
 
 서버: spectator.py (지연 기록·전체 보드·접속 인원), server.py (입장/퇴장·기록 시점·권한)
 Godot: features/spectating(관전·지연 중계·관전자 수).gd
-검증: test_spectator.py, run_watch_smoke.py, godot/tests/watch_smoke.gd
-테스트 전용 시간 이동 API는 run_watch_smoke.py 안에만 존재한다.
+검증: tests/test_spectator.py, tests/run_watch_smoke.py, godot/tests/watch_smoke.gd
+테스트 전용 시간 이동 API는 tests/run_watch_smoke.py 안에만 존재한다.
 기록은 현재 서버 프로세스 메모리에 있고 재시작 시 사라진다.
 후속 리플레이의 영구 저장과 재생 UI 구현 완료. REPLAY 안내 참조.
 회원 DB나 전적 스키마를 변경하지 않았다.

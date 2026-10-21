@@ -1,0 +1,14 @@
+{
+  "commit": "d400d058d251876dcbefe114581ed5ce9a5cdc02",
+  "tracked_files": 556,
+  "tracked_bytes": 21691238,
+  "godot_tracked_files": 474,
+  "python_files": 38,
+  "gdscript_files": 44,
+  "feature_modules": 14,
+  "pytest": "161 passed, 12 subtests passed in 21.21s",
+  "godot_pass": 235,
+  "godot_fail": 0,
+  "source_unmodified": true,
+  "notes": "전체 추적 파일을 읽고 해시·역할을 목록화했다. Python AST, GDScript 함수·리소스 참조, SVG XML, WAV 헤더를 검사했다. 핵심 경로는 직접 코드 검토와 회귀 테스트로 확인했다. 556개 모두의 모든 분기·모든 픽셀을 수동 실행한 것은 아니다."
+}

@@ -6,7 +6,7 @@ import wave
 from pathlib import Path
 
 RATE = 44100
-OUT = Path(__file__).resolve().parent / 'godot' / 'sounds'
+OUT = Path(__file__).resolve().parents[1] / 'godot' / 'sounds'
 OUT.mkdir(parents=True, exist_ok=True)
 # delay, frequency, duration, waveform, gain, exponential destination
 EVENTS = {

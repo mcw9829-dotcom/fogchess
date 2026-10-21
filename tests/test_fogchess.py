@@ -7,6 +7,7 @@
 clean_terrain 픽스처로 '빈 지형'에서 시작하고 필요할 때만 지형을 심는다.
 """
 import os, re
+from pathlib import Path
 import pytest
 
 import config
@@ -608,7 +609,7 @@ def test_rooms_have_own_terrain_and_use_terrain_switches_globals():
 def test_server_console_prints_are_cp949_safe():
     """Windows 콘솔(cp949)에서 서버 시작 print가 UnicodeEncodeError로 죽지 않게 — em dash·이모지 금지(주석은 무관)."""
     import io as _io, re
-    src = _io.open('server.py', encoding='utf-8').read().splitlines()
+    src = _io.open(Path(__file__).resolve().parents[1] / 'server.py', encoding='utf-8').read().splitlines()
     bad = [(i + 1, ln.strip()[:60]) for i, ln in enumerate(src)
            if re.match(r"\s*print\(", ln) and not _cp949_ok(ln)]
     assert not bad, f'cp949로 출력 불가한 print 줄: {bad}'
@@ -898,7 +899,7 @@ def test_bush_hidden_enemy_capturable_by_move():
         assert (br, bc) in {tuple(m) for m in pieces.legal_moves(st, 'W_R1')}
     finally:
         game_map.apply_terrain(saved, *mods)
-    css = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'style.css'), encoding='utf-8').read()
+    css = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'web', 'style.css'), encoding='utf-8').read()
     assert re.search(r'\.movable::before\s*\{[^}]*z-index:\s*4', css) and re.search(r'\.bushfront\{\s*z-index:3', css)
 
 

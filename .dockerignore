@@ -16,10 +16,34 @@ dev_server.py
 start-dev.ps1
 
 stop-dev.ps1
-run_godot_smoke.py
 
 **/*.db-wal
 **/*.db-shm
 **/*.log
 .env
 .env.*
+
+# Local architecture review artifacts
+게임 구조 지도/
+
+# Development-only tools and documentation
+tests/
+tools/
+docs/
+QA/
+pytest.ini
+
+# Never send local databases or credentials to a remote Docker builder.
+**/*.db
+**/*.db-*
+**/*.sqlite
+**/*.sqlite-*
+**/*.sqlite3
+**/*.sqlite3-*
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/id_rsa
+**/id_ed25519
+**/client.cfg

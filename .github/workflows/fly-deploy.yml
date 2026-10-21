@@ -30,9 +30,9 @@ jobs:
       - name: Import, test, and export Godot Web
         run: |
           "$GODOT_EXE" --headless --path godot --editor --import --quit
-          python3 test_web_host.py
-          python3 run_godot_smoke.py
-          python3 prepare_release.py
+          python3 tests/test_web_host.py
+          python3 tests/run_godot_smoke.py
+          python3 tools/prepare_release.py
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - run: flyctl deploy --remote-only
         env:

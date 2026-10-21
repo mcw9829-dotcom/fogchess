@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1530" viewBox="0 0 1800 1530"><title>FOG CHESS · 기능별 코드 지도</title><rect width="100%" height="100%" fill="#F6F5F0"/>
+<text x="60" y="88" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="44" font-weight="700" fill="#1B302F">FOG CHESS · 기능별 코드 지도</text>
+<text x="60" y="135" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="23" font-weight="400" fill="#566460">파일명이 길어 그림에는 기본 이름을 사용  |  상세 검토서에 실제 파일명·함수·줄 위치 수록</text>
+<polyline points="60,165 1740,165" fill="none" stroke="#D8DED8" stroke-width="2"/>
+<rect x="60" y="205" width="1680" height="210" rx="15" fill="#E4F0E7" stroke="none"/>
+<text x="82" y="244" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="24" font-weight="700" fill="#1C6C53">Godot 진입점</text>
+<rect x="85" y="265" width="720" height="120" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="85" y="265" width="5" height="120" rx="2" fill="#1C6C53" stroke="none"/>
+<text x="107" y="307" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#1C6C53">project.godot → main(게임 시작 씬).tscn</text>
+<text x="107" y="343" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">main.gd: 초기화·기능 연결·호환 전달 함수</text>
+<rect x="920" y="265" width="795" height="120" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="920" y="265" width="5" height="120" rx="2" fill="#1C6C53" stroke="none"/>
+<text x="942" y="307" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#1C6C53">app_state.gd · 공유 컨텍스트</text>
+<text x="942" y="343" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">상태·UI 노드·네트워크 참조를 features가 app으로 공유</text>
+<polyline points="805,325 920,325" fill="none" stroke="#7B8984" stroke-width="3"/>
+<polygon points="920,325 908.2941876694152,330.654551943446 908.2941876694152,319.345448056554" fill="#7B8984"/>
+<polygon points="805,325 816.7058123305848,319.345448056554 816.7058123305848,330.654551943446" fill="#7B8984"/>
+<rect x="60" y="465" width="1680" height="510" rx="15" fill="#E4F0E7" stroke="none"/>
+<text x="82" y="504" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="24" font-weight="700" fill="#1C6C53">Godot 기능 계층 · features 14개 + 루트의 렌더링·공통 코드</text>
+<rect x="85" y="525" width="470" height="190" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="85" y="525" width="5" height="190" rx="2" fill="#1C6C53" stroke="none"/>
+<text x="107" y="567" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#1C6C53">화면을 구성하는 코드</text>
+<text x="107" y="603" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">ui_shell: 레이아웃·화면 전환</text>
+<text x="107" y="634" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">ui_components: 버튼·입력·팝업</text>
+<text x="107" y="665" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">match_ui: HUD·행동 안내·기보</text>
+<text x="107" y="696" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">settings: 테마·음향·접근성</text>
+<rect x="650" y="525" width="500" height="190" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="650" y="525" width="5" height="190" rx="2" fill="#1C6C53" stroke="none"/>
+<text x="672" y="567" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#1C6C53">대국을 진행하는 코드</text>
+<text x="672" y="603" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">game_session: 입장·폴링·행동</text>
+<text x="672" y="634" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">piece_input: 선택·이동·능력</text>
+<text x="672" y="665" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">game_display: 킬로그·결과·FX</text>
+<text x="672" y="696" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">matchmaking: 모드·매칭 수락</text>
+<rect x="1245" y="525" width="470" height="190" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="1245" y="525" width="5" height="190" rx="2" fill="#1C6C53" stroke="none"/>
+<text x="1267" y="567" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#1C6C53">계정과 보조 경험</text>
+<text x="1267" y="603" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">account: 로그인·복구·전적</text>
+<text x="1267" y="634" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">community: 순위·패치·피드백</text>
+<text x="1267" y="665" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">help_screens: 설명·튜토리얼</text>
+<text x="1267" y="696" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">chat: 대전 채팅·미확인 메시지</text>
+<rect x="85" y="755" width="470" height="175" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="85" y="755" width="5" height="175" rx="2" fill="#1C6C53" stroke="none"/>
+<text x="107" y="797" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#1C6C53">관전 / 복기</text>
+<text x="107" y="833" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">spectating: 입장·지연·인원</text>
+<text x="107" y="864" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">replay: 재생·시점·기기 목록</text>
+<text x="107" y="895" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">실제 프레임은 Python이 생성</text>
+<rect x="650" y="755" width="500" height="175" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="650" y="755" width="5" height="175" rx="2" fill="#1C6C53" stroke="none"/>
+<text x="672" y="797" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#1C6C53">보드 / 입력 연출</text>
+<text x="672" y="833" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">board · piece_outline</text>
+<text x="672" y="864" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">action_menu · action_icon</text>
+<text x="672" y="895" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">좌표 변환·드래그·원·화살표</text>
+<rect x="1245" y="755" width="470" height="175" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="1245" y="755" width="5" height="175" rx="2" fill="#1C6C53" stroke="none"/>
+<text x="1267" y="797" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#1C6C53">재사용 시각·소리</text>
+<text x="1267" y="833" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">fx_layer · audio · button_ripple</text>
+<text x="1267" y="864" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">original_demo / guide / intro</text>
+<text x="1267" y="895" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">player_card · rating_chart · admin</text>
+<rect x="60" y="1025" width="1680" height="310" rx="15" fill="#E8EFF5" stroke="none"/>
+<text x="82" y="1064" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="24" font-weight="700" fill="#255B82">Python · 판정과 서비스 책임</text>
+<rect x="85" y="1085" width="470" height="210" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="85" y="1085" width="5" height="210" rx="2" fill="#255B82" stroke="none"/>
+<text x="107" y="1127" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#255B82">게임 도메인</text>
+<text x="107" y="1163" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">config: 규칙·타이머·레이팅 값</text>
+<text x="107" y="1194" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">game_map: 숲·부쉬·강 생성</text>
+<text x="107" y="1225" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">pieces: 이동·시야·기보·승패</text>
+<text x="107" y="1256" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">bot: 전술·정찰·탐색</text>
+<rect x="650" y="1085" width="500" height="210" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="650" y="1085" width="5" height="210" rx="2" fill="#255B82" stroke="none"/>
+<text x="672" y="1127" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#255B82">대국 서비스</text>
+<text x="672" y="1163" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">server: API·방·인증·시계</text>
+<text x="672" y="1194" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">matchmaking: 회원 대기열</text>
+<text x="672" y="1225" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">match_social: 채팅·2선승</text>
+<text x="672" y="1256" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">spectator: 지연 화면·관전자 수</text>
+<rect x="1245" y="1085" width="470" height="210" rx="15" fill="#FFFFFF" stroke="#D8DED8"/>
+<rect x="1245" y="1085" width="5" height="210" rx="2" fill="#255B82" stroke="none"/>
+<text x="1267" y="1127" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="27" font-weight="700" fill="#255B82">데이터와 호스팅</text>
+<text x="1267" y="1163" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">accounts: 계정·정산·피드백 DB</text>
+<text x="1267" y="1194" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">replays: 프레임 저장·조회</text>
+<text x="1267" y="1225" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">web_server: Web 배포 파일·API</text>
+<text x="1267" y="1256" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="22" font-weight="400" fill="#1B302F">dev_server: 로컬 DB 격리</text>
+<text x="60" y="1396" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="24" font-weight="400" fill="#A44336">구조 판단: 파일 분리는 완료됐지만, Godot의 app 공유와 Python의 전역 지형·lock 결합은 남아 있음.</text>
+<polyline points="60,1450 1740,1450" fill="none" stroke="#D8DED8" stroke-width="2"/>
+<text x="60" y="1490" font-family="Malgun Gothic,Noto Sans KR,sans-serif" font-size="20" font-weight="400" fill="#566460">개선 시 외형 에셋은 유지 가능. 상태·규칙·표시의 인터페이스를 명시하면 기능 추가와 회귀 검증이 쉬워짐.</text>
+</svg>
