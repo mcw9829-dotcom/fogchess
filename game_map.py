@@ -188,14 +188,14 @@ def terrain_to_ascii(forests, rivers, bushes=frozenset()):
     return [''.join(ch(r, c) for c in range(N)) for r in range(N)]
 
 
-def generate_terrain(seed=None, extra=None):
+def generate_terrain(seed=None, extra=None, symmetry=None):
     """한 판(방)의 지형 세트. seed=None이면 무작위 시드 → 방마다 다른 맵. 특수지형 먼저, 숲은 그 칸을 피해 생성.
     반환: {'seed', 'forests', 'bushes', 'rivers', 'impassable'} (impassable = 숲 | 강, 부쉬는 지나갈 수 있음)"""
     if seed is None:
         seed = random.randrange(1000, 999999)
     rivers = generate_rivers(seed, extra=extra)
     bushes = generate_bushes(seed, extra=extra) - rivers          # 강 위에 부쉬는 안 놓음
-    forests = generate_forests(exclude=rivers | bushes, seed=seed)
+    forests = generate_forests(exclude=rivers | bushes, seed=seed, symmetry=symmetry)
     return {'seed': seed, 'forests': forests, 'bushes': bushes, 'rivers': rivers, 'impassable': forests | rivers}
 
 

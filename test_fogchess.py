@@ -704,10 +704,12 @@ def test_matchmaking_no_self_match_and_stale_prune():
     mk = lambda a, b: ('R', 'a', 'W', 'b', 'B')
     M.join('s1', {'id': 9, 'name': 'X', 'rating': 1000}, now=0)
     M.join('s2', {'id': 9, 'name': 'X', 'rating': 1000}, now=0)               # 같은 계정(다른 탭) → 서로 안 붙음
-    assert M.status('s1', 1, mk)['state'] == 'waiting'
-    assert M.status('s1', 19, mk)['state'] == 'waiting'                        # s2는 폴링 끊긴 지 19초 → 정리됨
-    assert 's2' not in M.QUEUE and 's1' in M.QUEUE
-    M.cancel('s1'); assert M.status('s1', 20, mk)['state'] == 'idle'
+    assert M.status('s1', 1, mk)['state'] == 'idle'  # refreshed session owns the single account entry
+    assert M.status('s2', 1, mk)['state'] == 'waiting'
+    assert len(M.QUEUE) == 1
+    M.prune(19)
+    assert not M.QUEUE
+    assert M.status('s2', 20, mk)['state'] == 'idle'
     M.QUEUE.clear()
 
 
@@ -756,9 +758,9 @@ def test_server_settles_bot_game_once(tmp_db):
     assert server.is_rated(room)
     server.settle_rating(room); server.settle_rating(room)        # 두 번 불러도 한 번만 반영
     d = room['rating_result']['W']
-    assert d['delta'] == accounts.elo_delta(1000, 1300, 1.0) == 27
-    assert accounts.user_by_id(u['id'])['rating'] == 1027 and accounts.user_by_id(u['id'])['wins'] == 1
-    assert room['ratings']['W'] == 1027
+    assert d['delta'] == accounts.elo_delta(1000, config.BOT_RATING['hard'], 1.0)
+    assert accounts.user_by_id(u['id'])['rating'] == 1000 + d['delta'] and accounts.user_by_id(u['id'])['wins'] == 1
+    assert room['ratings']['W'] == 1000 + d['delta']
 
 
 
@@ -779,9 +781,9 @@ def test_bot_loss_keeps_rating_and_gain_cap(tmp_db):
     assert accounts.fixed_delta(1500, 1300, 1.0, True, 1300 + BOT_GAIN_CAP) == 0
     assert accounts.fixed_delta(1000, 1300, 1.0, True, 1300 + BOT_GAIN_CAP) == 27      # 상한 아래면 그대로
     assert accounts.fixed_delta(1400, 1300, 0.5, True, None) == 0                       # 비겨도 안 떨어짐
-    assert server.bot_gain_cap(room) == 1500
+    assert server.bot_gain_cap(room) == config.BOT_RATING['hard'] + BOT_GAIN_CAP
     room2 = server.new_room('T6'); room2['bot'] = 'B'; room2['botlevel'] = 'easy'
-    room2['users'] = {'W': u['id']}; room2['ratings'] = {'W': 1000}
+    room2['users'] = {'W': u['id']}; room2['ratings'] = {'W': config.BOT_RATING['easy'] + BOT_GAIN_CAP}
     assert '더 오르지 않아요' in server.bot_rating_note(room2)                          # 쉬움 상한 1000 도달
     room2['ratings'] = {'W': 900}
     assert server.bot_rating_note(room2).startswith('📈 레이팅 900: 이기면 +')
@@ -951,7 +953,7 @@ def test_game_history_recorded(tmp_db):
     bot['ratings'] = {'W': 984}; bot['names'] = {'W': 'gh_a', 'B': '컴퓨터(hard)'}
     finish(bot, 'W')
     ha = accounts.game_history(a['id'])
-    assert len(ha) == 3 and ha[0]['kind'] == 'bot' and ha[0]['opp_name'] == '컴퓨터(hard)' and ha[0]['opp_rating'] == 1300 and ha[0]['delta'] > 0
+    assert len(ha) == 3 and ha[0]['kind'] == 'bot' and ha[0]['opp_name'] == '컴퓨터(hard)' and ha[0]['opp_rating'] == config.BOT_RATING['hard'] and ha[0]['delta'] > 0
     guest = server.new_room('H4'); guest['bot'] = 'B'; finish(guest, 'B')            # 게스트 봇전: 기록 없음
     solo = server.new_room('H5'); solo['solo'] = True; solo['users'] = {'W': a['id'], 'B': a['id']}; finish(solo, 'W')
     assert len(accounts.game_history(a['id'])) == 3 and [r['room'] for r in accounts.game_history(a['id'])] == ['H3', 'H2', 'H1']

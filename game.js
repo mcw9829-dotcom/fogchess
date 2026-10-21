@@ -996,12 +996,12 @@ function introShow(i){
   if(introIdx > 0) mk('← 이전', ()=>introShow(introIdx-1));
   if(introIdx < INTRO_SLIDES.length-1) mk('다음 →', ()=>introShow(introIdx+1), 'seg-b on');
   else if(document.getElementById('game').style.display !== 'flex'){   // 홈(첫 접속·다시 보기): 바로 첫 판으로
-    mk(INTRO_CTA, ()=>{ closeIntro(); botStart('easy'); }, 'menu-btn primary');
+    mk(INTRO_CTA, ()=>{ closeIntro(); FogTutorial.open(); }, 'menu-btn primary');
     mk('나중에', closeIntro);
   }
   else mk('닫기 ✓', closeIntro, 'seg-b on');                                // 게임 중 [❔ 규칙]로 열었을 땐 닫기만
 }
-const INTRO_CTA = '<span class="mi">💻</span><span class="mt"><b>컴퓨터(쉬움)와 첫 판 두기</b><small>지금 배운 것만으로 충분해요</small></span>';
+const INTRO_CTA = '<span class="mi">◎</span><span class="mt"><b>직접 왕을 찾아보기</b><small>이동 · 스캔 · 저격을 한 수씩 연습해요</small></span>';
 // 카드 크기 고정: 제목·자막·버튼 줄의 높이를 전체 슬라이드 최대치로 미리 잡아 둔다 → 자막이 길어지거나 장이 바뀌어도 카드·보드가 안 움직임
 function introFit(){
   const title = document.getElementById('introTitle'), box = document.getElementById('introSubBox'), nav = document.getElementById('introNav');
@@ -1746,5 +1746,6 @@ document.addEventListener('pointerdown', (e)=>{
     showScreen('home');
   }
   // 첫 방문이면 인트로(슬라이드 4장, ≈1분) 한 번만 자동으로(팝업은 최대 1개). 기물 상세는 사이드바 📖 기물 설명.
-  if(!localStorage.getItem('fog_intro_seen')){ openIntro(); localStorage.setItem('fog_intro_seen','1'); }
+  // 첫 방문에도 홈에서 학습을 선택한다. 완료 여부는 미션 성공 때만 저장한다.
+  FogTutorial.init(()=>botStart('easy'));
 })();

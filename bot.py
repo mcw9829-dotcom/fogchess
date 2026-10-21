@@ -17,7 +17,8 @@ import time
 import random
 
 from config import (N, VISION, BISHOP_RANGE, BISHOP_MOVE, ROOK_FIRE, QUEEN_MOVE,
-                    SCAN_RANGE, SCAN_DUR, ZONE, BOT_HARD_BUDGET, BOT_EASY_BLUNDER)
+                    SCAN_RANGE, SCAN_DUR, ZONE, BOT_HARD_BUDGET, BOT_NORMAL_BUDGET,
+                    BOT_EASY_BUDGET, BOT_EASY_BLUNDER)
 from game_map import FORESTS, BUSHES, in_board
 import pieces
 from pieces import DIRS4, DIRS8
@@ -410,6 +411,11 @@ def _decide(st, me, *, hunt, abilities, mm_budget, mm_quiesce, mm_remembered, bl
     _update_memory(st, me, view)
     if hunt:
         _update_scout(st, me, view)
+    # All decision paths, including tactical heuristics, get only observable occupancy.
+    st.setdefault('botscan', {})
+    for key in ('botswept', 'botscanned'):
+        st.setdefault(key, {}).setdefault(me, {})
+    st = pieces.observed_state(st, me)
     core = _core(st, me, view)                                   # 승리/킹방어/보이는 적 공격
     if core:
         return core                                             # 중요한 수(캡처·승리·방어)는 항상 정확
@@ -440,10 +446,10 @@ def _decide(st, me, *, hunt, abilities, mm_budget, mm_quiesce, mm_remembered, bl
             or _advance(st, me, _enemies_from_view(view, me), _remembered(st, me)))
 
 
-def choose_action(st, me):
-    """보통: 왕 사냥 + 킹 방어 + 능력(퀸 스캔·전차 돌파, 템포 보호형) + 가벼운 미니맥스 + 가끔 실수."""
+def choose_action(st, me, budget=BOT_NORMAL_BUDGET):
+    """보통(~1500): 왕 사냥 + 킹 방어 + 능력(퀸 스캔·전차 돌파, 템포 보호형) + 중간 깊이 미니맥스(실수 없음)."""
     return _decide(st, me, hunt=True, abilities=True,
-                   mm_budget=0.4, mm_quiesce=0, mm_remembered=False, blunder=0.12)
+                   mm_budget=budget, mm_quiesce=0, mm_remembered=False, blunder=0.0)
 
 
 def _advance(st, me, enemies, remembered):
@@ -485,7 +491,9 @@ def _clone(st):
             'winner': st['winner'], 'reveals': [dict(x) for x in st['reveals']],
             'feed': [], 'feedseq': st['feedseq'], 'fx': None, 'fxseq': st['fxseq'],
             'log': [], 'ready': dict(st.get('ready', {})), 'deadline': None,
-            'promote': st.get('promote')}
+            'promote': st.get('promote'), '_prediction': True,
+            'scans': [dict(x) for x in st.get('scans', [])],
+            'misses': dict(st.get('misses', {'W': 0, 'B': 0}))}
 
 
 def _terminal_eval(st, me):
@@ -670,6 +678,7 @@ def _minimax(st, me, depth, alpha, beta, maximizing, known, deadline, kbush, qde
 def _best_minimax_move(st, me, budget, kcands=None, quiesce=0, model_remembered=False):
     """반복심화 미니맥스. quiesce>0=정지탐색 깊이, model_remembered=상대 모델에 기억한 적 포함.
     kcands의 부쉬 좌표를 평가(왕 사냥 위치)에 사용."""
+    st = pieces.observed_state(st, me)
     moves = _gen_moves(st, me)
     if not moves:
         return None
@@ -701,19 +710,21 @@ def _best_minimax_move(st, me, budget, kcands=None, quiesce=0, model_remembered=
 
 
 # ------------------------- 난이도별 선택 -------------------------
-def choose_action_easy(st, me):
-    """쉬움: 자주 무작위 실수 + 왕 사냥 안 함(부쉬 수색/정찰 X → 왕을 잘 못 찾음)."""
-    return _decide(st, me, hunt=False, abilities=False,
-                   mm_budget=0.0, mm_quiesce=0, mm_remembered=False,
+def choose_action_easy(st, me, budget=BOT_EASY_BUDGET):
+    """쉬움(~1300): 왕 사냥 + 킹 방어 + 능력 사용 + 가벼운 미니맥스 + 아주 가끔의 실수.
+    (예전엔 왕 사냥·탐색을 모두 꺼 왕을 못 찾는 수준이었음 — 하한을 1300급으로 끌어올림.)"""
+    return _decide(st, me, hunt=True, abilities=True,
+                   mm_budget=budget, mm_quiesce=0, mm_remembered=False,
                    blunder=BOT_EASY_BLUNDER)
 
 
 def choose_action_hard(st, me, budget=BOT_HARD_BUDGET):
-    """어려움: 공격적 왕 사냥 + 킹 방어 + 능력(퀸 스캔·전차 돌파) + 깊은 미니맥스(시간 많이) + 실수 없음.
+    """어려움(~1800): 공격적 왕 사냥 + 킹 방어 + 능력(퀸 스캔·전차 돌파) + 깊은 미니맥스(시간 많이)
+    + 정지탐색(캡처 연쇄를 더 읽어 되잡힘/호라이즌 함정 완화) + 실수 없음.
     (기억한적 상대모델은 봇끼리 검증 결과 소극적이 돼 제외. 능력은 예전엔 매 턴 스캔/포격으로 템포를
     잃어 껐었는데, _scan_hunt/_barrage_flush에 템포 보호를 넣은 뒤 다시 켬 — 토너먼트로 검증.)"""
     return _decide(st, me, hunt=True, abilities=True,
-                   mm_budget=budget, mm_quiesce=0, mm_remembered=False)
+                   mm_budget=budget, mm_quiesce=QUIESCENCE_DEPTH, mm_remembered=False)
 
 
 # ------------------------- 실행 -------------------------

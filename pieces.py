@@ -260,6 +260,29 @@ def legal_moves(st, pid):
     return out
 
 
+def observed_state(st, color):
+    """Decision input containing own pieces and currently observed enemies only.
+    Unknown pieces are omitted, not marked dead. Terrain and own memory are public/owned.
+    Never pass this prediction state back to the authoritative room.
+    """
+    vis = visible_cells(st, color)
+    result = dict(st)
+    result['pieces'] = {pid: dict(p) for pid, p in st['pieces'].items()
+                        if p['alive'] and (p['o'] == color or
+                           enemy_visible_at(st, color, p['r'], p['c'], vis))}
+    result['reveals'] = [dict(rv) for rv in st['reveals'] if rv['pid'] in result['pieces']]
+    result['_prediction'] = True
+    return result
+
+
+def move_candidates(st, pid):
+    """UI/bot requests must not disclose unknown occupancy through missing destinations."""
+    p = st['pieces'].get(pid)
+    if not p or not p['alive'] or st.get('promote'):
+        return []
+    return legal_moves(st if st.get('_prediction') else observed_state(st, p['o']), pid)
+
+
 def fire_cells(st, pid):
     """비숍이 지금 저격할 수 있는 '표적 칸' 목록 — 사거리 BISHOP_RANGE 안 + 시야에 든 적만.
     (원형 전 범위가 아니라, 실제로 명중 가능한 적 위치만 하이라이트)."""
@@ -354,6 +377,9 @@ def time_out(st):
     연속 MAX_MISSES회(=TURN_SECONDS*MAX_MISSES초) 미행동이면 패배(상대 자동 승리)."""
     if st['phase'] != 'play':
         return False
+    if st.get('promote'):
+        st['log'].append('승격 선택 시간 초과 — 전차로 자동 승격합니다.')
+        return apply_promote(st, st['turn'], 'R')[0]
     loser = st['turn']
     st['misses'][loser] = st['misses'].get(loser, 0) + 1
     n = st['misses'][loser]
@@ -371,6 +397,8 @@ def time_out(st):
 def kill(st, target, actor_color, atype, method):
     """target 제거 + 킬로그 기록. atype=공격 기물, method=melee/artillery/barrage."""
     target['alive'] = False
+    if target['o'] != actor_color:
+        st.setdefault('captured', {}).setdefault(actor_color, []).append(target['t'])
     st['feedseq'] += 1
     st['feed'].append({
         'seq': st['feedseq'], 'actor': actor_color, 'atype': atype,
@@ -379,18 +407,32 @@ def kill(st, target, actor_color, atype, method):
     st['feed'] = st['feed'][-14:]
     if target['t'] == 'K':
         st['phase'] = 'over'
-        st['winner'] = actor_color
+        st['winner'] = 'B' if target['o'] == 'W' else 'W'
+        st['turn_deadline'] = None
         st['log'].append(
             f"☠ {SIDE_KR[actor_color]} {PIECE_KR[atype]}(으)로 "
-            f"{SIDE_KR[target['o']]} 킹 처치 — {SIDE_KR[actor_color]} 승리!")
+            f"{SIDE_KR[target['o']]} 킹 처치 — {SIDE_KR[st['winner']]} 승리!")
 
 
 def apply_move(st, color, pid, tr, tc):
+    if st.get('promote'):
+        return False, '승격할 기물을 먼저 선택하세요.'
     p = st['pieces'].get(pid)
     if not p or p['o'] != color or not p['alive']:
         return False, '내 기물이 아닙니다.'
-    if (tr, tc) not in legal_moves(st, pid):
+    if (tr, tc) not in move_candidates(st, pid):
         return False, '이동할 수 없는 칸입니다.'
+    # Candidate rays ignore unknown occupancy; authoritative travel captures the first encounter.
+    if p['t'] in ('B', 'R', 'Q') or (p['t'] == 'P' and tc == p['c']):
+        dr, dc = tr - p['r'], tc - p['c']
+        distance = max(abs(dr), abs(dc))
+        sr, sc = (0 if dr == 0 else (1 if dr > 0 else -1)), (0 if dc == 0 else (1 if dc > 0 else -1))
+        for step in range(1, distance + 1):
+            rr, cc = p['r'] + sr * step, p['c'] + sc * step
+            if piece_at(st, rr, cc) is not None:
+                tr, tc = rr, cc
+                break
+    origin = (p['r'], p['c'])
     target = piece_at(st, tr, tc)
     captured = target is not None and target['o'] != color
     if captured:
@@ -411,6 +453,8 @@ def apply_move(st, color, pid, tr, tc):
 
 def apply_fire(st, color, pid, tr, tc):
     """비숍 단일 타일 저격 — 사거리 안 + '내가 볼 수 있는 적'만 명중. 발사하면 내 위치 노출."""
+    if st.get('promote'):
+        return False, '승격할 기물을 먼저 선택하세요.'
     p = st['pieces'].get(pid)
     if not p or p['o'] != color or not p['alive'] or p['t'] != 'B':
         return False, '저격할 비숍이 아닙니다.'
@@ -433,6 +477,8 @@ def apply_fire(st, color, pid, tr, tc):
 
 
 def apply_barrage(st, color, pid, tr, tc):
+    if st.get('promote'):
+        return False, '승격할 기물을 먼저 선택하세요.'
     p = st['pieces'].get(pid)
     if not p or p['o'] != color or not p['alive'] or p['t'] != 'R':
         return False, '돌파 사격할 전차(룩)가 아닙니다.'
@@ -465,6 +511,8 @@ def apply_barrage(st, color, pid, tr, tc):
 
 def apply_scan(st, color, pid, tr, tc):
     """퀸 스캔 — 지정 지점 기준 2×2를 SCAN_DUR턴 감시(안개·부쉬 뚫음). 퀸은 머즐 플래시 없음(위치 안 노출)."""
+    if st.get('promote'):
+        return False, '승격할 기물을 먼저 선택하세요.'
     p = st['pieces'].get(pid)
     if not p or p['o'] != color or not p['alive'] or p['t'] != 'Q':
         return False, '스캔할 퀸이 아닙니다.'
@@ -488,7 +536,7 @@ def apply_scan(st, color, pid, tr, tc):
 def apply_promote(st, color, choice):
     """승격 대기 중인 폰을 선택 기물로 바꾼다(비숍/나이트/전차). 그 후 턴을 넘긴다."""
     pr = st.get('promote')
-    if not pr or pr['color'] != color:
+    if st['phase'] != 'play' or st['turn'] != color or not pr or pr['color'] != color:
         return False, '승격 대기 중이 아닙니다.'
     if choice not in ('R', 'N', 'B'):
         return False, '비숍(B)·나이트(N)·전차(R) 중에서 선택하세요.'
@@ -548,7 +596,7 @@ def autoplace(st, color, mode):
     else:  # random
         z0, z1 = ZONE[color]
         cells = [(r, c) for r in range(z0, z1 + 1) for c in range(N)
-                 if (r, c) not in FORESTS]
+                 if (r, c) not in IMPASSABLE]
         random.shuffle(cells)
         for p, (r, c) in zip(mine, cells):
             p['r'], p['c'] = r, c
@@ -622,7 +670,71 @@ def player_view(st, color, reveal=False):
         'scanTiles': [[r, c] for s in st.get('scans', [])       # 활성 스캔 감시 타일(양쪽 다 봄)
                       if st['turnCount'] < s['until'] for (r, c) in s['cells']],
         'log': st['log'][-9:],
+        'moveHistory': [] if spectator else st.get('move_history', {}).get(color, [])[-24:],
+        'captured': [] if spectator else list(st.get('captured', {}).get(color, [])),
+        'exposed': [] if spectator else [
+            {'pid': p['id'], 'type': p['t'],
+             'remaining': max(rv['until'] - st['turnCount'] for rv in st['reveals']
+                              if rv['pid'] == p['id'] and rv['viewer'] == opp)}
+            for p in st['pieces'].values() if p['alive'] and p['o'] == color
+            and revealed(st, opp, p['id'])],
         'feed': [] if spectator else [e for e in st['feed'] if color in (e['actor'], e['victim'])][-8:],
         'grid': grid,
         'fx': fx,
     }
+
+
+# A variant record, not standard PGN: 12x12 terrain and abilities require extra fields.
+def _record_action(fn, kind):
+    from functools import wraps
+    @wraps(fn)
+    def wrapped(st, color, *args):
+        if st.get('_prediction'):
+            return fn(st, color, *args)
+        pid = args[0] if kind not in ('promote', 'resign') else (st.get('promote') or {}).get('pid')
+        p = st['pieces'].get(pid) or {}
+        before = dict(p)
+        turn = st['turnCount']
+        captured_before = len(st.get('captured', {}).get(color, []))
+        ok, msg = fn(st, color, *args)
+        if ok:
+            after = st['pieces'].get(pid) or {}
+            label = {'move':'이동', 'fire':'저격', 'barrage':'돌파', 'scan':'스캔', 'promote':'승격', 'resign':'기권'}[kind]
+            def square(r, c):
+                return chr(97 + c) + str(r + 1)
+            detail = label
+            if before:
+                detail = PIECE_KR[before['t']] + ' ' + square(before['r'], before['c']) + ' ' + label
+            if kind == 'move':
+                detail += ' → ' + square(after['r'], after['c'])
+            elif kind in ('fire', 'barrage', 'scan'):
+                detail += ' → ' + square(args[1], args[2])
+            elif kind == 'promote':
+                detail += ' → ' + PIECE_KR[after['t']]
+            # Compact Fog Chess notation; full coordinates remain in the replay record.
+            letter = '' if before.get('t') == 'P' else before.get('t', '')
+            destination = square(after['r'], after['c']) if after else ''
+            if kind == 'move':
+                capture = len(st.get('captured', {}).get(color, [])) > captured_before
+                prefix = square(before['r'], before['c'])[0] if capture and not letter else letter
+                compact = prefix + ('x' if capture else '') + destination
+            elif kind in ('fire', 'barrage', 'scan'):
+                compact = letter + {'fire':'!', 'barrage':'>>', 'scan':'?'}[kind] + square(args[1], args[2])
+            elif kind == 'promote': compact = destination + '=' + after['t']
+            else: compact = 'resign'
+            st.setdefault('move_history', {}).setdefault(color, []).append(f'{turn + 1}. {compact}')
+            # Full coordinates are never placed in player_view for the opposing side.
+            st.setdefault('notation', []).append({
+                'turn': turn, 'actor': color, 'action': kind, 'pid': pid,
+                'compact': compact, 'description': detail,
+                'from': [before.get('r'), before.get('c')],
+                'to': [after.get('r'), after.get('c')],
+                'target': list(args[1:3]) if kind in ('fire', 'barrage', 'scan') else None,
+                'promotion': args[0] if kind == 'promote' else None,
+            })
+        return ok, msg
+    return wrapped
+
+
+for _action_name in ('move', 'fire', 'barrage', 'scan', 'promote', 'resign'):
+    globals()['apply_' + _action_name] = _record_action(globals()['apply_' + _action_name], _action_name)

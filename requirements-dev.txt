@@ -1,0 +1,3 @@
+# Optional regression test dependencies; the game server needs only Python stdlib.
+pytest>=8,<10
+pytest-subtests>=0.14,<1

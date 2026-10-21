@@ -38,9 +38,27 @@ def _entry(session, user, now):
             'since': now, 'seen': now, 'pending': None, 'matched': None, 'matched_at': None}
 
 
+def bind_account(session, user, now):
+    """Keep one queue entry per account across refreshed login sessions."""
+    for old_session, entry in list(QUEUE.items()):
+        if entry['uid'] != user['id'] or old_session == session:
+            continue
+        QUEUE.pop(old_session)
+        entry['session'] = session
+        QUEUE[session] = entry
+        pending = entry.get('pending')
+        if pending:
+            other = QUEUE.get(pending['opp_session'])
+            if other and other.get('pending'):
+                other['pending']['opp_session'] = session
+        entry['seen'] = now
+        return entry
+    return QUEUE.get(session)
+
+
 def join(session, user, now=None):
     now = time.time() if now is None else now
-    e = QUEUE.get(session)
+    e = bind_account(session, user, now)
     if e and e.get('matched'):
         if now - (e.get('matched_at') or 0) < REJOIN_KEEP:     # 방금 성사된 결과를 못 받은 재시도 → 같은 결과
             return e

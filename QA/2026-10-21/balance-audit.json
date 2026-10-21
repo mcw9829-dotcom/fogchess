@@ -1,0 +1,213 @@
+{
+  "kind": "bounded_local_bot_audit",
+  "budget_seconds": 0.05,
+  "limitations": [
+    "Small bot-only sample; not human win-rate evidence.",
+    "Reduced search budget; not production difficulty strength.",
+    "audit_cap and invalid_action are never counted as draws.",
+    "Human confusion and abandonment require voluntary playtest feedback."
+  ],
+  "outcomes": {
+    "draw": 3,
+    "W": 1,
+    "B": 2
+  },
+  "mean_turns": 159.66666666666666,
+  "games": [
+    {
+      "seed": 20261021,
+      "levels": {
+        "W": "easy",
+        "B": "hard"
+      },
+      "status": "completed",
+      "winner": "draw",
+      "turns": 200,
+      "actions": {
+        "N:move": 11,
+        "P:move": 81,
+        "K:move": 48,
+        "B:fire": 5,
+        "R:move": 11,
+        "B:move": 34,
+        "Q:move": 9,
+        "Q:scan": 1
+      },
+      "casualties": {
+        "N": 2,
+        "P": 10,
+        "B": 2,
+        "R": 2,
+        "Q": 1
+      },
+      "first_loss_side": "B",
+      "first_loss_won": null,
+      "no_action_timeouts": 0,
+      "decision_max_seconds": 0.07920080001349561,
+      "errors": []
+    },
+    {
+      "seed": 20261021,
+      "levels": {
+        "W": "hard",
+        "B": "easy"
+      },
+      "status": "completed",
+      "winner": "W",
+      "turns": 110,
+      "actions": {
+        "N:move": 12,
+        "P:move": 58,
+        "B:move": 12,
+        "B:fire": 5,
+        "R:move": 12,
+        "K:move": 5,
+        "Q:move": 7
+      },
+      "casualties": {
+        "N": 2,
+        "B": 2,
+        "P": 8,
+        "R": 3,
+        "Q": 1,
+        "K": 1
+      },
+      "first_loss_side": "W",
+      "first_loss_won": true,
+      "no_action_timeouts": 0,
+      "decision_max_seconds": 0.059608700015814975,
+      "errors": []
+    },
+    {
+      "seed": 20261022,
+      "levels": {
+        "W": "easy",
+        "B": "hard"
+      },
+      "status": "completed",
+      "winner": "draw",
+      "turns": 200,
+      "actions": {
+        "N:move": 22,
+        "P:move": 85,
+        "B:move": 15,
+        "Q:move": 7,
+        "Q:scan": 2,
+        "B:fire": 3,
+        "R:move": 27,
+        "K:move": 39
+      },
+      "casualties": {
+        "B": 4,
+        "Q": 2,
+        "P": 10,
+        "N": 2,
+        "R": 3
+      },
+      "first_loss_side": "B",
+      "first_loss_won": null,
+      "no_action_timeouts": 0,
+      "decision_max_seconds": 0.05471120000584051,
+      "errors": []
+    },
+    {
+      "seed": 20261022,
+      "levels": {
+        "W": "hard",
+        "B": "easy"
+      },
+      "status": "completed",
+      "winner": "draw",
+      "turns": 200,
+      "actions": {
+        "N:move": 22,
+        "P:move": 96,
+        "B:move": 20,
+        "R:move": 18,
+        "Q:move": 8,
+        "Q:scan": 2,
+        "B:fire": 2,
+        "K:move": 31,
+        "R:barrage": 1
+      },
+      "casualties": {
+        "P": 8,
+        "Q": 2,
+        "B": 4,
+        "N": 4,
+        "R": 2
+      },
+      "first_loss_side": "B",
+      "first_loss_won": null,
+      "no_action_timeouts": 0,
+      "decision_max_seconds": 0.05744289999711327,
+      "errors": []
+    },
+    {
+      "seed": 20261023,
+      "levels": {
+        "W": "easy",
+        "B": "hard"
+      },
+      "status": "completed",
+      "winner": "B",
+      "turns": 127,
+      "actions": {
+        "P:move": 62,
+        "R:move": 12,
+        "Q:move": 7,
+        "Q:scan": 4,
+        "B:move": 11,
+        "B:fire": 5,
+        "K:move": 10,
+        "N:move": 17
+      },
+      "casualties": {
+        "Q": 2,
+        "B": 4,
+        "R": 1,
+        "N": 3,
+        "P": 6,
+        "K": 1
+      },
+      "first_loss_side": "W",
+      "first_loss_won": false,
+      "no_action_timeouts": 0,
+      "decision_max_seconds": 0.07245479998528026,
+      "errors": []
+    },
+    {
+      "seed": 20261023,
+      "levels": {
+        "W": "hard",
+        "B": "easy"
+      },
+      "status": "completed",
+      "winner": "B",
+      "turns": 121,
+      "actions": {
+        "P:move": 67,
+        "R:move": 5,
+        "Q:move": 7,
+        "Q:scan": 4,
+        "B:move": 12,
+        "B:fire": 6,
+        "N:move": 18,
+        "K:move": 3
+      },
+      "casualties": {
+        "Q": 2,
+        "B": 4,
+        "R": 2,
+        "P": 8,
+        "N": 4,
+        "K": 1
+      },
+      "first_loss_side": "W",
+      "first_loss_won": false,
+      "no_action_timeouts": 0,
+      "decision_max_seconds": 0.05224720001569949,
+      "errors": []
+    }
+  ]
+}

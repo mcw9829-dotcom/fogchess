@@ -40,12 +40,14 @@
       </div>
       <div class="menu">
         <div class="menu-logo"><img class="logo-king" src="/img/Chess_klt45.svg" alt="" draggable="false"> 안개전장 체스</div>
-        <div class="menu-sub">WW1 Fog Chess</div>
-        <button class="menu-btn primary" id="mMatch"><span class="mi">⚔️</span><span class="mt"><b>랭크 매칭</b><small>비슷한 레이팅의 상대를 자동으로 찾아 레이팅전 · 로그인 필요</small></span></button>
+        <div class="menu-sub home-promise">안개 속 적 왕을 찾아 잡는 전략 체스</div>
+        <button class="menu-btn primary learn-entry" id="mLearn"><span class="mi">◎</span><span class="mt"><b id="learnLabel">직접 배우기 · 왕 찾기 미션</b><small>이동 → 스캔 → 저격 · 로그인 없이, 시간제한 없이</small></span><span aria-hidden="true">→</span></button>
+        <p class="home-learning-note">체스를 몰라도 괜찮아요. 작은 연습판에서 한 수씩 배워보세요.</p>
+        <button class="menu-btn" id="mMatch"><span class="mi">⚔️</span><span class="mt"><b>랭크 매칭</b><small>비슷한 레이팅의 상대를 자동으로 찾아 레이팅전 · 로그인 필요</small></span></button>
         <button class="menu-btn" id="mLobby"><span class="mi">👥</span><span class="mt"><b>로비 게임 만들기</b><small>친구와 사설 방에서 대전(초대 링크) · 레이팅 미반영</small></span></button>
         <button class="menu-btn" id="mJoin"><span class="mi">🤝</span><span class="mt"><b>친구 방 참가</b><small>친구가 준 방 코드로 입장 · 레이팅 미반영</small></span></button>
         <button class="menu-btn" id="mBot"><span class="mi">💻</span><span class="mt"><b>컴퓨터와 대국</b><small>쉬움 · 보통 · 어려움 · 이기면 레이팅 상승, 져도 하락 없음</small></span></button>
-        <button class="menu-btn" id="mSolo"><span class="mi">🎯</span><span class="mt"><b>혼자 연습</b><small>한 화면에서 백·흑을 번갈아 두며 규칙 익히기 · 레이팅 미반영</small></span></button>
+        <button class="menu-btn" id="mSolo"><span class="mi">🎯</span><span class="mt"><b>자유 연습</b><small>백·흑을 모두 직접 조작하는 연습판 · 레이팅 미반영</small></span></button>
         <button class="menu-btn ghost" id="mSettings"><span class="mi">⚙️</span><span class="mt"><b>설정</b><small>효과음 · 배경음악 · 다크/화이트 · 색약</small></span></button>
       </div>
     </div>
@@ -350,6 +352,7 @@
 
 <script src="/fx.js"></script>
 <script src="/sound.js"></script>
+<script src="/tutorial.js"></script>
 <script src="/game.js"></script>
 </body>
 </html>

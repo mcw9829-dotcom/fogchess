@@ -10,6 +10,7 @@
 DB 파일: fogchess.db (환경변수 FOG_DB 로 경로 변경 가능 — 배포 볼륨용).
 """
 import os
+import json
 import re
 import time
 import hmac
@@ -53,6 +54,8 @@ CREATE TABLE IF NOT EXISTS games(
   opp_name TEXT, opp_user_id INTEGER, opp_rating INTEGER,
   rated INTEGER NOT NULL DEFAULT 0, delta INTEGER, rating_after INTEGER, room TEXT);
 CREATE INDEX IF NOT EXISTS games_user ON games(user_id, id);
+CREATE TABLE IF NOT EXISTS game_settlements(
+ game_id TEXT PRIMARY KEY, result TEXT NOT NULL, created REAL NOT NULL);
 '''
 _lock = threading.Lock()
 _ready = False
@@ -385,6 +388,40 @@ def record_result(uid_a, uid_b, score_a):
         na = _apply(c, uid_a, elo_delta(ra, rb, score_a), score_a)
         nb = _apply(c, uid_b, elo_delta(rb, ra, 1 - score_a), 1 - score_a)
         return {'a': {'delta': na - ra, 'rating': na}, 'b': {'delta': nb - rb, 'rating': nb}}
+
+
+def settle_game(game_id, request):
+    """Commit ratings, both history rows, and the idempotency receipt atomically."""
+    with _db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        existing = c.execute('SELECT result FROM game_settlements WHERE game_id=?', (game_id,)).fetchone()
+        if existing:
+            return json.loads(existing['result'])
+        users, result = request['users'], {}
+        before = {side: c.execute('SELECT rating FROM users WHERE id=?', (uid,)).fetchone()['rating']
+                  for side, uid in users.items()}
+        if request['rated']:
+            for side, uid in users.items():
+                score = request['scores'][side]
+                opp = 'B' if side == 'W' else 'W'
+                if request['bot']:
+                    delta = fixed_delta(before[side], request['bot_rating'], score,
+                                        request['no_loss'], request['cap'])
+                else:
+                    delta = elo_delta(before[side], before[opp], score)
+                rating = _apply(c, uid, delta, score)
+                result[side] = {'delta': rating-before[side], 'rating': rating}
+        for side, uid in users.items():
+            opp = 'B' if side == 'W' else 'W'
+            rr = result.get(side)
+            score = request['scores'][side]
+            c.execute('INSERT INTO games(created,user_id,kind,result,reason,opp_name,opp_user_id,opp_rating,rated,delta,rating_after,room) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
+                      (request['created'], uid, request['kind'], 'draw' if score == .5 else ('win' if score == 1 else 'loss'),
+                       request['reason'], request['names'].get(opp, '상대'), users.get(opp),
+                       request['bot_rating'] if request['bot'] else before.get(opp, request['ratings'].get(opp)),
+                       int(bool(rr)), rr['delta'] if rr else None, rr['rating'] if rr else None, request['room']))
+        c.execute('INSERT INTO game_settlements VALUES(?,?,?)', (game_id, json.dumps(result), time.time()))
+        return result
 
 
 # ------------------------- 리더보드 -------------------------

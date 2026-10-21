@@ -1,11 +1,12 @@
-# 안개전장 체스 서버 — 파이썬 표준 라이브러리만 사용(설치할 패키지 없음)
+# Godot Web client and the existing authoritative Python API.
 FROM python:3.13-slim
-
 WORKDIR /app
-COPY . /app
-
-# 서버는 config.py에서 PORT 환경변수를 읽어 0.0.0.0:$PORT 로 listen 한다.
-ENV PORT=8080
+COPY server.py web_server.py accounts.py bot.py config.py game_map.py matchmaking.py pieces.py spectator.py replays.py match_social.py ./
+COPY client.html admin.html game.js style.css sound.js fx.js tutorial.js ./
+COPY 패치노트.txt ./
+COPY img/ ./img/
+COPY godot/build/web/ ./godot/build/web/
+RUN test -s godot/build/web/index.wasm && test -s godot/build/web/index.pck
+ENV PORT=8080 FOG_CLIENT=godot
 EXPOSE 8080
-
-CMD ["python", "server.py"]
+CMD ["python", "web_server.py"]

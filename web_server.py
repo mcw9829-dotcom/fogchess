@@ -1,0 +1,102 @@
+"""Production/development Godot Web host over the existing authoritative API."""
+import os
+from pathlib import Path
+import shutil
+import threading
+from urllib.parse import urlsplit, unquote
+import server
+
+ROOT = Path(__file__).resolve().parent
+WEB_ROOT = ROOT / 'godot' / 'build' / 'web'
+MIME = {'.html': 'text/html; charset=utf-8', '.js': 'application/javascript',
+        '.wasm': 'application/wasm', '.pck': 'application/octet-stream',
+        '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon'}
+
+
+class WebHandler(server.Handler):
+    def _redirect(self, destination):
+        self.send_response(302)
+        self.send_header('Location', destination)
+        self.send_header('Content-Length', '0')
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        self._sent = True
+
+    def _get(self):
+        url = urlsplit(self.path)
+        path = unquote(url.path)
+        godot = os.environ.get('FOG_CLIENT', 'godot') == 'godot'
+        if path == '/healthz':
+            ready = not godot or all((WEB_ROOT / f'index.{ext}').is_file() for ext in ('html', 'js', 'wasm', 'pck'))
+            self._json({'ok': ready, 'client': 'godot' if godot else 'classic'}, 200 if ready else 503)
+            return
+        if path in ('/', '/index.html') and godot:
+            self._redirect('/godot/' + ('?' + url.query if url.query else ''))
+            return
+        if path == '/admin' and godot:
+            self._redirect('/godot/?admin=1')
+            return
+        if path == '/classic':
+            self._file('client.html', MIME['.html'])
+            return
+        if path == '/admin-classic':
+            self._file('admin.html', MIME['.html'])
+            return
+        if path == '/godot':
+            self._redirect('/godot/' + ('?' + url.query if url.query else ''))
+            return
+        if path.startswith('/godot/'):
+            base = WEB_ROOT.resolve()
+            target = (base / (path[len('/godot/'):] or 'index.html')).resolve()
+            if not target.is_relative_to(base) or target.suffix not in MIME or not target.is_file():
+                self._json({'ok': False, 'msg': 'Godot Web file not found. Run prepare_release.py before deployment.'}, 404)
+                return
+            mime = MIME[target.suffix]
+            gzip_ok = False
+            for item in self.headers.get('Accept-Encoding', '').split(','):
+                parts = item.strip().split(';')
+                if parts[0].strip().lower() == 'gzip':
+                    try:
+                        quality = next((float(p.strip()[2:]) for p in parts[1:] if p.strip().startswith('q=')), 1)
+                        gzip_ok = quality > 0
+                    except ValueError:
+                        pass
+            compressed = target.with_name(target.name + '.gz')
+            encoded = gzip_ok and compressed.is_file() and compressed.stat().st_mtime >= target.stat().st_mtime
+            if encoded:
+                target = compressed
+            self.send_response(200)
+            self.send_header('Content-Type', mime)
+            self.send_header('Content-Length', str(target.stat().st_size))
+            self.send_header('Cache-Control', 'no-cache')
+            self.send_header('Vary', 'Accept-Encoding')
+            self.send_header('X-Content-Type-Options', 'nosniff')
+            if encoded:
+                self.send_header('Content-Encoding', 'gzip')
+            self.end_headers()
+            self._sent = True
+            if self.command != 'HEAD':
+                with target.open('rb') as stream:
+                    shutil.copyfileobj(stream, self.wfile, length=64 * 1024)
+            return
+        super()._get()
+
+    def do_HEAD(self):
+        if urlsplit(self.path).path.startswith('/godot/'):
+            self._safe(self._get)
+        else:
+            self.send_response(405)
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+
+
+if __name__ == '__main__':
+    server.accounts.init_db()
+    server.LAN_URL = f'http://127.0.0.1:{server.PORT}'
+    httpd = server.ThreadingServer((os.environ.get('FOG_HOST', '0.0.0.0'), server.PORT), WebHandler)
+    threading.Thread(target=server.sweeper, daemon=True).start()
+    print(f'Fog Chess: Godot Web + Python API, port {server.PORT}', flush=True)
+    try:
+        httpd.serve_forever()
+    finally:
+        httpd.server_close()

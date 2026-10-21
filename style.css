@@ -810,3 +810,54 @@ body { display: flex; flex-wrap: nowrap; gap: 0; padding: 0; align-items: stretc
 .intro-foot { margin: 12px 0 0; }
 .intro-foot b { color: var(--text); }
 @media (max-width: 540px){ .intro-title { font-size: 17px; } .intro-subbox { min-height: 62px; } }   /* 좁은 화면: 자막 3줄 자리(길이 달라도 안 흔들리게) */
+
+/* 직접 배우기: 대국과 같은 기물, 행동마다 한 가지 설명 */
+.home-promise { font-size:16px; color:var(--text); line-height:1.5; }
+.learn-entry { min-height:88px; border:1px solid var(--accent) !important; }
+.learn-entry .mt { flex:1; }
+.home-learning-note { margin:0 0 14px; font-size:12px; line-height:1.6; color:var(--text-dim); }
+.learn-modal { color:var(--text); background:var(--panel); border:1px solid var(--border-2); border-radius:20px; width:min(960px, calc(100vw - 24px)); max-height:calc(100dvh - 24px); padding:0; box-shadow:0 28px 100px #0008; }
+.learn-modal::backdrop { background:rgba(8,12,16,.82); }
+.learn-modal [hidden] { display:none !important; }
+.learn-header { padding:16px 24px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--border); font-size:12px; letter-spacing:1px; color:var(--accent); }
+.learn-header button { margin:0; }
+.learn-layout { display:grid; grid-template-columns:1.15fr 1fr; gap:32px; padding:28px; }
+.learn-map-meta { display:flex; justify-content:space-between; margin-bottom:14px; font-size:12px; color:var(--text-dim); }
+.learn-board { display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); overflow:hidden; border:3px solid var(--border-2); border-radius:8px; }
+.learn-board .learn-cell { border:0; border-radius:0; padding:0; margin:0; aspect-ratio:1; width:100%; min-width:0; position:relative; display:grid; place-items:center; box-shadow:none; }
+.learn-cell.light { background:var(--light); }
+.learn-cell.dark { background:var(--dark); }
+.learn-cell.fog { background:#27333d; border:1px solid #ffffff05; }
+.learn-cell img { width:86%; height:86%; pointer-events:none; }
+.learn-cell.piece-hint { box-shadow:inset 0 0 0 3px #dcae60; }
+.learn-cell.chosen { background:var(--sel); box-shadow:inset 0 0 0 3px #98611c; }
+.learn-cell.move-target::after { content:''; width:28%; height:28%; border-radius:50%; background:rgba(var(--sig-move),.9); outline:2px solid #fff; }
+.learn-cell.scan-target { box-shadow:inset 0 0 0 3px rgba(var(--sig-scan),1); }
+.learn-cell.scan-target::after { content:'⌖'; font-size:25px; color:#e1cffc; position:absolute; }
+.learn-cell.king-target { box-shadow:inset 0 0 0 3px rgba(var(--sig-impact),1); }
+.learn-modal button:focus-visible { outline:3px solid var(--accent); outline-offset:2px; z-index:1; }
+.learn-map-foot { font-size:11px; line-height:1.6; color:var(--text-dim); margin:12px 0 0; }
+.learn-panel { display:flex; flex-direction:column; align-items:stretch; }
+.learn-progress { padding:0; margin:0 0 30px; list-style:none; display:flex; gap:8px; }
+.learn-progress li { flex:1; padding:9px 2px; text-align:center; border-bottom:2px solid var(--border-2); font-size:12px; color:var(--text-dim); }
+.learn-progress .current,.learn-progress .done { border-color:var(--accent); color:var(--accent); }
+.learn-eyebrow { font-size:11px; color:var(--accent); margin:0 0 12px; }
+.learn-panel h2 { font-size:26px; line-height:1.35; margin:0 0 14px; letter-spacing:-.8px; }
+#learnInstruction { font-size:16px; line-height:1.65; margin:0; }
+.learn-feedback { min-height:76px; margin:18px 0; padding:12px; border-left:2px solid var(--accent); background:var(--panel-2); font-size:13px; line-height:1.7; }
+.learn-feedback:empty::before { content:'금색 테두리의 내 기물을 눌러 시작하세요.'; color:var(--text-dim); }
+.learn-action { width:100%; padding:14px; margin:0; background:var(--accent); color:#21190f; border:0; border-radius:9px; font-weight:700; font-size:15px; }
+.learn-action:disabled { opacity:.45; cursor:default; }
+.learn-reason { font-size:12px; color:var(--text-dim); line-height:1.7; }
+.learn-footer { margin-top:auto; padding-top:20px; display:flex; align-items:center; gap:10px; }
+.learn-footer button { font-size:12px; white-space:nowrap; }
+.learn-footer span { font-size:10px; color:var(--text-dim); }
+#learnHome { width:100%; margin-top:10px; }
+@media(max-width:680px) {
+  .learn-layout { grid-template-columns:1fr; gap:20px; padding:18px; }
+  .learn-header { padding:10px 18px; }
+  .learn-map { max-width:390px; width:100%; margin:auto; }
+  .learn-progress { margin-bottom:16px; }
+  .learn-panel h2 { font-size:23px; }
+  .learn-feedback { min-height:48px; margin:12px 0; }
+}

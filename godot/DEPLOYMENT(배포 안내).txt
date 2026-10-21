@@ -1,0 +1,83 @@
+Fog Chess — Godot 게임 + Python 서버
+2026-10-16
+
+한 게임 소스, 두 실행 환경
+-------------------------
+Godot 소스: godot/ (개발용/운영용 복제본을 따로 만들지 않음)
+개발: start-dev.ps1 → dev_server.py, localhost:7556, .dev-data/fogchess-dev.db
+배포: Godot Web export + web_server.py, Fly PORT=8080, /data/fogchess.db
+규칙·봇·계정·매칭·레이팅은 기존 Python 모듈을 공통 사용.
+회원/전적을 Godot으로 복사하거나 DB를 새로 만들 필요가 없음.
+
+주소
+----
+/                  Godot 게임으로 이동
+/godot/            같은 출처의 Python API에 연결하는 Godot Web
+/#ROOM             기존 초대 링크도 /godot/#ROOM으로 유지되어 참가 창을 엶
+/admin             Godot 관리자 로그인으로 이동
+게임 설정 → 관리자  네이티브/웹 공통 관리자 창
+/classic           기존 HTML 게임을 확인하는 예비 경로
+/admin-classic     기존 관리자 화면을 확인하는 예비 경로
+/healthz           웹 빌드 필수 파일 존재 확인 (누락 시 503)
+
+관리자
+------
+기존 FOG_ADMIN_KEY 환경변수를 그대로 사용. 키가 없으면 항상 인증 거부.
+회원/레이팅/전적 수/가입일/복구 코드 보유 여부 조회.
+피드백 300개: 미처리/처리됨 필터, 새로고침, 처리/되돌리기, 삭제 확인.
+키는 요청의 X-Admin-Key 헤더로만 전송하고 Godot 설정·URL·배포 파일에 저장하지 않음.
+창 닫기/로그아웃 시 메모리 데이터 제거. 인증 실패/잠금은 기존 서버 정책 적용.
+운영 비밀번호나 회원 데이터를 테스트에 사용하지 않음.
+
+로컬 준비/검증
+--------------
+개발 작업트리 루트에서:
+  python -m pytest -q test_fogchess.py
+  python test_web_host.py
+  python run_godot_smoke.py --capture
+  python prepare_release.py
+다른 설치 위치는 --godot <Godot 실행 파일> 옵션 또는 GODOT_EXE 환경변수 사용.
+prepare_release.py는 내보내기, 필수 파일 검증, gzip, SHA-256 목록 생성만 수행.
+산출물: godot/build/web/, godot/build/release-manifest.json (Git 제외).
+Web export는 단일 스레드 Compatibility 방식이며 .wasm MIME은 application/wasm.
+큰 파일은 64 KiB씩 전송하여 256 MB 서버에서 파일 전체를 메모리에 올리지 않음.
+gzip/q=0, HEAD, 경로 이탈 차단, API/관리자 인증을 테스트함.
+
+운영 전환 준비
+--------------
+Dockerfile은 필요한 서버 파일과 내보낸 Web 파일만 명시적으로 복사.
+로컬 DB/환경변수 파일/개발 데이터/소스 에디터 캐시는 컨테이너에 넣지 않음.
+fly.toml의 기존 앱 fogchess, nrt 리전, fogchess_data 볼륨 및 /data 경로 유지.
+FOG_CLIENT=godot으로 기본 게임을 전환하고 /healthz 검사 추가.
+.github/workflows/fly-deploy.yml은 Godot 4.7.2 에디터/템플릿 설치 → 임포트 →
+호스트/실제 엔진 테스트 → Web 내보내기 → 기존 Fly 배포 순으로 변경.
+공식 4.7.2 Linux 에디터/템플릿 다운로드 URL의 응답을 확인했음.
+
+이 작업에서는 git push, fly deploy, 운영 DB 접근을 하지 않았음.
+기존 main/master push 시 자동 배포가 실행되는 설정은 그대로이므로
+배포 시점에만 검토한 변경을 main/master에 반영해야 함.
+수동 배포는 위 준비/검증 뒤 flyctl deploy --remote-only로 수행 가능.
+운영 DB는 기존 볼륨을 그대로 쓰며, 새 UI에서 계정에 다시 로그인할 수 있음.
+대국 중인 방은 현재 Python 프로세스 메모리에 있으므로 서버 재시작 시 유지되지 않음.
+따라서 실제 전환은 진행 중인 대국이 없는 시점에 수행.
+
+되돌리기
+--------
+같은 이미지에서 FOG_CLIENT=classic으로 전환하면 루트 게임과 /admin을 기존 웹으로 제공.
+예비 경로 /classic, /admin-classic도 계속 사용 가능. 계정 DB 형식은 변경하지 않음.
+
+검증 결과
+---------
+Godot 클라이언트 112개 (실제 화면 캡처와 headless 각각 통과), 기존 규칙 88개,
+운영 HTTP 핸들러 7개 테스트 통과. Web 내보내기 및 로컬 브라우저 진입 확인.
+
+검증 한계
+---------
+로컬에서 실제 운영 진입점으로 Web을 제공하고 브라우저에서 검사함.
+Docker/Fly 원격 컨테이너 빌드와 GitHub Actions 실행은 아직 수행하지 않았음.
+실제 휴대폰의 성능·오디오 제약은 데스크톱의 모바일 크기 검사와 별도로 확인 필요.
+
+참고
+----
+https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_web.html
+https://fly.io/docs/app-guides/continuous-deployment-with-github-actions/

@@ -1,0 +1,5 @@
+.godot/
+build/
+
+tests/*.png
+tests/*.png.import
