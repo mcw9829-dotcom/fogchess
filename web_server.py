@@ -1,5 +1,7 @@
 """Production/development Godot Web host over the existing authoritative API."""
 import os
+import hashlib
+from functools import lru_cache
 from pathlib import Path
 import shutil
 import threading
@@ -13,7 +15,26 @@ MIME = {'.html': 'text/html; charset=utf-8', '.js': 'application/javascript',
         '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon'}
 
 
+@lru_cache(maxsize=128)
+def asset_etag(path, modified_ns, changed_ns, size):
+    """Hash each file revision once; unchanged assets keep their ETag across deploys."""
+    with path.open('rb') as stream:
+        return '"' + hashlib.file_digest(stream, 'sha256').hexdigest() + '"'
+
+
 class WebHandler(server.Handler):
+    protocol_version = 'HTTP/1.1'
+
+    def setup(self):
+        super().setup()
+        # Bound idle keep-alive connections on the threaded game server.
+        self.connection.settimeout(30)
+
+    def end_headers(self):
+        if self.close_connection:
+            self.send_header('Connection', 'close')
+        super().end_headers()
+
     def _redirect(self, destination):
         self.send_response(302)
         self.send_header('Location', destination)
@@ -65,17 +86,24 @@ class WebHandler(server.Handler):
             encoded = gzip_ok and compressed.is_file() and compressed.stat().st_mtime >= target.stat().st_mtime
             if encoded:
                 target = compressed
-            self.send_response(200)
+            stat = target.stat()
+            etag = asset_etag(target, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size)
+            # GET/HEAD use weak comparison. Keep gzip and identity representations distinct.
+            candidates = [value.strip().removeprefix('W/') for value in self.headers.get('If-None-Match', '').split(',')]
+            unchanged = etag in candidates or '*' in candidates
+            self.send_response(304 if unchanged else 200)
             self.send_header('Content-Type', mime)
-            self.send_header('Content-Length', str(target.stat().st_size))
+            if not unchanged:
+                self.send_header('Content-Length', str(stat.st_size))
             self.send_header('Cache-Control', 'no-cache')
+            self.send_header('ETag', etag)
             self.send_header('Vary', 'Accept-Encoding')
             self.send_header('X-Content-Type-Options', 'nosniff')
             if encoded:
                 self.send_header('Content-Encoding', 'gzip')
             self.end_headers()
             self._sent = True
-            if self.command != 'HEAD':
+            if not unchanged and self.command != 'HEAD':
                 with target.open('rb') as stream:
                     shutil.copyfileobj(stream, self.wfile, length=64 * 1024)
             return

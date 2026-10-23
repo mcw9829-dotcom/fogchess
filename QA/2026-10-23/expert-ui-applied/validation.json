@@ -1,0 +1,29 @@
+{
+  "checks": {
+    "board-final": 128,
+    "integration-verified": 256,
+    "expert-verified": 58
+  },
+  "total": 442,
+  "protected_files_unchanged": 328,
+  "files": [
+    "HOME_HANDOFF.md",
+    "godot\\main(게임 시작·기능 연결).gd",
+    "godot\\tutorial(튜토리얼 진행).gd",
+    "godot\\features\\game_display(타이머·킬로그·기물·결과).gd",
+    "godot\\features\\game_session(입장·재접속·서버 통신).gd",
+    "godot\\features\\help_screens(기물 설명·튜토리얼·인트로).gd",
+    "godot\\features\\match_ui(대국 HUD·행동 안내·기보).gd",
+    "godot\\features\\piece_input(기물 선택·이동·공격·능력).gd",
+    "godot\\features\\settings(설정·테마·소리).gd",
+    "godot\\features\\ui_components(공통 버튼·입력·팝업).gd",
+    "godot\\features\\ui_shell(화면 구성·배치·전환).gd",
+    "godot\\tests\\board_focus.gd",
+    "godot\\tests\\remaining.gd",
+    "godot/features/game_ux(학습·기록·접근성).gd",
+    "godot/tests/expert_ui.gd",
+    "tests/run_expert_ui_smoke.py"
+  ],
+  "backup": "C:\\Users\\Chan woo moon\\OneDrive\\바탕 화면\\Fogchess\\backups\\2026-10-23\\before-expert-ui",
+  "deployment": "local Godot source only"
+}

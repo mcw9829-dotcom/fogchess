@@ -223,6 +223,7 @@ func show_frame() -> void:
 	if vision!="all":
 		var perspective: Dictionary = frame.perspectives[vision]
 		for key in ["grid","scanTiles","exposed","yourColor"]: board_view[key] = perspective.get(key)
+		board_view["reloading"] = perspective.get("reloading",[])
 	app.board.fog_alpha.clear()
 	app.board.set_view(board_view,app.spectating.flipped)
 	_transport_layout()

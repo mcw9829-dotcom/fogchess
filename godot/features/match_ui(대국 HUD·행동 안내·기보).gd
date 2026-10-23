@@ -9,11 +9,19 @@ var top_sound: Button
 var opponent_icon: TextureRect
 var self_icon: TextureRect
 var selection_position: Label
-var selection_reopen: Button
+var hourglass: Control
 var history_expanded := false
 var history_room := ""
 var history_toggle: Button
 var history_summary: Label
+var mobile_actions: PanelContainer
+var mobile_title: Label
+var mobile_instruction: Label
+var mobile_status: Label
+var mobile_help: Button
+var mobile_cancel: Button
+var exposure_summary: Label
+var footer_meta: HBoxContainer
 
 func _init(context: Control) -> void:
 	app = context
@@ -36,7 +44,7 @@ func _tool(parent: Node, icon_name: String, caption: String, callback: Callable)
 	button.icon = load("res://ui/icons/match-"+icon_name+".svg")
 	button.expand_icon = true
 	button.add_theme_constant_override("icon_max_width",18)
-	button.custom_minimum_size = Vector2(42,42)
+	button.custom_minimum_size = Vector2(44,44)
 	button.tooltip_text = caption
 	button.accessibility_name = caption
 	button.set_meta("match_tool",true)
@@ -65,13 +73,14 @@ func build_header() -> void:
 	chrome.add_child(brand)
 	app._label(brand,"안개전장",18).autowrap_mode = TextServer.AUTOWRAP_OFF
 	var subtitle: Label = app._label(brand,"F O G  C H E S S",10)
+	subtitle.autowrap_mode = TextServer.AUTOWRAP_OFF
 	subtitle.set_meta("match_muted",true)
 	mode_label = app._label(chrome,"",12)
 	mode_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	mode_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	mode_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	mode_label.set_meta("match_muted",true)
-	_tool(chrome,"help","보드 표시 도움말",app._board_help)
+	_tool(chrome,"help","보드 표시의 뜻을 확인합니다.",app._board_help)
 	top_sound = _tool(chrome,"volume","효과음 켜기 / 끄기",app._toggle_sound)
 	_tool(chrome,"menu","대국 메뉴",app._game_menu)
 	turn_panel = PanelContainer.new()
@@ -94,15 +103,31 @@ func build_header() -> void:
 	app.ui_shell.state_group.add_theme_constant_override("separation",3)
 	hud.add_child(app.ui_shell.state_group)
 	app.state_label = app._label(app.ui_shell.state_group,"",16)
-	app.turn_meta = app._label(app.ui_shell.state_group,"",11)
+	app.state_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	app.state_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	# Warning and move count share one reserved subtitle row.
+	var subtitle_slot := Control.new()
+	subtitle_slot.custom_minimum_size.y = 17
+	app.ui_shell.state_group.add_child(subtitle_slot)
+	app.turn_meta = app._label(subtitle_slot,"",11)
+	app.turn_meta.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	app.turn_meta.autowrap_mode = TextServer.AUTOWRAP_OFF
 	app.turn_meta.set_meta("match_muted",true)
-	app.warning_label = app._label(app.ui_shell.state_group,"",12)
+	app.warning_label = app._label(subtitle_slot,"",12)
+	app.warning_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	app.warning_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	app.warning_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	app.warning_label.hide()
 	app.ui_shell.clock_cell = MarginContainer.new()
 	app.ui_shell.clock_cell.custom_minimum_size.x = 76
 	hud.add_child(app.ui_shell.clock_cell)
-	app.clock_label = app._label(app.ui_shell.clock_cell,"",30)
+	var clock_row := HBoxContainer.new()
+	clock_row.add_theme_constant_override("separation",6)
+	app.ui_shell.clock_cell.add_child(clock_row)
+	hourglass = preload("res://hourglass(턴 타이머 모래시계).gd").new()
+	hourglass.name = "TurnHourglass"
+	clock_row.add_child(hourglass)
+	app.clock_label = app._label(clock_row,"",30)
 	app.clock_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	app.clock_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	app.clock_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -140,10 +165,24 @@ func build_footer() -> void:
 	app.ui_shell.self_row = HBoxContainer.new()
 	app.ui_shell.self_row.add_theme_constant_override("separation",8)
 	app.ui_shell.self_row.custom_minimum_size.y = 30
-	app.ui_shell.self_panel.add_child(app.ui_shell.self_row)
+	var footer_stack := VBoxContainer.new()
+	footer_stack.add_theme_constant_override("separation",0)
+	app.ui_shell.self_panel.add_child(footer_stack)
+	footer_stack.add_child(app.ui_shell.self_row)
+	footer_meta = HBoxContainer.new()
+	footer_meta.custom_minimum_size.y = 30
+	footer_stack.add_child(footer_meta)
+	footer_meta.hide()
 	self_icon = _portrait(app.ui_shell.self_row)
 	app.self_line = app._label(app.ui_shell.self_row,"",13)
+	app.self_line.autowrap_mode = TextServer.AUTOWRAP_OFF
+	app.self_line.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	app.self_line.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	exposure_summary = app._label(app.ui_shell.self_row,"",13)
+	exposure_summary.autowrap_mode = TextServer.AUTOWRAP_OFF
+	exposure_summary.size_flags_horizontal = Control.SIZE_SHRINK_END
+	exposure_summary.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	exposure_summary.hide()
 	app.ui_shell.presence_cell = MarginContainer.new()
 	app.ui_shell.self_row.add_child(app.ui_shell.presence_cell)
 	app.ui_shell.presence_slot = HBoxContainer.new()
@@ -151,15 +190,8 @@ func build_footer() -> void:
 
 func build_selection(parent: Node) -> void:
 	var header := HBoxContainer.new()
-	header.add_theme_constant_override("separation",10)
+	header.add_theme_constant_override("separation",8)
 	parent.add_child(header)
-	selection_reopen = app._button(header,"",func():
-		if not app.selection.is_empty() and app.view.get("phase")=="play":
-			app._show_actions()
-			app._update_selection_ui(),"tertiary")
-	selection_reopen.custom_minimum_size = Vector2(42,44)
-	selection_reopen.tooltip_text = "선택한 기물의 행동 아이콘 다시 열기"
-	selection_reopen.accessibility_name = "기물 행동 아이콘 다시 열기"
 	app.selection_icon = TextureRect.new()
 	app.selection_icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	app.selection_icon.offset_left = 5
@@ -169,7 +201,9 @@ func build_selection(parent: Node) -> void:
 	app.selection_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	app.selection_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	app.selection_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	selection_reopen.add_child(app.selection_icon)
+	header.add_child(app.selection_icon)
+	app.selection_icon.custom_minimum_size = Vector2(28,32)
+	app.selection_icon.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	var names := VBoxContainer.new()
 	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	names.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -177,23 +211,132 @@ func build_selection(parent: Node) -> void:
 	header.add_child(names)
 	app.selection_label = app._label(names,"",14)
 	app.selection_label.add_theme_font_override("font",app._original_font(700))
-	selection_position = app._label(names,"",11)
+	selection_position = app._label(names,"",13)
 	selection_position.set_meta("match_muted",true)
-	app.action_details_button = _tool(header,"help","기물 능력과 주의사항 펼치기",func(): app.action_details.visible = not app.action_details.visible)
-	app.action_details_button.custom_minimum_size = Vector2(30,32)
+	app.action_details_button = _tool(header,"help","기물 능력과 주의사항을 확인합니다.",_mobile_details)
+	app.action_details_button.custom_minimum_size = Vector2(44,44)
 	app.action_details_button.add_theme_constant_override("icon_max_width",15)
 	app.cancel_selection_button = _tool(header,"close","선택 취소 · Esc / 우클릭",app._clear_selection)
-	app.cancel_selection_button.custom_minimum_size = Vector2(30,32)
+	app.cancel_selection_button.custom_minimum_size = Vector2(44,44)
 	app.cancel_selection_button.hide()
+	selection_position.autowrap_mode = TextServer.AUTOWRAP_OFF
+	selection_position.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	app.selection_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 
 func render_selection() -> void:
 	var selected: bool = not app.selection.is_empty()
-	selection_reopen.get_parent().visible = selected
-	selection_reopen.disabled = app.view.get("phase")!="play" or app.view.get("turn")!=app.view.get("yourColor") or app.busy
+	app.selection_icon.get_parent().visible = selected
+	render_mobile_actions()
 	if selected:
 		var cell: Vector2i = app.selection.cell
 		app.selection_label.text = app.NAMES.get(app.selection.t,"기물")
-		selection_position.text = "%s%d · 선택됨" % [String.chr(97+cell.y),cell.x+1]
+		selection_position.text = "%s%d · %s" % [String.chr(97+cell.y),cell.x+1,app.game_ux.action_name(app.mode)]
+
+func build_mobile_actions() -> void:
+	mobile_actions = PanelContainer.new()
+	mobile_actions.name = "MobileActions"
+	mobile_actions.set_meta("match_card",true)
+	# A reserved footprint keeps the board steady when selection/status changes.
+	mobile_actions.custom_minimum_size.y = 126
+	app.game_left.add_child(mobile_actions)
+	app.game_left.move_child(mobile_actions,app.board.get_index()+1)
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation",3)
+	mobile_actions.add_child(content)
+	var header := HBoxContainer.new()
+	header.custom_minimum_size.y = 44
+	content.add_child(header)
+	mobile_title = app._label(header,"",14)
+	mobile_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	mobile_help = _tool(header,"help","선택 기물의 행동·상태 자세히 보기",_mobile_details)
+	mobile_cancel = _tool(header,"close","기물 선택 취소",app._clear_selection)
+	for button in [mobile_help,mobile_cancel]: button.custom_minimum_size = Vector2(44,44)
+	mobile_instruction = app._label(content,"",13)
+	mobile_status = app._label(content,"",13)
+	for label in [mobile_title,mobile_instruction,mobile_status]:
+		label.autowrap_mode = TextServer.AUTOWRAP_OFF
+		label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		label.custom_minimum_size.x = 1
+	mobile_actions.hide()
+
+func mobile_actions_active() -> bool:
+	return app.split.vertical and app.view.get("phase")=="play" and app.seat!="spectator" and not app.replay.active
+
+func layout_mobile_actions() -> void:
+	if not is_instance_valid(mobile_actions): return
+	mobile_actions.visible = mobile_actions_active()
+	_refresh_footer_summary()
+	app.coach_label.get_parent().get_parent().visible = app.view.get("phase")!="over" and not mobile_actions.visible
+	render_mobile_actions()
+
+func _refresh_footer_summary() -> void:
+	if not is_instance_valid(exposure_summary): return
+	var view: Dictionary = app.view
+	var meta_parent: Node = footer_meta if app.split.vertical else app.ui_shell.self_row
+	if exposure_summary.get_parent()!=meta_parent:
+		exposure_summary.reparent(meta_parent)
+		app.ui_shell.presence_cell.reparent(meta_parent)
+	footer_meta.visible = app.split.vertical
+	exposure_summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL if app.split.vertical else Control.SIZE_SHRINK_END
+	app.ui_shell.presence_cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	app.ui_shell.presence_slot.alignment = BoxContainer.ALIGNMENT_END
+	var exposed: Array = view.get("exposed",[])
+	var active: bool = view.get("phase")=="play" and not exposed.is_empty() and app.seat!="spectator" and not app.replay.active
+	exposure_summary.visible = app.split.vertical and active
+	if app.seat=="spectator" or app.replay.active: return
+	var identity: String = "%s · 나   %s" % [str(view.get("myName","나")),app._rating(view.get("myRating"))]
+	var full_status: String = " · ! 적 시야에 노출 %d개" % exposed.size() if active else ""
+	app.self_line.text = identity + ("" if exposure_summary.visible else full_status)
+	app.self_line.tooltip_text = identity + full_status
+	if exposure_summary.visible:
+		exposure_summary.text = "내 노출 기물 %d" % exposed.size()
+		exposure_summary.tooltip_text = "상대에게 위치가 보이는 내 기물 %d개" % exposed.size()
+		exposure_summary.add_theme_color_override("font_color",Color("#76521e") if app.prefs.get_value("settings","light",false) else Color("#e3bd78"))
+
+func render_mobile_actions() -> void:
+	if not is_instance_valid(mobile_actions): return
+	mobile_actions.visible = mobile_actions_active()
+	var selected: bool = not app.selection.is_empty()
+	var palette: Dictionary = app.ui_components._palette()
+	var status: Array[String] = []
+	mobile_title.text = "기물을 선택하세요"
+	mobile_instruction.text = app.coach_label.text
+	mobile_help.disabled = not selected
+	mobile_cancel.disabled = not selected
+	if selected:
+		var cell: Vector2i = app.selection.cell
+		mobile_title.text = "%s %s%d · %s" % [app.NAMES.get(app.selection.t,"기물"),String.chr(97+cell.y),cell.x+1,app.game_ux.action_name(app.mode)]
+		if app.mode=="choose" and app.piece_input.preview_mode.is_empty(): mobile_instruction.text = ""
+		if app.moves.get("reloading",false): status.append("재장전 중")
+		for exposure in app.view.get("exposed",[]):
+			if exposure.get("pid")==app.selection.get("id"):
+				status.append("이 기물 위치 노출")
+				break
+		if status.is_empty() and int(app.board.tile(cell).get("t",0))==3: status.append("부쉬 안 · 연결 시야 공유")
+		if status.is_empty(): status.append(app.action_hint.text.split("\n")[0])
+	else:
+		status.append("선택한 기물의 행동과 상태가 여기에 표시됩니다")
+	if not app.game_session.request_status.is_empty(): mobile_instruction.text = app.game_session.request_status
+	mobile_status.text = " · ".join(status)
+	mobile_status.add_theme_color_override("font_color",palette.text if selected else palette.muted)
+	for label in [mobile_title,mobile_instruction,mobile_status]:
+		label.tooltip_text = label.text
+		label.visible = not label.text.is_empty()
+
+func _mobile_details() -> void:
+	if app.selection.is_empty(): return
+	var pair: Array = app._small_window(app.selection_label.text+" · 행동과 규칙",440,560)
+	app._label(pair[1],app.coach_label.text,16)
+	app._label(pair[1],app.action_hint.text,14)
+	app._label(pair[1],app.action_details.text,14)
+	app._label(pair[1],"행동 선택 → 대상 선택\n공격은 적 기물을 잡는 포획입니다.\n터치: 행동을 누른 뒤 대상 선택 · ×로 취소\n키보드: Tab으로 버튼 이동 · Enter로 선택 · Esc로 취소",14)
+	var choices := HFlowContainer.new()
+	pair[1].add_child(choices)
+	for action in ["attack",app.game_ux.ability_mode(),"move"]:
+		if action=="none": continue
+		var choice: Button = app._button(choices,app.game_ux.action_name(action),func(): pair[0].queue_free(); app._choose_action(action))
+		choice.disabled = app.busy or app.game_session.awaiting_state or app.view.get("turn")!=app.view.get("yourColor") or not app.game_ux.action_available(action)
+	app._button(pair[1],"선택 취소",func(): pair[0].queue_free(); app._clear_selection())
 
 func build_history(parent: Node) -> void:
 	var content := card(parent)
@@ -254,7 +397,11 @@ func render() -> void:
 	var fill: Color = (Color("#f4e5c9") if light else Color("#383329")) if mine and phase=="play" else palette.surface
 	if low: fill = Color("#fbe5dc") if light else Color("#412d26")
 	turn_panel.add_theme_stylebox_override("panel",_surface(fill,0,10))
-	turn_strip.visible = seconds!=null and phase!="over" and not app.replay.active
+	turn_strip.modulate.a = 1.0 if seconds!=null and phase!="over" and not app.replay.active else 0.0
+	app.turn_meta.visible = not app.warning_label.visible
+	app.warning_label.tooltip_text = app.warning_label.text
+	app.state_label.tooltip_text = app.state_label.text
+	app.notice.tooltip_text = app.notice.text
 	turn_strip.max_value = maxi(1,int(view.get("setupSeconds",70) if phase=="setup" else view.get("turnSeconds",30)))
 	turn_strip.value = float(seconds) if seconds!=null else 0.0
 	turn_strip.add_theme_stylebox_override("background",StyleBoxEmpty.new())
@@ -271,9 +418,13 @@ func render() -> void:
 	self_icon.visible = opponent_icon.visible
 	top_sound.icon = load("res://ui/icons/match-%s.svg" % ("volume" if app.audio.enabled else "muted"))
 	top_sound.tooltip_text = "효과음 끄기" if app.audio.enabled else "효과음 켜기"
+	top_sound.accessibility_name = top_sound.tooltip_text
 	app.coach_label.add_theme_color_override("font_color",palette.text)
+	layout_mobile_actions()
 	render_selection()
 	render_history()
+	app.game_ux.render()
+	if app.ui_shell.setup_ui!=null: app.ui_shell.setup_ui.render()
 
 func apply_theme() -> void:
 	var palette: Dictionary = app.ui_components._palette()

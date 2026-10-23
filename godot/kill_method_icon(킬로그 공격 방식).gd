@@ -1,12 +1,12 @@
 extends Control
 var method := "melee"
+var ink := Color("#eee2cc")
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(26,22)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 func _draw() -> void:
-	var ink := Color("#eee2cc")
 	var at := size/2
 	if method=="melee":
 		for sign_value in [-1,1]:

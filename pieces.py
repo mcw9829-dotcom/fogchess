@@ -283,11 +283,22 @@ def move_candidates(st, pid):
     return legal_moves(st if st.get('_prediction') else observed_state(st, p['o']), pid)
 
 
+def is_reloading(st, pid):
+    """A shot blocks the next own turn; movement or timeout advances reload.
+
+    Shot at ply n -> opponent n+1 -> own n+2 (blocked) -> opponent n+3 (ready).
+    The piece carries this state through bot copies and replay snapshots.
+    """
+    p = st['pieces'].get(pid)
+    return bool(p and p['alive'] and p['t'] in ('B', 'R')
+                and st['turnCount'] < p.get('reload_until', 0))
+
+
 def fire_cells(st, pid):
     """비숍이 지금 저격할 수 있는 '표적 칸' 목록 — 사거리 BISHOP_RANGE 안 + 시야에 든 적만.
     (원형 전 범위가 아니라, 실제로 명중 가능한 적 위치만 하이라이트)."""
     p = st['pieces'].get(pid)
-    if not p or p['t'] != 'B' or not p['alive']:
+    if not p or p['t'] != 'B' or not p['alive'] or is_reloading(st, pid):
         return []
     color = p['o']
     R2 = BISHOP_RANGE ** 2
@@ -329,7 +340,7 @@ def _orth(dr, dc):
 
 def barrage_reach(st, pid):
     p = st['pieces'].get(pid)
-    if not p or p['t'] != 'R' or not p['alive']:
+    if not p or p['t'] != 'R' or not p['alive'] or is_reloading(st, pid):
         return []
     cells = []
     for dr, dc in DIRS4:                          # 십자 4방향 × ROOK_FIRE칸(숲에 막힘)
@@ -458,6 +469,8 @@ def apply_fire(st, color, pid, tr, tc):
     p = st['pieces'].get(pid)
     if not p or p['o'] != color or not p['alive'] or p['t'] != 'B':
         return False, '저격할 비숍이 아닙니다.'
+    if is_reloading(st, pid):
+        return False, '재장전 중입니다. 이번 내 차례에는 이동하거나 다른 기물을 사용하세요.'
     if not in_board(tr, tc):
         return False, '보드 밖입니다.'
     if (tr - p['r']) ** 2 + (tc - p['c']) ** 2 > BISHOP_RANGE ** 2:
@@ -465,6 +478,7 @@ def apply_fire(st, color, pid, tr, tc):
     q = enemy_visible_at(st, color, tr, tc)
     if q is None:
         return False, '저격할 적이 보이지 않습니다(숨은 적은 못 맞힘).'
+    p['reload_until'] = st['turnCount'] + 3
     st['log'].append(f"{SIDE_KR[color]} 비숍 저격! → ({tr},{tc})")
     king_hit = q['t'] == 'K'
     kill(st, q, color, 'B', 'artillery')
@@ -482,10 +496,13 @@ def apply_barrage(st, color, pid, tr, tc):
     p = st['pieces'].get(pid)
     if not p or p['o'] != color or not p['alive'] or p['t'] != 'R':
         return False, '돌파 사격할 전차(룩)가 아닙니다.'
+    if is_reloading(st, pid):
+        return False, '재장전 중입니다. 이번 내 차례에는 이동하거나 다른 기물을 사용하세요.'
     d = _orth(tr - p['r'], tc - p['c'])
     if d is None:
         return False, '상하좌우 직선 방향으로만 사격할 수 있습니다.'
     dr, dc = d
+    p['reload_until'] = st['turnCount'] + 3
     st['log'].append(f"{SIDE_KR[color]} 전차 돌파 사격!")
     hit = []
     king_hit = False
@@ -643,6 +660,19 @@ def player_view(st, color, reveal=False):
         seconds = max(0, int(round(st['deadline'] - time.time())))
     opp = 'B' if color == 'W' else 'W'
 
+    # Intentional player feedback: disclose only which OWN pieces can be seen.
+    # Use the opponent's real fog/LOS/bush/scan rules, never the debug reveal flag.
+    exposed = []
+    if not spectator and st['phase'] in ('play', 'over'):
+        opponent_vis = visible_cells(st, opp)
+        for p in st['pieces'].values():
+            if p['alive'] and p['o'] == color and enemy_visible_at(st, opp, p['r'], p['c'], opponent_vis):
+                exposed.append({'pid': p['id'], 'type': p['t'],
+                                # Retain the old field for saved clients/records. Zero means
+                                # ordinary sight, not a countdown until concealment.
+                                'remaining': max(0, max((rv['until'] - st['turnCount'] for rv in st['reveals']
+                                                       if rv['pid'] == p['id'] and rv['viewer'] == opp), default=0))})
+
     fx = None
     if st['fx'] and not spectator:
         cells = st['fx']['cells']
@@ -674,12 +704,10 @@ def player_view(st, color, reveal=False):
         'log': st['log'][-9:],
         'moveHistory': [] if spectator else st.get('move_history', {}).get(color, [])[-24:],
         'captured': [] if spectator else list(st.get('captured', {}).get(color, [])),
-        'exposed': [] if spectator else [
-            {'pid': p['id'], 'type': p['t'],
-             'remaining': max(rv['until'] - st['turnCount'] for rv in st['reveals']
-                              if rv['pid'] == p['id'] and rv['viewer'] == opp)}
-            for p in st['pieces'].values() if p['alive'] and p['o'] == color
-            and revealed(st, opp, p['id'])],
+        'reloading': [] if spectator else [
+            {'pid': p['id'], 'type': p['t'], 'remaining': 1}
+            for p in st['pieces'].values() if p['o'] == color and is_reloading(st, p['id'])],
+        'exposed': exposed,
         'feed': [] if spectator else [e for e in st['feed'] if color in (e['actor'], e['victim'])][-8:],
         'grid': grid,
         'fx': fx,

@@ -2,6 +2,12 @@ extends RefCounted
 ## Feature implementation. Shared scene state and cross-feature entry points live on app.
 var app
 
+class DismissibleWindow extends Window:
+	func _unhandled_key_input(event: InputEvent) -> void:
+		if event.is_action_pressed("ui_cancel"):
+			set_input_as_handled()
+			close_requested.emit()
+
 func _init(context: Control) -> void:
 	app = context
 
@@ -18,7 +24,8 @@ func _label(parent: Node,text: String,font_size: int=14) -> Label:
 func _button(parent: Node,text: String,callback: Callable,role: String="secondary") -> Button:
 	var button = Button.new()
 	button.text = text
-	button.custom_minimum_size.y = 42
+	button.accessibility_name = text
+	button.custom_minimum_size.y = 44
 	button.add_theme_font_size_override("font_size",14)
 	button.pressed.connect(callback)
 	if text.begins_with("← 뒤로"):
@@ -26,13 +33,7 @@ func _button(parent: Node,text: String,callback: Callable,role: String="secondar
 		role = "tertiary"
 	_style_button(button,role)
 	parent.add_child(button)
-	button.gui_input.connect(func(event):
-		if event is InputEventMouseButton and event.pressed and event.button_index==MOUSE_BUTTON_LEFT and not button.disabled:
-			if OS.has_feature("web") and JavaScriptBridge.eval("window.matchMedia('(prefers-reduced-motion: reduce)').matches"): return
-			var ripple = preload("res://button_ripple(버튼 물결 효과).gd").new()
-			ripple.origin = event.position
-			ripple.radius = maxf(button.size.x,button.size.y)*1.3
-			button.add_child(ripple))
+	app.ui_motion.attach(button)
 	return button
 
 func _field(parent: Node,placeholder: String,text: String="",secret: bool=false) -> LineEdit:
@@ -50,7 +51,8 @@ func _window(title: String) -> Array:
 	# queue_free() alone runs at frame end and otherwise leaves two active modals.
 	for child in app.get_children():
 		if child is Window and child.visible: child.hide()
-	var window = Window.new()
+	var return_focus: Control = app.get_viewport().gui_get_focus_owner()
+	var window = DismissibleWindow.new()
 	window.title = title
 	window.borderless = true
 	window.transparent = true
@@ -59,17 +61,19 @@ func _window(title: String) -> Array:
 	window.exclusive = true
 	window.wrap_controls = false
 	window.min_size = Vector2i(320,280)
-	window.close_requested.connect(window.queue_free)
 	var shade = ColorRect.new()
 	shade.color = Color(0,0,0,.65)
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	app.add_child(shade)
 	window.visibility_changed.connect(func(): if is_instance_valid(shade): shade.visible = window.visible)
-	window.tree_exiting.connect(func(): if is_instance_valid(shade): shade.queue_free())
+	window.tree_exiting.connect(func():
+		if is_instance_valid(shade): shade.queue_free()
+		_restore_focus.call_deferred(return_focus))
 	app.add_child(window)
 	var panel = PanelContainer.new()
 	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	window.add_child(panel)
+	window.close_requested.connect(func(): app.ui_motion.close_window(window,panel,shade))
 	var scroll = ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	panel.add_child(scroll)
@@ -80,20 +84,48 @@ func _window(title: String) -> Array:
 	var head = HBoxContainer.new()
 	box.add_child(head)
 	app._label(head,title,20)
-	_button(head,"×",window.queue_free,"tertiary")
+	var close := _button(head,"×",window.close_requested.emit,"tertiary")
+	close.custom_minimum_size = Vector2(44,44)
+	close.accessibility_name = title+" 닫기"
+	close.tooltip_text = close.accessibility_name
 	window.popup_centered(Vector2i(mini(int(app.size.x)-24,560),mini(int(app.size.y)-30,600)))
+	close.grab_focus()
+	app.ui_motion.enter_window.call_deferred(panel,shade)
 	return [window,box]
 
+func _restore_focus(control: Control) -> void:
+	if not is_instance_valid(control) or not control.is_visible_in_tree(): return
+	for child in app.get_children():
+		if child is Window and child.visible and not child.is_queued_for_deletion() and control.get_window()!=child: return
+	control.grab_focus()
+
 func _confirm(text: String,callback: Callable) -> void:
-	var dialog = ConfirmationDialog.new()
-	dialog.title = "확인"
-	dialog.dialog_text = text
-	dialog.ok_button_text = "확인"
-	dialog.cancel_button_text = "취소"
+	confirm_action("확인",text,"확인",callback)
+
+func confirm_action(title: String,text: String,action: String,callback: Callable) -> void:
+	var return_focus: Control = app.get_viewport().gui_get_focus_owner()
+	var previous_window: Window
+	for child in app.get_children():
+		if child is Window and child.visible and not child.is_queued_for_deletion():
+			previous_window = child
+			return_focus = child.gui_get_focus_owner()
+			child.hide()
+	var dialog = preload("res://confirmation_dialog(게임 확인창).gd").new()
 	app.add_child(dialog)
-	dialog.confirmed.connect(func(): dialog.queue_free(); callback.call())
-	dialog.canceled.connect(dialog.queue_free)
-	dialog.popup_centered()
+	var previous_ref: WeakRef = weakref(previous_window) if is_instance_valid(previous_window) else null
+	var focus_ref: WeakRef = weakref(return_focus) if is_instance_valid(return_focus) else null
+	dialog.confirmed.connect(func():
+		var previous: Window = previous_ref.get_ref() if previous_ref!=null else null
+		if is_instance_valid(previous): previous.queue_free()
+		callback.call())
+	dialog.canceled.connect(func():
+		dialog.queue_free()
+		var previous: Window = previous_ref.get_ref() if previous_ref!=null else null
+		if is_instance_valid(previous) and not previous.is_queued_for_deletion(): previous.show())
+	dialog.tree_exiting.connect(func():
+		var control: Control = focus_ref.get_ref() if focus_ref!=null else null
+		_restore_focus.call_deferred(control))
+	dialog.build(app,title,text,action)
 
 func _form(title: String,definitions: Array,submit: Callable) -> void:
 	var pair = app._window(title)
@@ -108,6 +140,7 @@ func _form(title: String,definitions: Array,submit: Callable) -> void:
 	button.custom_minimum_size.y = 44
 	box.add_child(button)
 	_style_button(button,"primary")
+	app.ui_motion.attach(button)
 	button.pressed.connect(func():
 		button.disabled = true
 		var values: Dictionary = {}
@@ -216,13 +249,14 @@ func _mode_card(parent: Node,title: String,description: String,icon: String,call
 	app.mode_cards.append(button)
 	button.tooltip_text = description
 	var margin = MarginContainer.new()
+	margin.name = "ModeCardContent"
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for edge in ["left","right","top","bottom"]: margin.add_theme_constant_override("margin_"+edge,14)
 	button.add_child(margin)
 	var row = HBoxContainer.new()
 	row.add_theme_constant_override("separation",12)
 	margin.add_child(row)
-	app._icon(row,icon,28)
+	app._icon(row,icon,40)
 	var box = VBoxContainer.new()
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -232,6 +266,7 @@ func _mode_card(parent: Node,title: String,description: String,icon: String,call
 		var sub = app._label(box,description,12)
 		sub.set_meta("ui_muted",true)
 		sub.add_theme_color_override("font_color",_palette().muted)
+	margin.minimum_size_changed.connect(func(): button.custom_minimum_size.y = maxf(76,margin.get_combined_minimum_size().y))
 	app._ignore_mouse(margin)
 	app._style_mode_card(button)
 

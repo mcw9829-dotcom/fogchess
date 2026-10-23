@@ -18,7 +18,13 @@ var chat = preload("res://features/chat(대전 채팅).gd").new(self)
 
 var replay = preload("res://features/replay(기보 저장·수순 재생).gd").new(self)
 
+var game_ux = preload("res://features/game_ux(학습·기록·접근성).gd").new(self)
+
+var ui_motion = preload("res://features/ui_motion(정돈된 Material 모션).gd").new(self)
+
 func _ready() -> void:
+	add_child(ui_motion)
+	add_child(preload("res://features/tooltip_service(전체 설명 카드 배치).gd").new(self))
 	prefs.load("user://client.cfg")
 	if testing: prefs = ConfigFile.new()
 	api = Net.new()
@@ -53,14 +59,15 @@ func _ready() -> void:
 	var invitation := ""
 	if OS.has_feature("web"):
 		if bool(JavaScriptBridge.eval("new URLSearchParams(window.location.search).get('admin') === '1'")):
-			_admin(); return
+			_admin(); community.check_updates(); return
 		invitation = str(JavaScriptBridge.eval("window.location.hash.slice(1)"))
 	if not invitation.is_empty() and (invitation.to_upper()!=saved_room.to_upper() or saved_token.is_empty()):
-		_open_invitation(invitation); return
+		_open_invitation(invitation); community.check_updates(); return
 	if not saved_room.is_empty() and not saved_token.is_empty():
 		await _join({"room":saved_room,"token":saved_token})
 	else: _message("")
 	if room.is_empty() and not prefs.get_value("settings","intro_seen",false): _intro()
+	community.check_updates()
 
 func _message(text: String) -> void:
 	if is_instance_valid(notice):

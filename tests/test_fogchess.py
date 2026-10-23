@@ -171,13 +171,13 @@ def test_forest_blocks_move():
     assert (9, 5) not in set(pieces.legal_moves(st, 'W_P1'))
 
 
-def test_knight_vision_is_3():
+def test_knight_vision_is_2():
     st = bare()
     put(st, 'W_N1', 'W', 'N', 5, 5)
     vis = pieces.visible_cells(st, 'W')
-    assert (5, 8) in vis and (2, 2) in vis and (8, 8) in vis      # 체비셰프 거리 3까지
-    assert (5, 9) not in vis and (1, 5) not in vis                # 4칸은 안 보임
-    assert len(vis) == 7 * 7                                      # 7×7 시야(장애물 없음)
+    assert (5, 7) in vis and (3, 3) in vis and (7, 7) in vis
+    assert (5, 8) not in vis and (2, 5) not in vis
+    assert len(vis) == 5 * 5  # 5×5 시야(장애물 없음)
 
 
 def test_los_blocked_by_forest():
@@ -578,7 +578,7 @@ def test_patchnotes_parse():
     assert ents and ents[0]['version'] == 'v' + APP_VERSION and ents[0]['date'] and ents[0]['title']
     assert all(e['date'] and e['title'] for e in ents) and any(e['version'] is None for e in ents)   # 초기 개발 로그(버전 없음)
     assert all(it['tag'] and it['text'] for e in ents for it in e['items'])
-    assert any(len(it['text']) > 120 for it in ents[0]['items'])                                      # 들여쓴 줄이 이어붙음
+    assert any(len(it['text']) > 120 for entry in ents for it in entry['items'])  # Historical multiline entries survive new short releases.
     assert server.load_patchnotes() is ents                                                          # mtime 캐시
 
 

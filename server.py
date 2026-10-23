@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import uuid
 import hmac
+import hashlib
 import time
 import random
 import threading
@@ -712,6 +713,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def _safe(self, fn):
         """핸들러 예외가 '응답 없이 연결 끊김'으로 새지 않게 — 로그 남기고 JSON 500 응답."""
+        self._sent = False  # A persistent HTTP connection can serve multiple requests.
         try:
             fn()
         except Exception as e:
@@ -760,7 +762,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._json({'version': APP_VERSION})
             return
         if u.path == '/patchnotes':                            # 패치노트(공개) — 사이드바 버전을 누르면 모달로 표시
-            self._json({'version': APP_VERSION, 'entries': load_patchnotes()})
+            entries = load_patchnotes()
+            revision = hashlib.sha256(json.dumps(entries[0], ensure_ascii=False, sort_keys=True).encode()).hexdigest() if entries else ''
+            self._json({'version': APP_VERSION, 'entries': entries, 'revision': revision})
             return
         if u.path == '/leaderboard':                           # 레이팅 순위(공개)
             self._json({'rows': accounts.leaderboard(), 'total': accounts.user_count(),
@@ -809,10 +813,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 self._json({
                     'moves': pieces.move_candidates(st, pid),
-                    'canFire': p['t'] == 'B',
+                    'canFire': p['alive'] and p['t'] == 'B' and not pieces.is_reloading(st, pid),
+                    'reloading': pieces.is_reloading(st, pid),
                     'fireCells': fire_cells(st, pid) if p['t'] == 'B' else [],
                     'fireRange': fire_range(st, pid) if p['t'] == 'B' else [],
-                    'canBarrage': p['t'] == 'R',
+                    'canBarrage': p['alive'] and p['t'] == 'R' and not pieces.is_reloading(st, pid),
                     'barrageCells': barrage_reach(st, pid) if p['t'] == 'R' else [],
                     'canScan': p['t'] == 'Q',
                     'scanCells': scan_cells(st, pid) if p['t'] == 'Q' else [],
@@ -827,6 +832,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except ValueError:
             length = 0
         if length > MAX_BODY:                                   # 본문 상한(메모리 남용 방지)
+            self.close_connection = True  # Do not parse the unread body as another request.
             self._json({'ok': False, 'msg': '요청이 너무 큽니다.'}, 413)
             return
         raw = self.rfile.read(length) if length else b'{}'

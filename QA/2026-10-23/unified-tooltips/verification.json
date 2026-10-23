@@ -1,0 +1,17 @@
+{
+  "tests": {
+    "공통 툴팁": 36,
+    "상태 툴팁": 24,
+    "보드 UI": 128,
+    "기존 UX": 58
+  },
+  "total_passed": 246,
+  "protected_files_unchanged": 327,
+  "board_change": "Badge drawing extracted to a shared renderer; remaining board code equals the pre-change backup.",
+  "font": "Bundled Noto Sans KR; title 18px/700, body 16px/500",
+  "scope": "All native tooltips, including dynamic controls and embedded dialogs; board status cards share surface, typography and badge code.",
+  "limits": [
+    "Native desktop captures and simulated viewport sizes; physical mobile and web builds not tested.",
+    "Existing UX test emits two ObjectDB cleanup warnings at exit."
+  ]
+}

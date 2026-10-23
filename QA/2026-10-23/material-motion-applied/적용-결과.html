@@ -1,0 +1,22 @@
+<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fogchess · 정돈된 Material 적용 결과</title><style>
+body{background:#171d1b;color:#eee9df;font:16px/1.75 system-ui,sans-serif;margin:0}main{max-width:1000px;margin:auto;padding:48px 28px}h1{font-size:36px;line-height:1.3}h2{margin-top:40px;font-size:22px}.eyebrow,a{color:#e3bd78}.lead{color:#bdc4b8;font-size:18px}section{border-top:1px solid #3b453e;margin-top:30px;padding-top:10px}td{padding:8px 32px 8px 0}img{width:100%;border:1px solid #465047;border-radius:14px}figure{margin:24px 0}figcaption{color:#b4bdb5;font-size:14px}code{font-size:13px}.note{padding:16px 20px;background:#252e28;border-radius:12px}li{margin:9px 0}</style>
+<main><div class="eyebrow">FOGCHESS · 2026.10.23 · LOCAL GODOT</div>
+<h1>정돈된 Material, 게임에 적용</h1><p class="lead">작고 빠른 반응과 일관된 움직임으로 조작감을 다듬었습니다. 체스판·기물·지형 디자인과 게임 규칙은 유지했습니다.</p>
+<section><h2>적용한 상호작용</h2><ul>
+<li><b>버튼:</b> 누른 지점에서 퍼지는 물결과 1.5% 표면 압축. 실제 클릭 영역과 글자 배치는 고정됩니다.</li>
+<li><b>메뉴 선택:</b> 금색 선택 표시가 새 메뉴로 부드럽게 이동합니다. 빠르게 다시 선택하면 마지막 목적지를 따라갑니다.</li>
+<li><b>팝업:</b> 96% 크기와 아래쪽 12px에서 자연스럽게 등장하고 배경이 짧게 어두워집니다. 등장 중에도 닫을 수 있습니다.</li>
+<li><b>설정 스위치:</b> 손잡이 이동과 색 전환을 연결했습니다. 설정 값은 즉시 반영됩니다.</li>
+<li><b>상태 변화:</b> 준비 완료, 복사 확인, 매칭 단계와 턴 변화에 짧은 강조를 더했습니다. 결과 패널은 해당 결과에 처음 진입할 때 등장합니다.</li>
+</ul><p>작은 요소는 강성 1400·감쇠비 0.9, 패널은 강성 700·감쇠비 0.9의 스프링을 사용합니다. 물결 확장은 360ms, 해제 페이드는 180ms입니다. 새 모션은 명령 전송을 지연시키지 않습니다.</p></section>
+<section><h2>검증 결과</h2><table><tr><td>Material UI</td><td>32개 통과</td></tr><tr><td>보드 UI</td><td>128개 통과</td></tr><tr><td>게임 통합</td><td>255개 통과</td></tr><tr><td>기존 UX</td><td>58개 통과</td></tr><tr><td><b>합계</b></td><td><b>473개 통과</b></td></tr></table>
+<p>보드·기물·지형·폰트 등 보호 파일 328개의 SHA-256이 변경 전과 일치합니다. 연속 입력, 눌림 취소, 비활성화, 공유 테마 격리, 팝업 조기 닫기와 모바일 폭 전환을 확인했습니다.</p>
+<p class="note">검사는 네이티브 Godot과 크기를 조정한 테스트 창에서 진행했습니다. 실제 모바일 기기와 웹 배포본은 검증하지 않았습니다. 보드·기존 UX 검사 종료 시 ObjectDB 2개 정리 경고가 각각 남았으며, 기능 검사는 통과했고 스크립트 오류는 없습니다. 운영 배포·웹 재빌드·Git 커밋은 수행하지 않았습니다.</p></section>
+<section><h2>실제 실행 화면</h2>
+<figure><img src="screens/home.png" alt="Material 모션 적용 후 홈"><figcaption>홈 · 기존 디자인과 배치를 유지한 상태</figcaption></figure>
+<figure><img src="screens/settings-dark.png" alt="다크 테마 설정 스위치"><figcaption>다크 테마 · 스프링 이동과 체크 표시가 적용된 설정 스위치</figcaption></figure>
+<figure><img src="screens/settings-light.png" alt="밝은 테마 설정 스위치"><figcaption>화이트 테마 · 같은 상호작용과 테마별 대비</figcaption></figure>
+<figure><img src="screens/menu-settled.png" alt="등장 완료된 팝업"><figcaption>팝업 · 등장 후 기존 위치와 크기로 복귀</figcaption></figure>
+<p>위 이미지는 실제 실행 캡처이며 정지 화면입니다. 움직임은 새로 실행한 Godot 게임에서 확인할 수 있습니다.</p></section>
+<section><h2>개발 기록</h2><p><a href="verification.json">검증 기록</a> · <a href="changes.patch">소스 변경 내역</a></p><p>재검사: <code>python tests/run_material_ui_smoke.py --capture</code><br>원본 백업: <code>../backups/2026-10-23/before-material-motion/</code></p></section></main></html>

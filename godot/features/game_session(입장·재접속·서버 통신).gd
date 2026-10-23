@@ -1,6 +1,9 @@
 extends RefCounted
 ## Feature implementation. Shared scene state and cross-feature entry points live on app.
 var app
+var request_status := ""
+var awaiting_state := false
+var request_serial := 0
 
 func _init(context: Control) -> void:
 	app = context
@@ -22,6 +25,8 @@ func _enter(data: Dictionary) -> void:
 	app.room = str(data.room)
 	app.token = str(data.token)
 	app.seat = str(data.color)
+	reset_request()
+	app.game_ux.reset_room()
 	app.chat.reset()
 	app.view = {}
 	app.spectating.last_count = -1
@@ -64,6 +69,7 @@ func _poll() -> void:
 	app._apply_state(response)
 
 func _apply_state(data: Dictionary) -> void:
+	if awaiting_state: reset_request()
 	if app.view.get("turnCount")!=data.get("turnCount") or app.view.get("phase")!=data.get("phase"):
 		app._clear_selection()
 	if int(data.get("turnCount",0)) < app.last_turn: app.last_fx = 0
@@ -87,9 +93,12 @@ func _apply_state(data: Dictionary) -> void:
 
 func _act(body: Dictionary) -> void:
 	if app.replay.active: return
-	if app.busy or app.room.is_empty() or app.seat=="spectator": return
+	if app.busy or awaiting_state or app.room.is_empty() or app.seat=="spectator": return
 	app.busy = true
 	app.generation += 1
+	var stamp: int = app.generation
+	request_serial += 1
+	_delayed_status(request_serial)
 	app._update_selection_ui()
 	body["room"] = app.room
 	body["token"] = app.token
@@ -99,6 +108,13 @@ func _act(body: Dictionary) -> void:
 		origin = [app.selection.cell.x,app.selection.cell.y]
 	var response: Dictionary = await app.api.request("/action",body)
 	app.busy = false
+	if stamp!=app.generation: return
+	request_serial += 1
+	request_status = ""
+	if response.get("network_error",false):
+		awaiting_state = true
+		request_status = "결과 확인 중…"
+		app._update_selection_ui()
 	if response.get("ok"):
 		if body.type=="rematch" and not response.get("pending"): app.last_fx = 0
 		if body.type=="place": app.audio.cue("place")
@@ -112,7 +128,9 @@ func _act(body: Dictionary) -> void:
 					app.pending_fx["to"] = response.fx.cells[0] if not response.fx.cells.is_empty() else [body.r,body.c]
 		app._clear_selection()
 		app._message("상대가 생각 중입니다." if response.get("pending") else "")
-	else: app._report(response)
+	else:
+		app._report(response)
+		app._update_selection_ui()
 	await app._poll()
 
 func _promotion() -> void:
@@ -132,12 +150,20 @@ func _promotion() -> void:
 		button.custom_minimum_size.y = 52
 		if kind=="R": button.grab_focus()
 
+func leave_is_resignation() -> bool:
+	return not app.replay.active and not app.room.is_empty() and not app.view.get("solo",false) and app.view.get("phase")!="over" and app.view.get("bothJoined",false) and (app.view.get("phase")=="play" or app.view.get("match",false)) and app.seat!="spectator"
+
+func leave_label() -> String:
+	if app.replay.active: return "리플레이 닫기"
+	if app.seat=="spectator": return "관전 나가기"
+	return "기권 후 나가기" if leave_is_resignation() else "나가기"
+
 func _leave_prompt() -> void:
 	if app.replay.active: app.replay.close(); return
 	if app.room.is_empty(): app._navigation_home(); return
 	if app.busy: return
-	var committed: bool = not app.view.get("solo",false) and app.view.get("phase")!="over" and app.view.get("bothJoined",false) and (app.view.get("phase")=="play" or app.view.get("match",false)) and app.seat!="spectator"
-	app._confirm("지금 나가면 기권 패배로 처리됩니다." if committed else "대국을 나가 홈으로 돌아갈까요?",func():
+	var committed: bool = leave_is_resignation()
+	app.ui_components.confirm_action("기권 후 나가기" if committed else "나가기","기권 패배로 종료한 뒤 홈으로 돌아갑니다." if committed else "대국을 나가 홈으로 돌아갈까요?","기권 후 홈으로" if committed else "홈으로",func():
 		if committed:
 			await app._act({"type":"resign"})
 			if app.view.get("phase")!="over": app._message("기권 결과를 확인할 수 없어 방에 남아 있습니다."); return
@@ -145,6 +171,7 @@ func _leave_prompt() -> void:
 		app._return_home())
 
 func _return_home() -> void:
+	reset_request()
 	app.spectating.leave()
 	app.board.show()
 	app.board.fx.clear()
@@ -158,6 +185,7 @@ func _return_home() -> void:
 	app.game.hide()
 	app.subpage.hide()
 	app.home.show()
+	app.game_ux.refresh_learning()
 	app._layout()
 	app._message("")
 	app.page_scroll.scroll_vertical = 0
@@ -170,3 +198,17 @@ func _open_invitation(code: String) -> void:
 	app.code_field.text = code.strip_edges().to_upper().left(8)
 	app._friend_menu()
 	app._message("초대받은 방이에요. 닉네임을 확인하고 참가하세요.")
+
+func resign_prompt() -> void:
+	app.ui_components.confirm_action("기권","기권하면 패배로 종료되며 결과 화면에 남습니다.","기권하고 결과 보기",func(): await app._act({"type":"resign"}))
+
+func reset_request() -> void:
+	request_serial += 1
+	request_status = ""
+	awaiting_state = false
+
+func _delayed_status(serial: int) -> void:
+	await app.get_tree().create_timer(.35).timeout
+	if serial!=request_serial or not app.busy or app.room.is_empty(): return
+	request_status = "행동 전달 중…"
+	app._update_selection_ui()

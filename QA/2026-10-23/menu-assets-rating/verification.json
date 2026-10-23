@@ -1,0 +1,17 @@
+{
+  "icons": 17,
+  "checks": {
+    "아이콘·레이팅 UI": 55,
+    "기존 통합 검사": 255
+  },
+  "total_passed": 310,
+  "limits": [
+    "Native Godot and simulated 320/390px viewports verified; web export and physical mobile not tested."
+  ],
+  "scope": [
+    "Reusable menu/navigation/difficulty SVGs",
+    "Rating rules modal with dimmed background, fixed header/footer, structured sections",
+    "No server rules or chessboard/piece asset edits"
+  ],
+  "protected_files_matching_prior_baseline": 327
+}

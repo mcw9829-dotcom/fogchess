@@ -1,11 +1,12 @@
 extends Button
+const DIAMETER := 56.0
 var kind := "move"
 var caption := "이동"
 var light := false
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(46,46)
-	size = Vector2(46,46)
+	custom_minimum_size = Vector2.ONE*DIAMETER
+	size = Vector2.ONE*DIAMETER
 	pivot_offset = size/2
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	for state in ["normal","hover","pressed","disabled","focus"]:
@@ -18,9 +19,9 @@ func _ready() -> void:
 func _draw() -> void:
 	var ink := Color("#423524") if light else Color("#f1dfbb")
 	if disabled: ink = Color("#858079")
-	draw_circle(Vector2(23,23),22,Color("#fff8ea") if light else Color("#302b24"))
-	draw_arc(Vector2(23,23),22,0,TAU,48,Color.WHITE if is_hovered() or has_focus() else Color("#c69a5e"),2,true)
-	var at := Vector2(23,17)
+	draw_circle(Vector2(28,28),27,Color("#fff8ea") if light else Color("#302b24"))
+	draw_arc(Vector2(28,28),27,0,TAU,48,Color.WHITE if is_hovered() or has_focus() else Color("#c69a5e"),2,true)
+	var at := Vector2(28,18)
 	if kind=="attack":
 		for sign_value in [-1,1]:
 			var a := at+Vector2(-8*sign_value,-8)
@@ -42,4 +43,8 @@ func _draw() -> void:
 	else:
 		draw_line(at+Vector2(-7,7),at+Vector2(7,-7),ink,2,true)
 		draw_polyline(PackedVector2Array([at+Vector2(-1,-7),at+Vector2(7,-7),at+Vector2(7,1)]),ink,2,true)
-	draw_string(get_theme_default_font(),Vector2(23-get_theme_default_font().get_string_size(caption,HORIZONTAL_ALIGNMENT_LEFT,-1,10).x/2,38),caption,HORIZONTAL_ALIGNMENT_LEFT,-1,10,ink)
+	var font := get_theme_default_font()
+	var font_size := 10
+	while font_size>8 and font.get_string_size(caption,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size).x>40: font_size-=1
+	var width := font.get_string_size(caption,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size).x
+	draw_string(font,Vector2(28-width/2,43),caption,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size,ink)

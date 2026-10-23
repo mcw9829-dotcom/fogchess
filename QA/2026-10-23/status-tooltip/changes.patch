@@ -1,0 +1,219 @@
+--- a/godot/board(보드·기물·이동 연출).gd
++++ b/godot/board(보드·기물·이동 연출).gd
+@@ -101,6 +101,10 @@
+ 		for reload_state in view.get("reloading",[]):
+ 			if reload_state.get("pid")==p.get("id"): return "사격 후 내 차례 한 턴 동안 재장전합니다. 이동은 가능합니다."
+ 	return ""
++
++func _make_custom_tooltip(for_text: String) -> Object:
++	if for_text.is_empty(): return null
++	return preload("res://status_tooltip(상태 설명 카드).gd").new(self,for_text)
+ 
+ func contains(cells: Array, cell: Vector2i) -> bool:
+ 	for rc in cells:
+--- /dev/null
++++ b/godot/status_tooltip(상태 설명 카드).gd
+@@ -0,0 +1,78 @@
++extends PanelContainer
++## Opaque status card. Godot owns tooltip creation, hover timing and dismissal.
++var source: Control
++var message := ""
++var cell := Vector2i(-1,-1)
++var exposure := true
++var anchor := Vector2.ZERO
++var card_style: StyleBoxFlat
++
++func _init(board: Control, text: String) -> void:
++	source = board
++	message = text
++	exposure = not "재장전" in text
++	cell = source.hover
++	name = "BoardStatusTooltip"
++	mouse_filter = Control.MOUSE_FILTER_IGNORE
++	custom_minimum_size.x = 246
++	card_style = StyleBoxFlat.new()
++	card_style.bg_color = Color("eeddbb")
++	card_style.border_color = Color("957342")
++	card_style.set_border_width_all(2)
++	card_style.set_corner_radius_all(9)
++	card_style.shadow_color = Color(0,0,0,.3)
++	card_style.shadow_size = 5
++	card_style.shadow_offset = Vector2(0,3)
++	for edge in ["left","right"]: card_style.set("content_margin_"+edge,16.0)
++	for edge in ["top","bottom"]: card_style.set("content_margin_"+edge,12.0)
++	add_theme_stylebox_override("panel",card_style)
++	var content := VBoxContainer.new()
++	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
++	content.add_theme_constant_override("separation",6)
++	add_child(content)
++	var title := Label.new()
++	title.text = "!  위치 노출" if exposure else "↻  재장전"
++	title.add_theme_font_override("font",source.get_theme_font("font","Label"))
++	title.add_theme_font_size_override("font_size",16)
++	title.add_theme_color_override("font_color",Color("483019"))
++	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
++	content.add_child(title)
++	var body := Label.new()
++	body.text = "상대에게 이 기물의\n위치가 보입니다." if exposure else "사격 후 내 차례 한 턴 동안\n재장전합니다. 이동은 가능합니다."
++	body.add_theme_font_override("font",source.get_theme_font("font","Label"))
++	body.add_theme_font_size_override("font_size",13)
++	body.add_theme_color_override("font_color",Color("514330"))
++	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
++	content.add_child(body)
++	accessibility_name = ("위치 노출. " if exposure else "재장전. ")+text
++
++func _ready() -> void:
++	# Remove the native dark wrapper; this card supplies the opaque surface.
++	get_window().add_theme_stylebox_override("panel",StyleBoxEmpty.new())
++	_place.call_deferred()
++
++static func placement(at: Vector2, dimensions: Vector2, viewport_size: Vector2) -> Vector2:
++	var point := Vector2(at.x-dimensions.x*.5,at.y-dimensions.y-28)
++	if point.y<12: point.y = at.y+38
++	point.x = clampf(point.x,12,maxf(12,viewport_size.x-dimensions.x-12))
++	point.y = clampf(point.y,12,maxf(12,viewport_size.y-dimensions.y-12))
++	return point.round()
++
++func _place() -> void:
++	if not is_instance_valid(source) or not source.is_visible_in_tree() or cell.x<0: return
++	var tile_size: float = source.geometry().size.x/12.0
++	var badge: Vector2 = source.center(cell)+Vector2(tile_size*(.3 if exposure else -.3),-tile_size*.3)
++	anchor = source.get_global_transform_with_canvas()*badge
++	var popup := get_window()
++	popup.position = Vector2i(placement(anchor,Vector2(popup.size),source.get_viewport_rect().size))
++
++func _process(_delta: float) -> void:
++	if not is_instance_valid(source) or not source.is_visible_in_tree():
++		get_window().hide()
++		return
++	var tile_size: float = source.geometry().size.x/12.0
++	var badge: Vector2 = source.center(cell)+Vector2(tile_size*(.3 if exposure else -.3),-tile_size*.3)
++	if source.hover!=cell or source.get_tooltip(badge)!=message:
++		get_window().hide()
++		return
++	_place()
+--- /dev/null
++++ b/godot/tests/status_tooltip.gd
+@@ -0,0 +1,87 @@
++extends SceneTree
++var app: Control
++var failures := 0
++func _initialize() -> void: run.call_deferred()
++func check(value: bool, text: String) -> void:
++	if value: print("PASS: "+text)
++	else: failures+=1; push_error(text)
++func hover(at: Vector2) -> void:
++	var event := InputEventMouseMotion.new()
++	event.position = at
++	event.global_position = at
++	root.push_input(event,true)
++	await create_timer(1.3).timeout
++func find_card(node: Node) -> Control:
++	if node.name=="BoardStatusTooltip" and node.is_visible_in_tree() and node.get_window().visible: return node
++	for child in node.get_children(true):
++		var found := find_card(child)
++		if found!=null: return found
++	return null
++func capture(label: String, card: Control) -> void:
++	if "--capture" not in OS.get_cmdline_user_args(): return
++	RenderingServer.force_draw(false)
++	var directory := ProjectSettings.globalize_path("res://../.dev-data/status-tooltip-captures")
++	DirAccess.make_dir_recursive_absolute(directory)
++	var picture := root.get_texture().get_image()
++	picture.save_png(directory.path_join(label+".png"))
++	if card!=null:
++		var region := Rect2i(card.get_window().position-Vector2i(12,12),card.get_window().size+Vector2i(24,90)).intersection(Rect2i(Vector2i.ZERO,root.size))
++		picture.get_region(region).save_png(directory.path_join(label+"-detail.png"))
++func run() -> void:
++	root.size = Vector2i(1280,900)
++	app = load("res://main(게임 시작 씬).tscn").instantiate()
++	root.add_child(app)
++	await process_frame
++	for child in app.get_children():
++		if child is Timer: child.stop()
++	var fixture: Dictionary = await app.api.request("/test-focus",{})
++	app._enter(fixture)
++	await app._poll()
++	await create_timer(.3).timeout
++	app._clear_selection()
++	var board_size: Vector2 = app.board.size
++	for flipped in [false,true]:
++		app.board.flip = flipped
++		app.board.queue_redraw()
++		await process_frame
++		var tile_size: float = app.board.geometry().size.x/12.0
++		var badge: Vector2 = app.board.global_position+app.board.center(Vector2i(7,5))+Vector2(tile_size*.3,-tile_size*.3)
++		await hover(badge)
++		var card := find_card(root)
++		check(card!=null,"native badge hover opens a custom card, flipped="+str(flipped))
++		if card!=null:
++			check(card.card_style.bg_color.a==1,"card surface is opaque")
++			check(card.get_window().position.y+card.get_window().size.y<=badge.y-20,"tooltip stays above badge with cursor clearance")
++			check(card.mouse_filter==Control.MOUSE_FILTER_IGNORE,"card does not intercept board clicks")
++			await capture("exposure-"+str(flipped),card)
++			var before: Array = app.board.view.exposed
++			app.board.view.exposed = []
++			await create_timer(.1).timeout
++			check(not card.get_window().visible,"concealed piece dismisses stale status without pointer movement")
++			app.board.view.exposed = before
++		await hover(Vector2(4,4))
++		check(find_card(root)==null,"leaving badge dismisses card")
++	app.board.flip = false
++	app.board.view["reloading"] = [{"pid":"W_B1"}]
++	app.prefs.set_value("settings","light",true)
++	app._apply_theme()
++	var reload_size: float = app.board.geometry().size.x/12.0
++	var reload_at: Vector2 = app.board.global_position+app.board.center(Vector2i(7,5))+Vector2(-reload_size*.3,-reload_size*.3)
++	await hover(reload_at)
++	var reload_card := find_card(root)
++	check(reload_card!=null,"reload badge opens a card in light theme")
++	if reload_card!=null:
++		check(not reload_card.exposure and "이동은 가능합니다" in reload_card.message,"reload card preserves distinct movement clarification")
++		check(reload_card.get_window().position.y+reload_card.get_window().size.y<reload_at.y-20,"reload card clears the pointer")
++		await capture("reload-light",reload_card)
++	await hover(Vector2(4,4))
++	var tip = load("res://status_tooltip(상태 설명 카드).gd")
++	for at in [Vector2(5,5),Vector2(315,5),Vector2(5,800),Vector2(315,800)]:
++		var position: Vector2 = tip.placement(at,Vector2(246,112),Vector2(320,844))
++		check(Rect2(Vector2.ZERO,Vector2(320,844)).encloses(Rect2(position,Vector2(246,112))),"card remains inside narrow viewport at "+str(at))
++		check(not Rect2(position,Vector2(246,112)).has_point(at),"edge fallback does not cover pointer "+str(at))
++	check(app.board.size==board_size,"tooltip does not alter board size")
++	app.queue_free()
++	await process_frame
++	print("STATUS_TOOLTIP_FAILURES="+str(failures))
++	quit(0 if failures==0 else 1)
+--- /dev/null
++++ b/tests/run_status_tooltip_smoke.py
+@@ -0,0 +1,32 @@
++"""Setup card actions against an isolated local server, optionally rendered."""
++from pathlib import Path
++import os, subprocess, sys, tempfile, threading
++
++ROOT=Path(__file__).resolve().parents[1]
++sys.path.insert(0,str(ROOT))
++import dev_server
++from run_board_focus_smoke import FocusFixture
++from tools.godot_runtime import default_godot
++
++def main():
++    sys.stdout.reconfigure(encoding='utf-8')
++    with tempfile.TemporaryDirectory(prefix='fog-setup-ui-') as directory:
++        dev_server.server.accounts.init_db(str(Path(directory)/'test.db'))
++        httpd=dev_server.server.ThreadingServer(('127.0.0.1',0),FocusFixture)
++        threading.Thread(target=httpd.serve_forever,daemon=True).start()
++        args=[default_godot(),'--path',str(ROOT/'godot'),'--script','res://tests/status_tooltip.gd',
++              '--log-file',str(ROOT/'.dev-data/status-tooltip-runtime.log')]
++        capture='--capture' in sys.argv
++        args+=['--position','-16000,-16000'] if capture else ['--headless']
++        args+=['--','--smoke']+(['--capture'] if capture else [])
++        try:
++            p=subprocess.run(args,env=dict(os.environ,FOG_TEST_URL=f'http://127.0.0.1:{httpd.server_port}'),capture_output=True,timeout=60)
++            text=(p.stdout+p.stderr).decode('utf-8',errors='replace')
++            print(text)
++            return int(p.returncode!=0 or 'ERROR:' in text or 'STATUS_TOOLTIP_FAILURES=0' not in text)
++        finally:
++            httpd.shutdown()
++            httpd.server_close()
++
++if __name__=='__main__': raise SystemExit(main())
++

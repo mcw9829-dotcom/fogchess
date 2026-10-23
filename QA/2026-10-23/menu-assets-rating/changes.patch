@@ -1,0 +1,665 @@
+--- a/godot/original_icon(원본 스타일 아이콘).gd
++++ b/godot/original_icon(원본 스타일 아이콘).gd
+@@ -1,30 +1,20 @@
+ extends Control
+-## Keep the original Unicode icon. The browser supplies its own emoji artwork.
+-const SYMBOLS = {"play":"⚔️","book":"📖","trophy":"🏆","chat":"💬","settings":"⚙️","user":"🙂","people":"👥","join":"🤝","computer":"💻","target":"🎯","easy":"🌱","normal":"⚔️","hard":"🔥","accept":"✅","decline":"✕"}
+-var key := "play"
++## Shared semantic SVG assets; no operating-system emoji dependency.
++const ALIASES = {"play":"rank","people":"lobby","target":"practice"}
++var key := "rank"
+ var texture: Texture2D
+-var emoji_font: SystemFont
+ static var cache: Dictionary = {}
+-
++static func asset_path(value: String) -> String:
++	return "res://ui/icons/menu/%s.svg" % ALIASES.get(value,value)
+ func _ready() -> void:
+ 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+-	var symbol: String = SYMBOLS.get(key,"•")
+-	if OS.has_feature("web"):
+-		if not cache.has(key):
+-			var encoded: Variant = JavaScriptBridge.eval("(()=>{const c=document.createElement('canvas');c.width=c.height=128;const x=c.getContext('2d');x.font='96px system-ui';x.textAlign='center';x.textBaseline='middle';x.fillText("+JSON.stringify(symbol)+",64,68);return c.toDataURL('image/png').split(',')[1]})()")
+-			if encoded is String:
+-				var image := Image.new()
+-				if image.load_png_from_buffer(Marshalls.base64_to_raw(encoded))==OK: cache[key] = ImageTexture.create_from_image(image)
+-		texture = cache.get(key)
+-	else:
+-		emoji_font = SystemFont.new()
+-		emoji_font.font_names = PackedStringArray(["Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji","Segoe UI Symbol"])
++	var path := asset_path(key)
++	if ResourceLoader.exists(path):
++		if not cache.has(path): cache[path] = load(path)
++		texture = cache[path]
++	else: push_warning("Unknown UI icon: "+key)
+ 	queue_redraw()
+-
+ func _draw() -> void:
+-	if texture: draw_texture_rect(texture,Rect2(Vector2.ZERO,size),false)
+-	elif emoji_font:
+-		var font_size := int(minf(size.x,size.y)*.7)
+-		var symbol: String = SYMBOLS.get(key,"•")
+-		var advance := emoji_font.get_string_size(symbol,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size)
+-		draw_string(emoji_font,Vector2((size.x-advance.x)/2,(size.y-advance.y)/2+emoji_font.get_ascent(font_size)),symbol,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size,Color.WHITE)
++	if texture:
++		var dimension := minf(size.x,size.y)
++		draw_texture_rect(texture,Rect2((size-Vector2.ONE*dimension)/2,Vector2.ONE*dimension),false)
+--- a/godot/features/community(순위·패치노트·피드백).gd
++++ b/godot/features/community(순위·패치노트·피드백).gd
+@@ -93,7 +93,7 @@
+ func _leaderboard() -> void:
+ 	var data: Dictionary = await app.api.request("/leaderboard")
+ 	if not app._report(data): return
+-	var pair = app._window("리더보드")
++	var pair = app._small_window("리더보드",460,680)
+ 	pair[0].size = Vector2i(mini(int(app.size.x)-24,460),mini(int(app.size.y)-24,680))
+ 	pair[0].position = (app.get_viewport_rect().size-Vector2(pair[0].size))/2
+ 	app._label(pair[1],"티어 사다리",14)
+@@ -127,34 +127,9 @@
+ 		var threshold = "%d+" % int(tier[0]) if index==0 else "%d~%d" % [int(tier[0]),int(tiers[index-1][0])-1]
+ 		label = app._label(card,threshold,9)
+ 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+-	var rules = VBoxContainer.new()
+-	pair[1].add_child(rules)
+-	rules.hide()
+-	var toggle = app._button(pair[1],"+ 레이팅 규칙 — 어떻게 오르고 내리나",func(): rules.visible = not rules.visible)
+-	pair[1].move_child(toggle,rules.get_index())
+-	var rule: Dictionary = data.get("rules",{})
+-	var base = int(rule.get("default",1000))
+-	var k = int(rule.get("k",32))
+-	app._rich(rules,"시작 <b>%d점</b>, 바닥 <b>%d점</b>. 티어는 레이팅 구간으로 자동 결정됩니다.\n변동 = <b>%d × (결과 − 기대승률)</b>. 상대가 강할수록 승리 보상이 커집니다(400점 차 = 10배)." % [base,int(rule.get("floor",0)),k],12)
+-	var table = GridContainer.new()
+-	table.columns = 4
+-	rules.add_child(table)
+-	for text in ["%d점인 내가…" % base,"승리","패배","무승부"]: app._label(table,text,12)
+-	for difference in [0,300,-300]:
+-		app._label(table,"상대 %d점" % (base+difference),12)
+-		var expected = 1.0/(1.0+pow(10.0,float(difference)/400.0))
+-		for score in [1.0,0.0,.5]:
+-			var delta = int(floor(k*(score-expected)+.5))
+-			var label = app._label(table,("+" if delta>0 else "")+str(delta),12)
+-			label.modulate = Color("83bd8a") if delta>0 else (Color("df8b7e") if delta<0 else Color.WHITE)
+-	if rule.get("botRated",false):
+-		var bots: Dictionary = rule.get("bot",{})
+-		app._rich(rules,"<b>컴퓨터 대국</b>: 이기면 오르고 "+("져도 내려가지 않습니다." if rule.get("botNoLoss",false) else "지면 내려갑니다."),12)
+-		for level_name in ["easy","normal","hard"]:
+-			var rating = int(bots.get(level_name,0))
+-			app._label(rules,"%s: %d점%s" % [{"easy":"쉬움","normal":"보통","hard":"어려움"}[level_name],rating," · 상승 상한 %d점" % (rating+int(rule.botCap)) if rule.get("botCap")!=null else ""],12)
+-	else: app._label(rules,"컴퓨터 대국은 레이팅에 반영되지 않습니다.",12)
+-	app._rich(rules,"<b>랭크 매칭</b>: 로그인 회원끼리 레이팅전. 친구 대전·혼자 연습·게스트는 미반영.\n기권, 접속 끊김 90초, 연속 3회 미행동은 패배로 정산합니다. 정산은 종료 시 한 번입니다.",12)
++	var rules_button = app._button(pair[1],"레이팅 규칙 보기",func(): pass)
++	rules_button.name = "RatingRulesOpen"
++	rules_button.pressed.connect(func(): preload("res://features/rating_rules(레이팅 안내 팝업).gd").new(app).show_rules(data.get("rules",{}),pair[0],rules_button))
+ 
+ 	app._label(pair[1],"순위 · 레이팅 순 상위 50명",14)
+ 	_rank_table(pair[1],data.get("rows",[]))
+--- a/godot/features/ui_components(공통 버튼·입력·팝업).gd
++++ b/godot/features/ui_components(공통 버튼·입력·팝업).gd
+@@ -255,13 +255,14 @@
+ 	app.mode_cards.append(button)
+ 	button.tooltip_text = description
+ 	var margin = MarginContainer.new()
++	margin.name = "ModeCardContent"
+ 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+ 	for edge in ["left","right","top","bottom"]: margin.add_theme_constant_override("margin_"+edge,14)
+ 	button.add_child(margin)
+ 	var row = HBoxContainer.new()
+ 	row.add_theme_constant_override("separation",12)
+ 	margin.add_child(row)
+-	app._icon(row,icon,28)
++	app._icon(row,icon,40)
+ 	var box = VBoxContainer.new()
+ 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+ 	box.alignment = BoxContainer.ALIGNMENT_CENTER
+@@ -271,6 +272,7 @@
+ 		var sub = app._label(box,description,12)
+ 		sub.set_meta("ui_muted",true)
+ 		sub.add_theme_color_override("font_color",_palette().muted)
++	margin.minimum_size_changed.connect(func(): button.custom_minimum_size.y = maxf(76,margin.get_combined_minimum_size().y))
+ 	app._ignore_mouse(margin)
+ 	app._style_mode_card(button)
+ 
+--- a/godot/features/ui_shell(화면 구성·배치·전환).gd
++++ b/godot/features/ui_shell(화면 구성·배치·전환).gd
+@@ -106,13 +106,13 @@
+ 	var subtitle = app._label(app.menu,"WW1 Fog Chess",13)
+ 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+ 	subtitle.custom_minimum_size.y = 28
+-	app._mode_card(app.menu,"랭크 매칭","비슷한 레이팅의 상대를 자동으로 찾아 레이팅전 · 로그인 필요","play",func(): await app._match_command("join"),true)
++	app._mode_card(app.menu,"랭크 매칭","비슷한 레이팅의 상대와 대국 · 로그인 필요","play",func(): await app._match_command("join"),true)
+ 	app._mode_card(app.menu,"로비 게임 만들기","친구와 사설 방에서 대전(초대 링크) · 레이팅 미반영","people",func(): await app._join({}))
+-	app._mode_card(app.menu,"리플레이","종료 대국의 기보 · 한 수씩 / 자동 재생","play",app.replay.menu)
+-	app._mode_card(app.menu,"대국 관전","방 코드로 관전 · 전체 보드 3분 지연 중계","people",app.spectating.menu)
++	app._mode_card(app.menu,"리플레이","종료 대국의 기보 · 한 수씩 / 자동 재생","replay",app.replay.menu)
++	app._mode_card(app.menu,"대국 관전","방 코드로 관전 · 전체 보드 3분 지연 중계","watch",app.spectating.menu)
+ 	app._mode_card(app.menu,"친구 방 참가","친구가 준 방 코드로 입장 · 레이팅 미반영","join",app._friend_menu)
+ 	app._mode_card(app.menu,"컴퓨터와 대국","쉬움 · 보통 · 어려움 · 이기면 레이팅 상승, 져도 하락 없음","computer",app._bot_menu)
+-	app._mode_card(app.menu,"혼자 연습","한 화면에서 백·흑을 번갈아 두며 규칙 익히기 · 레이팅 미반영","target",func(): await app._join({"solo":true}))
++	app._mode_card(app.menu,"혼자 연습","백·흑 번갈아 연습 · 레이팅 미반영","target",func(): await app._join({"solo":true}))
+ 	app._mode_card(app.menu,"설정","효과음 · 배경음악 · 다크/화이트 · 색약","settings",app._settings)
+ 	app.guest_field = app._field(app.home,"게스트 닉네임",str(app.prefs.get_value("settings","nickname","플레이어")))
+ 	app.guest_field.hide()
+@@ -356,7 +356,7 @@
+ 	app.controls_scroll.custom_minimum_size = Vector2(0,0)
+ 	app.game_left.custom_minimum_size.x = board_width
+ 	for card in app.mode_cards:
+-		if is_instance_valid(card): card.custom_minimum_size.y = 82 if menu_width<380 else 68
++		if is_instance_valid(card): card.custom_minimum_size.y = maxf(76,card.get_node("ModeCardContent").get_combined_minimum_size().y)
+ 	app.game_ux.update_scroll_bar.call_deferred()
+ 	app._nav_active("설정" if app.subpage.visible and app.subpage.get_child_count()>0 and app.subpage.get_child(0).text=="설정" else "플레이")
+ 
+--- a/godot/tests/remaining.gd
++++ b/godot/tests/remaining.gd
+@@ -62,8 +62,8 @@
+ 	await shot("patchnotes")
+ 	await close()
+ 	await app._leaderboard()
+-	var toggle := button(app,"+ 레이팅 규칙 — 어떻게 오르고 내리나")
+-	check.call(toggle!=null,"rating rules disclosure available")
++	var toggle := button(app,"레이팅 규칙 보기")
++	check.call(toggle!=null,"rating rules modal action available")
+ 	if toggle: toggle.pressed.emit()
+ 	await shot("rating_rules")
+ 	var correct_tier := false
+--- /dev/null
++++ b/godot/features/rating_rules(레이팅 안내 팝업).gd
+@@ -0,0 +1,143 @@
++extends RefCounted
++## Presentation only: every rating number comes from the leaderboard rules payload.
++var app: Control
++func _init(context: Control) -> void: app = context
++
++func _section(parent: Node, icon: String, title: String, subtitle: String="") -> VBoxContainer:
++	var box: VBoxContainer = app._card(parent,"")
++	box.add_theme_constant_override("separation",12)
++	var head := HBoxContainer.new()
++	head.add_theme_constant_override("separation",10)
++	box.add_child(head)
++	app._icon(head,icon,32)
++	app._label(head,title,17)
++	if not subtitle.is_empty():
++		var note: Label = app._label(box,subtitle,13)
++		note.add_theme_color_override("font_color",app.ui_components._palette().muted)
++	return box
++
++func _metric(parent: Node, title: String, value: String, node_name: String) -> void:
++	var box: VBoxContainer = app._card(parent,"")
++	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
++	app._label(box,title,12)
++	var number: Label = app._label(box,value,26)
++	number.name = node_name
++	number.add_theme_color_override("font_color",Color("9b6c2d") if app.prefs.get_value("settings","light",false) else Color("e7c68d"))
++
++func _cell(grid: GridContainer, text: String, header: bool=false, delta: int=99999, node_name: String="") -> void:
++	var colors: Dictionary = app.ui_components._palette()
++	var panel := PanelContainer.new()
++	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
++	var style := StyleBoxFlat.new()
++	style.bg_color = colors.button if header else colors.surface
++	style.border_color = colors.border
++	style.border_width_bottom = 1
++	style.content_margin_left = 5
++	style.content_margin_right = 5
++	style.content_margin_top = 10
++	style.content_margin_bottom = 10
++	panel.add_theme_stylebox_override("panel",style)
++	grid.add_child(panel)
++	var label: Label = app._label(panel,text,12 if header else (18 if delta!=99999 else 13))
++	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
++	if not node_name.is_empty(): label.name = node_name
++	if delta!=99999 and delta!=0:
++		var light: bool = app.prefs.get_value("settings","light",false)
++		label.add_theme_color_override("font_color",(Color("286d49") if light else Color("a4d3b4")) if delta>0 else colors.danger)
++
++func _restore(previous_ref: WeakRef, trigger_ref: WeakRef) -> void:
++	var previous: Window = previous_ref.get_ref() if previous_ref!=null else null
++	var trigger: Button = trigger_ref.get_ref() if trigger_ref!=null else null
++	if not is_instance_valid(previous) or previous.is_queued_for_deletion(): return
++	for child in app.get_children():
++		if child is Window and child.visible and not child.is_queued_for_deletion(): return
++	previous.show()
++	if is_instance_valid(trigger): trigger.grab_focus()
++
++func show_rules(rule: Dictionary, previous: Window=null, trigger: Button=null) -> Window:
++	var pair: Array = app._small_window("레이팅 규칙",680,760)
++	var window: Window = pair[0]
++	window.name = "RatingRulesDialog"
++	window.set_meta("suppress_hover_tooltips",true)
++	var previous_ref: WeakRef = weakref(previous) if is_instance_valid(previous) else null
++	var trigger_ref: WeakRef = weakref(trigger) if is_instance_valid(trigger) else null
++	window.tree_exited.connect(func(): _restore(previous_ref,trigger_ref))
++	var body: VBoxContainer = pair[1]
++	# Keep the title/close and confirmation controls reachable while the body scrolls.
++	var scroll: ScrollContainer = body.get_parent()
++	scroll.name = "RatingRulesScroll"
++	var panel: PanelContainer = scroll.get_parent()
++	panel.remove_child(scroll)
++	var layout := VBoxContainer.new()
++	layout.add_theme_constant_override("separation",14)
++	panel.add_child(layout)
++	var head: HBoxContainer = body.get_child(0)
++	body.remove_child(head)
++	layout.add_child(head)
++	layout.add_child(HSeparator.new())
++	layout.add_child(scroll)
++	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
++	body.add_theme_constant_override("separation",14)
++	var stats := HBoxContainer.new()
++	stats.add_theme_constant_override("separation",12)
++	body.add_child(stats)
++	var base := int(rule.get("default",1000))
++	var floor_rating := int(rule.get("floor",0))
++	var k := int(rule.get("k",32))
++	_metric(stats,"처음 시작할 때","%d점" % base,"StartingRating")
++	_metric(stats,"최저 레이팅","%d점" % floor_rating,"RatingFloor")
++	app._label(body,"티어는 현재 레이팅 구간에 따라 자동으로 바뀝니다.",13)
++	var examples := _section(body,"trophy","상대 점수에 따른 변화","내 레이팅이 %d점일 때의 기본 변동 예시" % base)
++	var table := GridContainer.new()
++	table.name = "RatingExamples"
++	table.columns = 4
++	table.add_theme_constant_override("h_separation",0)
++	table.add_theme_constant_override("v_separation",0)
++	examples.add_child(table)
++	for heading in ["상대","승리","패배","무승부"]: _cell(table,heading,true)
++	for difference in [0,300,-300]:
++		_cell(table,"%d점" % (base+difference))
++		var expected := 1.0/(1.0+pow(10.0,float(difference)/400.0))
++		for score in [1.0,0.0,.5]:
++			var delta := int(floor(k*(score-expected)+.5))
++			_cell(table,("+" if delta>0 else "")+str(delta),false,delta,"Delta_%s_%s" % [difference,int(score*2)])
++	app._label(examples,"최저 점수와 컴퓨터 대국 상한을 적용하기 전의 예시입니다.",12)
++	var calculation := VBoxContainer.new()
++	examples.add_child(calculation)
++	calculation.hide()
++	var formula_button: Button = app._button(examples,"계산식 보기",func(): pass,"tertiary")
++	examples.move_child(formula_button,calculation.get_index())
++	formula_button.pressed.connect(func():
++		calculation.visible = not calculation.visible
++		formula_button.text = "계산식 접기" if calculation.visible else "계산식 보기")
++	app._label(calculation,"변동 = %d × (결과 − 기대승률)" % k,14)
++	app._label(calculation,"결과: 승리 1 · 무승부 0.5 · 패배 0\n기대승률 = 1 ÷ (1 + 10^((상대 점수 − 내 점수) ÷ 400))\n400점 차이는 승산 비율 10배에 해당합니다.",12)
++	var ranked := _section(body,"rank","랭크 매칭","로그인 회원끼리의 대국에 적용됩니다.")
++	app._label(ranked,"승리하면 상승 · 패배하면 하락\n무승부는 상대와의 점수 차이에 따라 달라집니다.",14)
++	var bots := _section(body,"computer","컴퓨터와 대국")
++	if rule.get("botRated",false):
++		var benefit: Label = app._label(bots,"승리 시 상승 · 패배 시 하락 없음" if rule.get("botNoLoss",false) else "승리 시 상승 · 패배 시 하락",15)
++		benefit.name = "BotRatingPolicy"
++		var ratings: Dictionary = rule.get("bot",{})
++		var levels := GridContainer.new()
++		levels.columns = 3
++		levels.add_theme_constant_override("h_separation",0)
++		levels.add_theme_constant_override("v_separation",0)
++		bots.add_child(levels)
++		for text in ["난이도","상대 점수","상승 상한"]: _cell(levels,text,true)
++		for level in ["easy","normal","hard"]:
++			var value := int(ratings.get(level,0))
++			_cell(levels,{"easy":"쉬움","normal":"보통","hard":"어려움"}[level])
++			_cell(levels,str(value))
++			_cell(levels,str(value+int(rule.botCap)) if rule.get("botCap")!=null else "제한 없음",false,99999,"BotCap_"+level)
++		if rule.get("botCap")!=null: app._label(bots,"상한에 도달하면 랭크 매칭에서 더 높이 올라갈 수 있어요.",12)
++	else: app._label(bots,"컴퓨터 대국은 레이팅에 반영되지 않습니다.",14)
++	var other := _section(body,"lobby","점수가 바뀌지 않는 대국")
++	app._label(other,"친구 대전 · 혼자 연습 · 게스트 플레이",14)
++	var notice := _section(body,"book","대국이 끝나면 한 번 정산")
++	app._label(notice,"기권, 접속 끊김 90초, 연속 3회 미행동은 패배로 처리됩니다.",13)
++	layout.add_child(HSeparator.new())
++	var done: Button = app._button(layout,"확인",window.queue_free,"primary")
++	done.name = "RatingRulesDone"
++	app._layout()
++	return window
+--- /dev/null
++++ b/godot/tests/menu_rating.gd
+@@ -0,0 +1,117 @@
++extends SceneTree
++var app: Control
++var failures := 0
++func _initialize() -> void: run.call_deferred()
++func check(ok: bool, message: String) -> void:
++	if ok: print("PASS: "+message)
++	else: failures+=1; push_error(message)
++func capture(label: String) -> void:
++	await create_timer(.35).timeout
++	if "--capture" not in OS.get_cmdline_user_args(): return
++	RenderingServer.force_draw(false)
++	var folder := ProjectSettings.globalize_path("res://../.dev-data/menu-rating-captures")
++	DirAccess.make_dir_recursive_absolute(folder)
++	root.get_texture().get_image().save_png(folder.path_join(label+".png"))
++func open_rules() -> Window:
++	var trigger: Button = app.find_child("RatingRulesOpen",true,false)
++	trigger.grab_focus()
++	trigger.pressed.emit()
++	await create_timer(.4).timeout
++	return app.find_child("RatingRulesDialog",true,false)
++func check_fit(window: Window, label: String) -> void:
++	var scroll: ScrollContainer = window.find_child("RatingRulesScroll",true,false)
++	check(window.size.x<=root.size.x-24,label+" dialog fits viewport")
++	check(scroll.get_child(0).size.x<=scroll.size.x,label+" body has no horizontal overflow")
++	var done: Button = window.find_child("RatingRulesDone",true,false)
++	check(done.get_global_rect().end.y<=window.size.y,label+" confirmation remains inside window")
++func run() -> void:
++	root.size = Vector2i(1280,900)
++	app = load("res://main(게임 시작 씬).tscn").instantiate()
++	root.add_child(app)
++	await create_timer(.5).timeout
++	for child in app.get_children():
++		if child is Timer: child.stop()
++	var Icon = preload("res://original_icon(원본 스타일 아이콘).gd")
++	for key in ["rank","lobby","replay","watch","join","computer","practice","settings","book","trophy","chat","user","easy","normal","hard","accept","decline"]:
++		var texture = load(Icon.asset_path(key))
++		check(texture is Texture2D and texture.get_width()==96,key+" loads a reusable 96px SVG texture")
++	check(Icon.asset_path("play")!=Icon.asset_path("replay"),"rank and replay use distinct assets")
++	check(Icon.asset_path("people")!=Icon.asset_path("watch"),"lobby and spectating use distinct assets")
++	await capture("menu-dark")
++	for card in app.mode_cards:
++		var content: Control = card.get_node("ModeCardContent")
++		check(card.size.y>=content.get_combined_minimum_size().y,"mode card contains its wrapped description: "+str(card.get_meta("action_title")))
++	await app._leaderboard()
++	await create_timer(.3).timeout
++	var trigger: Button = app.find_child("RatingRulesOpen",true,false)
++	check(trigger!=null,"leaderboard exposes rating rules button")
++	var leaderboard := trigger.get_window()
++	var dialog := await open_rules()
++	check(dialog!=null and dialog.visible and dialog.exclusive,"button opens an exclusive rating dialog")
++	check(not leaderboard.visible,"leaderboard is hidden while rating dialog is active")
++	var dimmed := false
++	for child in app.get_children():
++		if child is ColorRect and child.visible and child.color.a>.5: dimmed=true
++	check(dimmed,"background is dimmed")
++	check(dialog.find_child("StartingRating",true,false).text=="1000점","starting rating comes from server payload")
++	check(dialog.find_child("RatingFloor",true,false).text=="500점","minimum rating comes from server payload")
++	check(dialog.find_child("Delta_0_2",true,false).text=="+16","equal-rating victory example is correct")
++	check(dialog.find_child("Delta_300_0",true,false).text=="-5","stronger-opponent defeat example is correct")
++	check(dialog.find_child("BotCap_easy",true,false).text=="1500","bot cap uses server rating plus cap")
++	check_fit(dialog,"desktop")
++	await capture("rating-dark-top")
++	var scroll: ScrollContainer = dialog.find_child("RatingRulesScroll",true,false)
++	scroll.scroll_vertical = 2000
++	await capture("rating-dark-bottom")
++	var done: Button = dialog.find_child("RatingRulesDone",true,false)
++	done.pressed.emit()
++	await create_timer(.3).timeout
++	check(leaderboard.visible and trigger.has_focus(),"confirmation returns to leaderboard and restores focus")
++	dialog = await open_rules()
++	var escape := InputEventKey.new()
++	escape.keycode = KEY_ESCAPE
++	escape.pressed = true
++	dialog.push_input(escape,true)
++	await create_timer(.3).timeout
++	check(not is_instance_valid(dialog) and leaderboard.visible,"Escape closes only the rules and returns to leaderboard")
++	root.size = Vector2i(390,844)
++	app._layout()
++	await create_timer(.3).timeout
++	dialog = await open_rules()
++	check_fit(dialog,"390px")
++	await capture("rating-mobile")
++	root.size = Vector2i(320,740)
++	app._layout()
++	await create_timer(.3).timeout
++	check_fit(dialog,"320px")
++	await capture("rating-320")
++	dialog.close_requested.emit()
++	await create_timer(.3).timeout
++	root.size = Vector2i(1280,900)
++	app.prefs.set_value("settings","light",true)
++	app._apply_theme()
++	app._layout()
++	dialog = await open_rules()
++	check_fit(dialog,"light theme")
++	await capture("rating-light")
++	dialog.close_requested.emit()
++	await create_timer(.3).timeout
++	leaderboard.queue_free()
++	await create_timer(.3).timeout
++	await capture("menu-light")
++	var alternate := {"default":1200,"floor":600,"k":40,"botRated":true,"botNoLoss":false,"bot":{"easy":1400,"normal":1600,"hard":1800}}
++	dialog = preload("res://features/rating_rules(레이팅 안내 팝업).gd").new(app).show_rules(alternate)
++	await create_timer(.3).timeout
++	check(dialog.find_child("StartingRating",true,false).text=="1200점" and dialog.find_child("RatingFloor",true,false).text=="600점","alternate start and floor are not hardcoded")
++	check(dialog.find_child("Delta_0_2",true,false).text=="+20","alternate K factor updates examples")
++	check(dialog.find_child("BotCap_easy",true,false).text=="제한 없음","absent bot cap has an explicit unlimited state")
++	check(dialog.find_child("BotRatingPolicy",true,false).text=="승리 시 상승 · 패배 시 하락","server bot-loss policy is respected")
++	dialog.queue_free()
++	await process_frame
++	dialog = preload("res://features/rating_rules(레이팅 안내 팝업).gd").new(app).show_rules({"botRated":false})
++	await process_frame
++	check(dialog.find_child("BotRatingPolicy",true,false)==null,"unrated computer mode has no rated policy table")
++	app.queue_free()
++	await process_frame
++	print("MENU_RATING_FAILURES="+str(failures))
++	quit(0 if failures==0 else 1)
+--- /dev/null
++++ b/tests/run_menu_rating_smoke.py
+@@ -0,0 +1,52 @@
++from pathlib import Path
++import json, os, subprocess, sys, tempfile, threading, time, uuid
++
++ROOT=Path(__file__).resolve().parents[1]
++sys.path.insert(0,str(ROOT))
++from run_godot_smoke import FixtureHandler, server
++from tools.godot_runtime import default_godot
++
++class FocusFixture(FixtureHandler):
++    def _post(self):
++        if self.path!='/test-focus': return super()._post()
++        self.rfile.read(int(self.headers['Content-Length']))
++        code=server.gen_code(); room=server.new_room(code)
++        white=uuid.uuid4().hex; black=uuid.uuid4().hex
++        room.update(seats={'W':white,'B':black},tokens={white:'W',black:'B'},seen={white:time.time(),black:time.time()},names={'W':'moon','B':'raven'},ratings={'W':1458,'B':1512})
++        st=room['state'];st.update(phase='play',turn='W',turnCount=22,turn_deadline=time.time()+60)
++        # Deliberate UI fixture in a temporary server, never a live development room.
++        for pid,rc in {'W_B1':(7,5),'W_N1':(5,8),'B_N1':(4,8),'B_P1':(8,6)}.items():
++            st['pieces'][pid].update(r=rc[0],c=rc[1],alive=True,moved=True)
++            for group in ['forests','bushes','rivers','impassable']: room['terrain'][group].discard(rc)
++        st['feed']=[{'seq':1,'actor':'W','atype':'N','method':'melee','victim':'B','vtype':'R'},{'seq':2,'actor':'B','atype':'N','method':'melee','victim':'W','vtype':'P'},{'seq':3,'actor':'W','atype':'B','method':'artillery','victim':'B','vtype':'N'}]
++        st['feedseq']=3
++        st['move_history']={'W':['12. e10','14. Nf7','16. Nxh6','18. Bg9','20. Bh10','22. Bf8']}
++        for pid in ['B_P2','B_P3','B_P4','B_R1','B_N2']: st['pieces'][pid]['alive']=False
++        st['captured']={'W':['P','P','P','R','N'],'B':['P']}
++        with server.lock: server.ROOMS[code]=room
++        self._json({'room':code,'token':white,'color':'W'})
++
++def main():
++    sys.stdout.reconfigure(encoding='utf-8')
++    with tempfile.TemporaryDirectory(prefix='fog-focus-test-') as directory:
++        server.accounts.init_db(str(Path(directory)/'test.db'))
++        httpd=server.ThreadingServer(('127.0.0.1',0),FocusFixture)
++        threading.Thread(target=httpd.serve_forever,daemon=True).start()
++        args=[default_godot(),'--path',str(ROOT/'godot'),'--script','res://tests/menu_rating.gd',
++              '--log-file',str(ROOT/'.dev-data'/'menu-rating-runtime.log')]
++        if '--capture' in sys.argv: args+=['--position','-16000,-16000']
++        else: args+=['--headless']
++        args+=['--','--smoke']
++        if '--capture' in sys.argv: args+=['--capture']
++        try:
++            p=subprocess.run(args,env=dict(os.environ,FOG_TEST_URL=f'http://127.0.0.1:{httpd.server_port}'),capture_output=True,timeout=60)
++            out=p.stdout.decode('utf-8',errors='replace')+p.stderr.decode('utf-8',errors='replace')
++            print(out)
++            return int(p.returncode!=0 or 'MENU_RATING_FAILURES=0' not in out or 'SCRIPT ERROR' in out)
++        except subprocess.TimeoutExpired as exc:
++            print((exc.stdout or b'').decode('utf-8',errors='replace'))
++            print((exc.stderr or b'').decode('utf-8',errors='replace'))
++            raise
++        finally: httpd.shutdown();httpd.server_close()
++
++if __name__=='__main__': raise SystemExit(main())
+--- /dev/null
++++ b/godot/ui/icons/menu/accept.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>확인</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="14" stroke="#9cbaaa"/><path d="m17 24 5 5 10-11"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/book.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>기물 설명</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M24 15c-4-3-9-4-14-3v23c5-1 10 0 14 3 4-3 9-4 14-3V12c-5-1-10 0-14 3Z" stroke="#9cbaaa"/><path d="M24 15v23m-9-19 5 1m-5 5 5 1m8-6 5-1m-5 7 5-1"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/chat.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>피드백</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12h24v20H23l-9 6v-6h-2Z" stroke="#9cbaaa"/><path d="M18 19h12m-12 6h8"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/computer.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>컴퓨터와 대국</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="11" y="12" width="26" height="20" rx="4" stroke="#9cbaaa"/><path d="M19 37h10m-5-5v5m-5-17 4 3-4 3m8 0h3"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/decline.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>닫기</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="14" stroke="#9cbaaa"/><path d="m19 19 10 10m0-10L19 29"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/easy.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>쉬움</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M24 36V23M24 27C10 27 11 16 11 16s13-1 13 11ZM24 23c0-14 13-13 13-13s1 13-13 13Z" stroke="#9cbaaa"/><path d="M17 37h14"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/hard.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>어려움</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M25 9c2 9-7 10-4 17 5-1 7-4 8-7 7 6 9 12 3 17-7 6-19 1-19-7 0-8 8-12 12-20Z" stroke="#9cbaaa"/><path d="M24 27c-6 5-5 10 0 11 5-1 6-5 0-11Z"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/join.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>친구 방 참가</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M25 12h10v24H25" stroke="#9cbaaa"/><path d="M10 24h17m-6-6 6 6-6 6"/><circle cx="30" cy="24" r="1" fill="#9cbaaa" stroke="none"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/lobby.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>로비 만들기</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 23 24 12l13 11M15 21v15h18V21" stroke="#9cbaaa"/><circle cx="24" cy="23" r="3"/><path d="M19 34v-3a5 5 0 0 1 10 0v3"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/manifest.json
+@@ -0,0 +1,99 @@
++{
++  "name": "Fogchess Grove UI",
++  "version": 1,
++  "viewBox": [
++    0,
++    0,
++    48,
++    48
++  ],
++  "nativeRasterSize": 96,
++  "usageSizes": [
++    24,
++    26,
++    40,
++    48
++  ],
++  "stroke": 2.2,
++  "colors": {
++    "surface": "#293630",
++    "outline": "#526258",
++    "primary": "#e7c68d",
++    "secondary": "#9cbaaa"
++  },
++  "aliases": {
++    "play": "rank",
++    "people": "lobby",
++    "target": "practice"
++  },
++  "icons": {
++    "rank": {
++      "file": "rank.svg",
++      "label": "랭크 매칭"
++    },
++    "lobby": {
++      "file": "lobby.svg",
++      "label": "로비 만들기"
++    },
++    "replay": {
++      "file": "replay.svg",
++      "label": "리플레이"
++    },
++    "watch": {
++      "file": "watch.svg",
++      "label": "대국 관전"
++    },
++    "join": {
++      "file": "join.svg",
++      "label": "친구 방 참가"
++    },
++    "computer": {
++      "file": "computer.svg",
++      "label": "컴퓨터와 대국"
++    },
++    "practice": {
++      "file": "practice.svg",
++      "label": "혼자 연습"
++    },
++    "settings": {
++      "file": "settings.svg",
++      "label": "설정"
++    },
++    "book": {
++      "file": "book.svg",
++      "label": "기물 설명"
++    },
++    "trophy": {
++      "file": "trophy.svg",
++      "label": "순위·레이팅"
++    },
++    "chat": {
++      "file": "chat.svg",
++      "label": "피드백"
++    },
++    "user": {
++      "file": "user.svg",
++      "label": "계정"
++    },
++    "easy": {
++      "file": "easy.svg",
++      "label": "쉬움"
++    },
++    "normal": {
++      "file": "normal.svg",
++      "label": "보통"
++    },
++    "hard": {
++      "file": "hard.svg",
++      "label": "어려움"
++    },
++    "accept": {
++      "file": "accept.svg",
++      "label": "확인"
++    },
++    "decline": {
++      "file": "decline.svg",
++      "label": "닫기"
++    }
++  }
++}--- /dev/null
++++ b/godot/ui/icons/menu/normal.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>보통</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 36v-8h5v8m5 0V20h5v16m5 0V12h5v24" stroke="#9cbaaa"/><path d="m12 20 10-8m-6 0h6v6"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/practice.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>혼자 연습</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="13" stroke="#9cbaaa"/><circle cx="24" cy="24" r="7"/><path d="m24 24 13-13m-6 0h6v6"/><circle cx="24" cy="24" r="2" fill="#e7c68d" stroke="none"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/rank.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>랭크 매칭</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M24 10 35 14v10c0 7-6 11-11 14-5-3-11-7-11-14V14Z" stroke="#9cbaaa"/><path d="m18 29 12-14v7M30 15h-6M17 24l7 6m-8 1 3-4"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/README.txt
+@@ -0,0 +1,9 @@
++Fogchess Grove UI — reusable SVG assets
++
++Original vector artwork created for this project; no external icon pack or fonts.
++48 x 48 viewBox, 2.2-unit rounded strokes; 96px default import for crisp UI scaling.
++Use 40px on mode cards and 26px in navigation. Preserve aspect ratio and colors.
++Files are standalone, transparent outside the tile; usable in Godot, web and design tools.
++manifest.json defines semantic names, colors and legacy aliases.
++Godot: app._icon(parent, "watch", 40). Existing play/people/target aliases remain supported.
++Keep gameplay action icons and chess piece artwork separate.
+--- /dev/null
++++ b/godot/ui/icons/menu/replay.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>리플레이</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 17a13 13 0 1 1-2 12M14 11v7H7" stroke="#9cbaaa"/><path d="m21 18 10 6-10 6Z" fill="#e7c68d" stroke="none"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/settings.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>설정</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 10-1 5-4 2-5-1-3 6 4 3v4l-2 4 5 5 5-3h4l3 3 6-3-1-5 2-4 4-2-2-7-5 1-3-3-1-5Z" stroke="#9cbaaa"/><circle cx="23" cy="24" r="6"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/trophy.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>순위·레이팅</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 11h16v10a8 8 0 0 1-16 0Zm8 18v7m-7 1h14"/><path d="M16 14h-6v5a7 7 0 0 0 7 7m15-12h6v5a7 7 0 0 1-7 7" stroke="#9cbaaa"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/user.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>계정</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="18" r="6"/><path d="M12 36v-3a12 9 0 0 1 24 0v3" stroke="#9cbaaa"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/watch.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>대국 관전</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 24s5-10 15-10 15 10 15 10-5 10-15 10S9 24 9 24Z" stroke="#9cbaaa"/><circle cx="24" cy="24" r="5"/><circle cx="25" cy="23" r="1" fill="#e7c68d" stroke="none"/></g></svg>

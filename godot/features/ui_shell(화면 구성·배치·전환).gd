@@ -1,6 +1,7 @@
 extends RefCounted
 ## Feature implementation. Shared scene state and cross-feature entry points live on app.
 var app
+var setup_ui
 var match_header: PanelContainer
 var presence_slot: HBoxContainer
 var presence_cell: MarginContainer
@@ -31,7 +32,7 @@ func _build() -> void:
 	var brand = app._nav(app.rail,"안개전장","king",app._navigation_home)
 	brand.custom_minimum_size.y = 46
 	brand.add_theme_font_override("font",app._original_font(700))
-	app.rail_version = app._button(app.rail,"v1.51 · 패치노트",app._patchnotes)
+	app.rail_version = app._button(app.rail,"패치노트",app._patchnotes)
 	app.rail_version.add_theme_font_size_override("font_size",11)
 	app.rail_version.flat = true
 	app.rail_version.custom_minimum_size.y = 26
@@ -105,13 +106,13 @@ func _build() -> void:
 	var subtitle = app._label(app.menu,"WW1 Fog Chess",13)
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	subtitle.custom_minimum_size.y = 28
-	app._mode_card(app.menu,"랭크 매칭","비슷한 레이팅의 상대를 자동으로 찾아 레이팅전 · 로그인 필요","play",func(): await app._match_command("join"),true)
+	app._mode_card(app.menu,"랭크 매칭","비슷한 레이팅의 상대와 대국 · 로그인 필요","play",func(): await app._match_command("join"),true)
 	app._mode_card(app.menu,"로비 게임 만들기","친구와 사설 방에서 대전(초대 링크) · 레이팅 미반영","people",func(): await app._join({}))
-	app._mode_card(app.menu,"리플레이","종료 대국의 기보 · 한 수씩 / 자동 재생","play",app.replay.menu)
-	app._mode_card(app.menu,"대국 관전","방 코드로 관전 · 전체 보드 3분 지연 중계","people",app.spectating.menu)
+	app._mode_card(app.menu,"리플레이","종료 대국의 기보 · 한 수씩 / 자동 재생","replay",app.replay.menu)
+	app._mode_card(app.menu,"대국 관전","방 코드로 관전 · 전체 보드 3분 지연 중계","watch",app.spectating.menu)
 	app._mode_card(app.menu,"친구 방 참가","친구가 준 방 코드로 입장 · 레이팅 미반영","join",app._friend_menu)
 	app._mode_card(app.menu,"컴퓨터와 대국","쉬움 · 보통 · 어려움 · 이기면 레이팅 상승, 져도 하락 없음","computer",app._bot_menu)
-	app._mode_card(app.menu,"혼자 연습","한 화면에서 백·흑을 번갈아 두며 규칙 익히기 · 레이팅 미반영","target",func(): await app._join({"solo":true}))
+	app._mode_card(app.menu,"혼자 연습","백·흑 번갈아 연습 · 레이팅 미반영","target",func(): await app._join({"solo":true}))
 	app._mode_card(app.menu,"설정","효과음 · 배경음악 · 다크/화이트 · 색약","settings",app._settings)
 	app.guest_field = app._field(app.home,"게스트 닉네임",str(app.prefs.get_value("settings","nickname","플레이어")))
 	app.guest_field.hide()
@@ -198,7 +199,13 @@ func _build() -> void:
 	room_card.add_child(app.invite_row)
 	app.invite_field = app._field(app.invite_row,"초대 링크")
 	app.invite_field.editable = false
-	app._button(app.invite_row,"복사",func(): DisplayServer.clipboard_set(app.invite_field.text); app._message("초대 링크를 복사했습니다."))
+	var copy_invite = app._button(app.invite_row,"복사",func(): pass)
+	copy_invite.pressed.connect(func():
+		DisplayServer.clipboard_set(app.invite_field.text)
+		if DisplayServer.clipboard_get()==app.invite_field.text:
+			app.ui_motion.confirm(copy_invite)
+			app._message("초대 링크를 복사했습니다.")
+		else: app._message("초대 링크를 복사하지 못했습니다."))
 	var player_card = app.match_ui.card(app.controls)
 	app.opponent_panel = preload("res://player_card(플레이어 정보 카드).gd").new()
 	player_card.add_child(app.opponent_panel)
@@ -219,11 +226,11 @@ func _build() -> void:
 	app.utility_actions = actions
 	action_card.add_child(actions)
 	app.sound_button = app._button(actions,"소리 켜짐",app._toggle_sound)
-	app.resign_button = app._button(actions,"기권",func(): app._confirm("기권하면 상대가 승리합니다.",func(): await app._act({"type":"resign"})),"danger")
-	app._button(actions,"나가기",app._leave_prompt)
+	app.resign_button = app._button(actions,"기권",func(): app.game_session.resign_prompt(),"danger")
+	app._button(actions,"나가기",app._leave_prompt).name = "LeaveMatch"
 	app.coach_label = app._label(action_card,"",16)
 	app.coach_label.add_theme_color_override("font_color",Color("#eed29a"))
-	app.action_hint = app._label(action_card,"",12)
+	app.action_hint = app._label(action_card,"",13)
 	app.action_hint.set_meta("match_muted",true)
 	app.action_hint.add_theme_color_override("font_color",app.ui_components._palette().muted)
 	app.action_details = app._label(action_card,"",12)
@@ -232,6 +239,8 @@ func _build() -> void:
 	action_card.add_child(app.over_controls)
 	app._button(app.over_controls,"재대결 제안 / 수락",func(): await app._act({"type":"rematch"}))
 	app._button(app.over_controls,"거절",func(): await app._act({"type":"rematch_decline"}))
+	setup_ui = preload("res://features/setup_ui(배치 준비 시각 안내).gd").new(app)
+	setup_ui.build(action_card)
 	var log_card = app.match_ui.card(app.controls,"킬로그")
 	log_card.get_child(0).add_theme_font_size_override("font_size",12)
 	app.feed_box = VBoxContainer.new()
@@ -242,14 +251,21 @@ func _build() -> void:
 	log_card.add_child(app.enemy_icons)
 	app.match_ui.build_history(app.controls)
 	app.chat.build()
-	app.notice = app._label(root,"",13)
+	app.match_ui.build_mobile_actions()
+	# Reserve one line so server messages cannot resize the board mid-turn.
+	var notice_slot := Control.new()
+	notice_slot.custom_minimum_size.y = 22
+	root.add_child(notice_slot)
+	app.notice = app._label(notice_slot,"",13)
+	app.notice.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	app.notice.autowrap_mode = TextServer.AUTOWRAP_OFF
+	app.notice.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	app.notice.hide()
 	app.spectating.build()
 	app.replay.build()
 	app._load_home_ranks.call_deferred()
+	app.game_ux.build(root)
 	app.game_left.minimum_size_changed.connect(app._layout.call_deferred)
-	app.notice.visibility_changed.connect(app._layout.call_deferred)
-	app.notice.minimum_size_changed.connect(app._layout.call_deferred)
 
 func _grid_panel(parent: Node) -> PanelContainer:
 	var panel = PanelContainer.new()
@@ -317,13 +333,17 @@ func _layout() -> void:
 	app.landing.move_child(app.ranking.get_parent(),1 if app.landing.vertical else 0)
 	app.subpage.custom_minimum_size.x = menu_width
 	app.split.vertical = available<780
+	# Mobile uses one page scroll; desktop keeps the bounded information rail.
+	app.controls_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED if app.split.vertical else ScrollContainer.SCROLL_MODE_AUTO
+	app.controls_scroll.size_flags_vertical = Control.SIZE_SHRINK_BEGIN if app.split.vertical else Control.SIZE_EXPAND_FILL
+	app.match_ui.layout_mobile_actions()
 	app.match_ui.mode_label.visible = app.size.x>=480
 	if is_instance_valid(app.spectating.flip_button):
 		app.spectating.flip_button.text = "↕" if available<400 else "보드 뒤집기"
 		app.spectating.flip_button.tooltip_text = "보드 뒤집기"
 	# Measure the actual chrome so cards, warnings and replay controls cannot push
 	# the board off a desktop window after changing their parent containers.
-	var frame_chrome: float = page_padding*2.0+app.match_ui.chrome.get_combined_minimum_size().y+app.game.get_theme_constant("separation")+(app.notice.get_combined_minimum_size().y+6 if app.notice.visible else 0)
+	var frame_chrome: float = page_padding*2.0+app.match_ui.chrome.get_combined_minimum_size().y+app.game.get_theme_constant("separation")+28
 	var chrome_height := frame_chrome
 	for child in app.game_left.get_children():
 		if child==app.board or not child.visible: continue
@@ -332,17 +352,20 @@ func _layout() -> void:
 	# A wide browser can exceed the old 640 px cap; a short one must still fit.
 	var board_width = available if app.split.vertical else minf(available-302,maxf(280,app.size.y-chrome_height))
 	app.board.custom_minimum_size = Vector2(board_width,board_width)
-	app.side_panel.custom_minimum_size = Vector2(board_width if app.split.vertical else 280,600 if app.split.vertical else board_width+chrome_height-frame_chrome)
+	app.side_panel.custom_minimum_size = Vector2(board_width if app.split.vertical else 280,0 if app.split.vertical else board_width+chrome_height-frame_chrome)
 	app.controls_scroll.custom_minimum_size = Vector2(0,0)
 	app.game_left.custom_minimum_size.x = board_width
 	for card in app.mode_cards:
-		if is_instance_valid(card): card.custom_minimum_size.y = 82 if menu_width<380 else 68
+		if is_instance_valid(card): card.custom_minimum_size.y = maxf(76,card.get_node("ModeCardContent").get_combined_minimum_size().y)
+	app.game_ux.update_scroll_bar.call_deferred()
 	app._nav_active("설정" if app.subpage.visible and app.subpage.get_child_count()>0 and app.subpage.get_child(0).text=="설정" else "플레이")
 
 func _navigation_home() -> void:
 	if app.room.is_empty():
 		app.subpage.hide()
 		app.home.show()
+		app.ui_motion.enter_screen.call_deferred(app.home)
+		app.game_ux.refresh_learning()
 		app._nav_active("플레이")
 	else:
 		app.subpage.hide()
@@ -356,6 +379,7 @@ func _subscreen(title: String, description: String="") -> VBoxContainer:
 	app.home.hide()
 	app.game.hide()
 	app.subpage.show()
+	app.ui_motion.enter_screen.call_deferred(app.subpage)
 	app.page_scroll.scroll_vertical = 0
 	var heading = app._label(app.subpage,title,30)
 	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -368,9 +392,10 @@ func _subscreen(title: String, description: String="") -> VBoxContainer:
 func _nav_active(text: String) -> void:
 	for button in app.nav_buttons:
 		var style = StyleBoxFlat.new()
-		style.bg_color = Color("#c69a5e") if button.get_meta("nav_label")==text else Color(0,0,0,0)
+		style.bg_color = Color(0,0,0,0)
 		style.set_corner_radius_all(12)
 		style.content_margin_left = 4 if app.size.x<=760 else 12
 		style.content_margin_right = 4 if app.size.x<=760 else 12
 		button.add_theme_stylebox_override("normal",style)
+		if button.get_meta("nav_label")==text: app.ui_motion.select_navigation(button)
 		button.add_theme_color_override("font_color",Color("#241d14") if button.get_meta("nav_label")==text else (Color("#453c32") if app.prefs.get_value("settings","light",false) else Color("#b6b0a6")))

@@ -38,22 +38,41 @@ func _update_selection_ui() -> void:
 		app.selection_label.text = "%s · %s%d" % [app.NAMES.get(app.selection.t,"기물"),String.chr(97+cell.y),cell.x+1]
 		app.selection_icon.texture = app.board.textures.get(str(app.selection.t).to_lower()+("l" if app.selection.o=="W" else "d"))
 		app.action_details.text = {"B":"저격: 사거리 5 안의 보이는 적만 공격합니다. 사격 후 내 위치가 노출됩니다.","R":"돌파 사격: 상하좌우 최대 4칸을 관통합니다. 숲에 막히며 아군도 맞습니다. 빈 방향에도 턴을 사용합니다.","Q":"스캔: 선택 칸을 시작으로 2×2를 감시합니다. 적이 없어도 턴을 사용하며 퀸 위치는 노출되지 않습니다."}.get(app.selection.t,"이동·포획은 표시된 칸에서 가능합니다. 안개 속 이동은 숨은 적에게 가로막힐 수 있습니다.")
-		app.coach_label.text = {"choose":"어떤 행동을 할까요?","move":"이동할 칸을 선택하세요","attack":"표시된 적을 선택하세요","fire":"저격할 적을 선택하세요","barrage":"사격 방향을 선택하세요","scan":"스캔 지점을 선택하세요"}.get(shown_mode,"내 진영에 배치하세요")
-		app.action_hint.text = {"choose":"기물 옆 아이콘을 선택하세요.\n마우스를 올리면 범위를 볼 수 있어요.","move":"1턴 사용 · 안개 속 경로 주의","attack":"1턴 사용 · 포획","fire":"1턴 사용 · 발사 후 위치 노출","barrage":"1턴 사용 · 아군 피격 / 위치 노출","scan":"1턴 사용 · 2×2 감시"}.get(shown_mode,"")
+		app.coach_label.text = {"choose":"","move":"이동할 칸을 선택하세요","attack":"표시된 적을 선택하세요","fire":"저격할 적을 선택하세요","barrage":"사격 방향을 선택하세요","scan":"스캔 지점을 선택하세요"}.get(shown_mode,"내 진영에 배치하세요")
+		app.action_hint.text = {"choose":"","move":"1턴 사용 · 안개 속 경로 주의","attack":"1턴 사용 · 포획","fire":"1턴 사용 · 발사 후 위치 노출","barrage":"1턴 사용 · 아군 피격 / 위치 노출","scan":"1턴 사용 · 2×2 감시"}.get(shown_mode,"")
 		if shown_mode=="fire" and app.board.targets.is_empty(): app.coach_label.text="저격 표적 없음"; app.action_hint.text="사거리만 확인할 수 있습니다"
 		elif shown_mode=="move" and app.view.get("phase")=="play" and app.board.targets.is_empty(): app.coach_label.text="이동 가능한 칸이 없습니다"
 		elif shown_mode=="attack" and app.board.targets.is_empty(): app.coach_label.text="포획 가능한 적이 없습니다"
 		elif shown_mode=="choose" and app.moves.get("canFire",false) and app.moves.get("fireCells",[]).is_empty(): app.action_hint.text="저격 표적 없음 · 사거리 확인 가능"
+		if app.moves.get("reloading",false):
+			app.action_hint.text = "? 재장전 중 · 사격은 다음 내 차례부터"
+			if shown_mode in ["fire","barrage"]: app.coach_label.text = "재장전 중"
+		if app.selection.t in ["B","R"]:
+			app.action_details.text += "\n사격 후 다음 내 차례 한 번은 재장전합니다. 재장전은 이동·포획을 제한하지 않습니다. 실제 가능한 칸은 보드 표시를 확인하세요."
 		if int(app.board.tile(cell).get("t",0))==3:
 			app.action_hint.text += "\n부쉬 안 · 연결 시야 공유"
 			app.action_details.text += "\n부쉬 안에서도 스캔이나 공격 노출로 발각될 수 있습니다."
+		for exposure in app.view.get("exposed",[]):
+			if exposure.get("pid")==app.selection.get("id"):
+				app.action_hint.text += "\n! 이 기물: 상대에게 위치가 보이는 중입니다"
+				app.action_details.text += "\n상대의 실제 시야에 들어온 상태입니다. 다시 은폐되면 ! 표시가 사라집니다. 누가 보고 있는지는 알려주지 않습니다."
+				break
 	if app.view.get("phase")=="setup":
-		app.coach_label.text = "내 진영에 배치한 뒤 준비 완료"
-		app.action_hint.text = "내 진영 3줄 안에서 배치"
+		app.coach_label.text = "준비 완료 · 상대를 기다리는 중" if app.view.get("ready",false) else "현재 배치로 준비 완료"
+		app.action_hint.text = "모두 준비하거나 시간이 끝나면 시작"
 		app.action_details_button.hide()
 		app.action_details.hide()
 
+	if not app.game_session.request_status.is_empty():
+		app.coach_label.text = app.game_session.request_status
+	_sync_instruction_visibility()
 	app.match_ui.render_selection()
+	if app.ui_shell.setup_ui!=null: app.ui_shell.setup_ui.render()
+
+func _sync_instruction_visibility() -> void:
+	app.action_hint.text = app.action_hint.text.strip_edges()
+	app.coach_label.visible = not app.coach_label.text.is_empty()
+	app.action_hint.visible = not app.action_hint.text.is_empty()
 
 func _invalid_target(cell: Vector2i) -> void:
 	var reason := "표시된 대상만 선택할 수 있습니다."
@@ -66,7 +85,9 @@ func _invalid_target(cell: Vector2i) -> void:
 	elif app.mode=="attack": reason="현재 표시된 포획 가능한 적을 선택하세요."
 	elif app.mode=="move": reason="이 기물의 이동 범위·경로를 확인하세요."
 	app.coach_label.text = reason
-	app.action_hint.text = "턴 소모 없음 · 우클릭으로 취소"
+	app.action_hint.text = "턴 소모 없음 · × 선택 취소" if app.split.vertical else "턴 소모 없음 · Esc / 우클릭 취소"
+	_sync_instruction_visibility()
+	app.match_ui.render_mobile_actions()
 
 func _set_mode(value: String) -> void:
 	app._choose_action(value)
@@ -80,7 +101,8 @@ func _move_targets(captures: bool) -> Array:
 	return result
 
 func _choose_action(value: String) -> void:
-	if app.busy or app.selection.is_empty() or app.view.get("phase")!="play" or app.view.get("turn")!=app.view.get("yourColor"): return
+	if app.busy or app.game_session.awaiting_state or app.selection.is_empty() or app.view.get("phase")!="play" or app.view.get("turn")!=app.view.get("yourColor"): return
+	if value in ["fire","barrage"] and app.moves.get("reloading",false): return
 	preview_mode = ""
 	app.mode = value
 	app.action_menu.dismiss(app.board.effects)
@@ -90,19 +112,27 @@ func _choose_action(value: String) -> void:
 	app._update_selection_ui()
 
 func _show_actions(animate: bool=true) -> void:
+	if app.selection.is_empty() or app.busy or app.game_session.awaiting_state or app.view.get("phase")!="play" or app.view.get("turn")!=app.view.get("yourColor"): return
 	preview_mode = ""
 	var ability = "none"
 	for pair in [["canFire","fire"],["canBarrage","barrage"],["canScan","scan"]]:
 		if app.moves.get(pair[0],false): ability = pair[1]
+	var reloading: bool = app.moves.get("reloading",false)
+	if reloading: ability = "fire" if app.selection.t=="B" else "barrage"
 	app.mode = "choose"
 	app.board.targets = []
 	app.board.ranges = []
-	app.action_menu.open_at(app.board.center(app.selection.cell),ability,[not app._move_targets(true).is_empty(),ability!="none",not app._move_targets(false).is_empty()],bool(app.prefs.get_value("settings","light",false)),app.board.effects and animate)
+	app.action_menu.open_at(app.board.center(app.selection.cell),ability,[not app._move_targets(true).is_empty(),ability!="none" and not reloading,not app._move_targets(false).is_empty()],bool(app.prefs.get_value("settings","light",false)),app.board.effects and animate)
 	if app._move_targets(true).is_empty(): app.action_menu.buttons[0].tooltip_text = "공격 불가 · 현재 포획 가능한 보이는 적이 없습니다"
 	if app._move_targets(false).is_empty(): app.action_menu.buttons[2].tooltip_text = "이동 불가 · 이동 후보 없음 (경로/아군/지형 확인)"
 	if ability=="fire" and app.moves.get("fireCells",[]).is_empty(): app.action_menu.buttons[1].tooltip_text = "저격 표적 없음 · 사거리 미리보기만 가능"
+	if reloading:
+		app.action_menu.buttons[1].tooltip_text = "재장전 중 · 이번 내 차례가 끝나면 다시 사격할 수 있습니다"
+		app.action_menu.buttons[1].caption = "재장전"
+		app.action_menu.buttons[1].queue_redraw()
 
 func _select(cell: Vector2i) -> void:
+	if app.game_session.awaiting_state: return
 	var p: Variant = app.board.tile(cell).get("p")
 	if not p is Dictionary or not p.has("id") or p.o!=app.view.get("yourColor"): return
 	app.selection = p.duplicate()
@@ -124,7 +154,7 @@ func _select(cell: Vector2i) -> void:
 	app._update_selection_ui()
 
 func _tap(cell: Vector2i) -> void:
-	if app.busy or app.view.is_empty() or app.view.get("phase")=="over" or app.view.get("promote"): return
+	if app.busy or app.game_session.awaiting_state or app.view.is_empty() or app.view.get("phase")=="over" or app.view.get("promote"): return
 	if app.seat=="spectator":
 		app.spectating.inspect(cell)
 		return
@@ -144,7 +174,7 @@ func _tap(cell: Vector2i) -> void:
 
 func _drag(origin: Vector2i,target: Vector2i) -> void:
 	if app.seat=="spectator": return
-	if app.busy or app.view.is_empty() or app.view.get("phase")=="over" or app.view.get("promote"): return
+	if app.busy or app.game_session.awaiting_state or app.view.is_empty() or app.view.get("phase")=="over" or app.view.get("promote"): return
 	if app.view.get("phase")=="play" and app.view.get("turn")!=app.view.get("yourColor"): return
 	app._clear_selection()
 	await app._select(origin)
@@ -164,6 +194,8 @@ func _preview_action(value: String) -> void:
 	if value=="none":
 		app.coach_label.text = "이 기물은 고유 능력이 없습니다"
 		app.action_hint.text = "공격 또는 이동을 선택하세요."
+		_sync_instruction_visibility()
+		app.match_ui.render_mobile_actions()
 
 func _reposition_actions() -> void:
 	if app.selection.is_empty() or app.mode!="choose" or not app.action_menu.opened: return

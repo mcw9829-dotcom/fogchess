@@ -213,7 +213,7 @@ def _barrage_flush(st, me, cands):
     cw = {(r, c): w for (r, c, w) in cands}
     best = None
     for p in _mine(st, me):
-        if p['t'] != 'R':
+        if p['t'] != 'R' or pieces.is_reloading(st, p['id']):
             continue
         for dr, dc in DIRS4:
             reach, swept, blocked = 0.0, [], False
@@ -344,10 +344,10 @@ def _attack_candidates(st, me, enemies):
                               'move', p['id'], er, ec))
         if et == 'K' or val >= 3:                        # 값진 표적을 비숍 저격(사거리5·시야에 든 적)
             for p in mine:
-                if p['t'] == 'B' and (er - p['r']) ** 2 + (ec - p['c']) ** 2 <= BISHOP_RANGE ** 2:
+                if p['t'] == 'B' and not pieces.is_reloading(st, p['id']) and (er - p['r']) ** 2 + (ec - p['c']) ** 2 <= BISHOP_RANGE ** 2:
                     cands.append((val * 9 + kbonus, 'fire', p['id'], er, ec))
     for p in mine:                                       # 전차 돌파사격(십자 첫 기물이 보이는 적)
-        if p['t'] != 'R':
+        if p['t'] != 'R' or pieces.is_reloading(st, p['id']):
             continue
         for dr, dc in DIRS4:
             hit = _first_piece_in_line(st, p, dr, dc)
@@ -469,7 +469,7 @@ def _advance(st, me, enemies, remembered):
         for (mr, mc) in pieces.legal_moves(st, p['id']):
             s = (abs(p['r'] - tr) + abs(p['c'] - tc)) - (abs(mr - tr) + abs(mc - tc))
             if p['t'] == 'N':
-                s += 0.3                            # 나이트 정찰 선호(시야 3)
+                s += 0.3                            # 나이트 정찰 선호(시야 2)
             s += ((p['r'] * 7 + p['c'] * 13 + mr * 3 + mc) % 5) * 0.01
             if best_s is None or s > best_s:
                 best_s, best = s, ('move', p['id'], mr, mc)

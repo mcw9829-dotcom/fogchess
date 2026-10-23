@@ -81,3 +81,15 @@ python tools/prepare_release.py
 2026-10-22 폴더 정리: 실행 명령과 정적 파일 경로를 함께 갱신했습니다.
 구조 지도와 날짜별 QA 보고서는 작성 당시의 파일 경로를 담은 기록입니다.
 현재 위치는 이 README와 [이동 목록](<docs/폴더 정리(이동 목록).txt>)을 기준으로 확인하세요.
+
+## 바탕화면 작업 공간
+
+이 개발 폴더의 상위 폴더에 처음 읽기.txt가 있습니다.
+
+- ../references/design-references/: 과거 UI 시안과 검토 자료
+- ../backups/2026-10-23/: 원본 ZIP, 전달용 패치·해시 목록, 파일 정리 기록
+- HOME_HANDOFF.md: 개발 결정과 현재 인수인계
+- .dev-data/: 이 PC의 개발 DB·서버 로그·Godot 엔진·Python 테스트 환경
+
+원본 백업의 manifest.json은 백업 당시의 파일 배치와 해시를 검증하는 자료입니다.
+현재 작업 공간의 파일 배치 변경은 organization-record.json에 별도로 기록합니다.

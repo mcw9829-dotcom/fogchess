@@ -1,0 +1,34 @@
+{
+  "icons": 17,
+  "svg_files": 34,
+  "refined_shapes": [
+    "rank",
+    "replay",
+    "join",
+    "practice",
+    "settings"
+  ],
+  "palettes": {
+    "dark": {
+      "surface": "#202c40",
+      "outline": "#516885",
+      "primary": "#ffcf73",
+      "secondary": "#c3d9f4"
+    },
+    "light": {
+      "surface": "#edf3ff",
+      "outline": "#a9bed9",
+      "primary": "#955600",
+      "secondary": "#284e7b"
+    }
+  },
+  "checks": {
+    "icon-theme": 135,
+    "menu-rating": 55
+  },
+  "total_passed": 190,
+  "theme_behavior": "Inherited Theme constant updates existing and newly opened icons, including modal windows. Dark/light resources cached separately.",
+  "limits": [
+    "Native Godot verified; physical mobile and web export not run."
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "date": "2026-10-23",
+  "style": "Material Standard",
+  "tests": {
+    "Material UI": {
+      "passed": 32,
+      "marker": "MATERIAL_UI_FAILURES=0",
+      "warnings": []
+    },
+    "보드 UI": {
+      "passed": 128,
+      "marker": "BOARD_FOCUS_FAILURES=0",
+      "warnings": []
+    },
+    "게임 통합": {
+      "passed": 255,
+      "marker": "GODOT_SMOKE_FAILURES=0",
+      "warnings": []
+    },
+    "기존 UX": {
+      "passed": 58,
+      "marker": "EXPERT_UI_FAILURES=0",
+      "warnings": []
+    }
+  },
+  "total_passed": 473,
+  "protected_files_unchanged": 328,
+  "scope": "Local Godot source; native desktop and simulated viewport verification; no web rebuild or deployment."
+}

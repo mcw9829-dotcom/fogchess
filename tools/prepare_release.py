@@ -17,6 +17,7 @@ def main():
     parser.add_argument('--skip-export', action='store_true', help='Validate an already exported build')
     args = parser.parse_args()
     if not args.skip_export:
+        WEB.mkdir(parents=True, exist_ok=True)
         result = subprocess.run([args.godot, '--headless', '--path', str(ROOT / 'godot'),
                                  '--export-release', 'Web'], cwd=ROOT, capture_output=True, timeout=180)
         output = (result.stdout + result.stderr).decode('utf-8', errors='replace')

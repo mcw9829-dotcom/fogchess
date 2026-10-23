@@ -97,7 +97,7 @@ func _tap(cell: Vector2i) -> void:
 
 func _render() -> void:
 	var titles := ["1 / 3   부쉬에 들어가 적 발견","2 / 3   스캔으로 왕 찾기","3 / 3   보이는 왕 저격","미션 완료!"]
-	var messages := ["나이트 선택 → 이동 아이콘 → 표시된 칸을 누르세요.\n\n부쉬에 들어가면 상하좌우로 이어진 덤불 안의 적이 보입니다. 대각선만 닿은 덤불은 별개입니다.","퀸 선택 → 기물 옆 스캔 아이콘 → 표시된 영역을 누르세요.\n\n퀸은 멀리 있는 2×2를 감시할 수 있습니다.","비숍 선택 → 기물 옆 저격 아이콘 → 발견한 왕을 누르세요.\n\n비숍은 사거리 안의 보이는 적을 저격합니다.","부쉬 시야 공유 → 스캔 → 저격을 배웠습니다.\n\n실제 대국에서도 적 왕을 잡으면 승리합니다. 이제 쉬움 봇과 플레이해보세요."]
+	var messages := ["나이트 선택 → 이동 아이콘 → 표시된 칸을 누르세요.\n\n나이트는 주변 2칸을 봅니다. 부쉬에 들어가면 상하좌우로 이어진 덤불 안의 적이 보입니다. 대각선만 닿은 덤불은 별개입니다.","퀸 선택 → 기물 옆 스캔 아이콘 → 표시된 영역을 누르세요.\n\n퀸은 멀리 있는 2×2를 감시할 수 있습니다.","비숍 선택 → 기물 옆 저격 아이콘 → 발견한 왕을 누르세요.\n\n비숍은 사거리 안의 보이는 적을 저격합니다.","부쉬 시야 공유 → 스캔 → 저격을 배웠습니다.\n\n실제 대국에서도 적 왕을 잡으면 승리합니다. 이제 쉬움 봇과 플레이해보세요."]
 	heading.text = titles[step]
 	hint.text = messages[step] + "\n\n시간제한 없는 고정 연습판 · 전적 미반영"
 	ability.visible = false
@@ -112,7 +112,7 @@ func _render() -> void:
 		for c in range(12):
 			var visible := step>=2 and r in [1,2] and c in [5,6]
 			for p in units:
-				if p.o=="W" and maxi(absi(r-p.r),absi(c-p.c))<=(3 if p.t=="N" else 1): visible=true
+				if p.o=="W" and maxi(absi(r-p.r),absi(c-p.c))<=(2 if p.t=="N" else 1): visible=true
 			var bush: bool = r==4 and c>=1 and c<=7
 			if bush and step>=1: visible=true
 			var piece: Variant = null

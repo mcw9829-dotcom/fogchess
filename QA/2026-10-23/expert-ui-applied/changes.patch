@@ -1,0 +1,1259 @@
+--- a/HOME_HANDOFF.md
++++ b/HOME_HANDOFF.md
+@@ -123,4 +123,24 @@
+ - 보고서·레퍼런스·변경 후 화면·검사 로그: QA/2026-10-23/ui-improvements/UI-개선.md.
+ - 수정 전 원본 소스·검사 파일: ../backups/2026-10-23/before-ui-improvements/.
+ - 로컬 Godot 소스에 반영했다. 실행 중인 게임은 다시 실행해야 최신 UI를 읽는다.
+-- 웹 빌드는 갱신하지 않았고 Git 커밋·푸시·운영 배포도 하지 않았다.+- 웹 빌드는 갱신하지 않았고 Git 커밋·푸시·운영 배포도 하지 않았다.
++
++## 전문가 검토 UI·UX 8개 항목 적용 (2026-10-23)
++
++- 사용자가 세 관점의 검토 보고서를 확인한 뒤 8개 개선안을 모두 승인하여 로컬 Godot 소스에 적용했다.
++- 튜토리얼 나이트 시야를 서버의 반경 2와 일치시켰다. 서버 규칙과 보드·기물·숲·부쉬·폰트는 변경하지 않았다.
++- 현재 행동과 일반 재장전 규칙을 분리하고, 기물/좌표/행동과 행동 바꾸기를 제공한다. 터치 오입력 안내는 × 취소를 사용한다.
++- 모바일은 기존 단일 스크롤을 유지한다. 원래 시간 카드가 스크롤 밖에 있을 때만 화면 위에 시간·보드 복귀 바가 나타난다. 선택 상태를 보존한다.
++- 기권과 기권 후 나가기의 위험 계열을 통일하고 결과 화면/홈 이동을 확인창에 명시한다. 취소를 기본 포커스로 두며 취소 시 기존 메뉴/포커스로 복귀한다. 필수 승격창은 Esc로 닫지 못한다.
++- 홈 직접 학습 → 쉬움 봇 연결, 인트로의 학습/바로 시작 경로, 기본 배치를 유지한 준비 완료 안내를 추가했다.
++- 내 전체 노출 수와 선택 기물 노출을 구분한다. 컴퓨터·혼자 연습에서 안개/노출/재장전 상황 학습을 제공하며 설정의 연습 학습 안내로 끄고 켤 수 있다.
++- 보드 바깥 주요 아이콘을 44×44 논리 단위로 확대하고 도움말에서 터치/키보드로 행동 설명·선택·취소에 접근하게 했다. 의미 변화만 접근성 상태 알림으로 제공한다.
++- 교전 기록은 최근 3건을 기본 유지하고 현재 받은 공개 기록을 펼칠 수 있다. 판/시리즈 결과와 다음 판 문구를 구분한다.
++- 응답이 350ms 넘게 지연되면 행동 전달 중을 표시한다. 네트워크 응답 유실은 결과 확인 중으로 표시하며 새 상태 수신 전 중복 행동을 막는다. 자동 행동 재제출은 없다.
++- 관련 기능은 godot/features/game_ux(학습·기록·접근성).gd에 분리했다.
++- 검증: 보드 UI 128개, Godot 통합 256개, 새 UX 58개 = 442개 통과. 보호 파일 328개 해시 일치.
++- 새 검사: python tests/run_expert_ui_smoke.py --capture. 느린 응답/유실/복구는 임시 가짜 API로 재현한다. 기존 두 검사도 그대로 유지한다.
++- 이전 검토용 캡처의 bot RuntimeError는 Windows multiprocessing에서 가드 없는 캡처 래퍼가 재실행된 문제였다. 래퍼 진입점에 __main__ 가드를 넣은 뒤 실제 봇 응답 통합 검사가 통과했다. 서버 봇 코드는 바꾸지 않았다.
++- 변경 전 백업: ../backups/2026-10-23/before-expert-ui. 보고서/캡처/검사로그: QA/2026-10-23/expert-ui-applied.
++- 실제 모바일 기기·스크린리더 낭독·독립 사용자 실험은 미실시. 보드 자체의 키보드 입력 방식은 그대로다.
++- 웹 배포본 재빌드, 운영 배포, Git 커밋·푸시는 하지 않았다. 네이티브 Godot을 다시 실행하면 최신 UI가 표시된다.
+--- a/godot/main(게임 시작·기능 연결).gd
++++ b/godot/main(게임 시작·기능 연결).gd
+@@ -17,6 +17,8 @@
+ var chat = preload("res://features/chat(대전 채팅).gd").new(self)
+ 
+ var replay = preload("res://features/replay(기보 저장·수순 재생).gd").new(self)
++
++var game_ux = preload("res://features/game_ux(학습·기록·접근성).gd").new(self)
+ 
+ func _ready() -> void:
+ 	prefs.load("user://client.cfg")
+--- a/godot/tutorial(튜토리얼 진행).gd
++++ b/godot/tutorial(튜토리얼 진행).gd
+@@ -97,7 +97,7 @@
+ 
+ func _render() -> void:
+ 	var titles := ["1 / 3   부쉬에 들어가 적 발견","2 / 3   스캔으로 왕 찾기","3 / 3   보이는 왕 저격","미션 완료!"]
+-	var messages := ["나이트 선택 → 이동 아이콘 → 표시된 칸을 누르세요.\n\n부쉬에 들어가면 상하좌우로 이어진 덤불 안의 적이 보입니다. 대각선만 닿은 덤불은 별개입니다.","퀸 선택 → 기물 옆 스캔 아이콘 → 표시된 영역을 누르세요.\n\n퀸은 멀리 있는 2×2를 감시할 수 있습니다.","비숍 선택 → 기물 옆 저격 아이콘 → 발견한 왕을 누르세요.\n\n비숍은 사거리 안의 보이는 적을 저격합니다.","부쉬 시야 공유 → 스캔 → 저격을 배웠습니다.\n\n실제 대국에서도 적 왕을 잡으면 승리합니다. 이제 쉬움 봇과 플레이해보세요."]
++	var messages := ["나이트 선택 → 이동 아이콘 → 표시된 칸을 누르세요.\n\n나이트는 주변 2칸을 봅니다. 부쉬에 들어가면 상하좌우로 이어진 덤불 안의 적이 보입니다. 대각선만 닿은 덤불은 별개입니다.","퀸 선택 → 기물 옆 스캔 아이콘 → 표시된 영역을 누르세요.\n\n퀸은 멀리 있는 2×2를 감시할 수 있습니다.","비숍 선택 → 기물 옆 저격 아이콘 → 발견한 왕을 누르세요.\n\n비숍은 사거리 안의 보이는 적을 저격합니다.","부쉬 시야 공유 → 스캔 → 저격을 배웠습니다.\n\n실제 대국에서도 적 왕을 잡으면 승리합니다. 이제 쉬움 봇과 플레이해보세요."]
+ 	heading.text = titles[step]
+ 	hint.text = messages[step] + "\n\n시간제한 없는 고정 연습판 · 전적 미반영"
+ 	ability.visible = false
+@@ -112,7 +112,7 @@
+ 		for c in range(12):
+ 			var visible := step>=2 and r in [1,2] and c in [5,6]
+ 			for p in units:
+-				if p.o=="W" and maxi(absi(r-p.r),absi(c-p.c))<=(3 if p.t=="N" else 1): visible=true
++				if p.o=="W" and maxi(absi(r-p.r),absi(c-p.c))<=(2 if p.t=="N" else 1): visible=true
+ 			var bush: bool = r==4 and c>=1 and c<=7
+ 			if bush and step>=1: visible=true
+ 			var piece: Variant = null
+--- a/godot/features/game_display(타이머·킬로그·기물·결과).gd
++++ b/godot/features/game_display(타이머·킬로그·기물·결과).gd
+@@ -113,7 +113,7 @@
+ func _render_feed() -> void:
+ 	var feed: Array = app.view.get("feed",[])
+ 	var captured: Array = app.view.get("captured",[])
+-	var signature = str([feed,captured,app.view.get("capturedBy",{}),app.view.get("yourColor"),app.room,app.prefs.get_value("settings","light",false)])
++	var signature = str([app.game_ux.feed_expanded,feed,captured,app.view.get("capturedBy",{}),app.view.get("yourColor"),app.room,app.prefs.get_value("settings","light",false)])
+ 	if signature==app.feed_signature: return
+ 	var previous = app.feed_signature
+ 	app.feed_signature = signature
+@@ -148,7 +148,7 @@
+ 	var light: bool = app.prefs.get_value("settings","light",false)
+ 	var mine_color := Color("#76521e") if light else Color("#dfac50")
+ 	var opponent_color := Color("#285d89") if light else Color("#8ab5e0")
+-	var reversed = feed.slice(maxi(0,feed.size()-3)).duplicate()
++	var reversed = feed.slice(0 if app.game_ux.feed_expanded else maxi(0,feed.size()-3)).duplicate()
+ 	reversed.reverse()
+ 	for entry in reversed:
+ 		var mine = entry.get("actor")==("W" if app.seat=="spectator" else app.view.get("yourColor"))
+@@ -238,6 +238,9 @@
+ 	app.result_score.visible = not series.is_empty()
+ 	if not series.is_empty():
+ 		app.result_score.text = "나  %d  :  %d  상대" % [int(series.me),int(series.opp)]
++		if not solo:
++			app.result_label.text = ("시리즈 승리" if series.get("winner")==app.view.get("yourColor") else "시리즈 패배") if series.get("complete",false) else ("이번 판 무승부" if app.view.get("winner")=="draw" else ("이번 판 승리" if won else "이번 판 패배"))
++		if not series.get("complete",false): reason += " · 먼저 2승하면 종료"
+ 		if series.complete: reason += " · 시리즈 승리" if series.winner==app.view.get("yourColor") else " · 시리즈 패배"
+ 		elif series.final: reason += " · 다음은 최종전"
+ 		elif app.view.get("winner")=="draw": reason += " · 무승부는 승수 제외"
+@@ -255,21 +258,22 @@
+ 	elif series.get("complete",false):
+ 		app._label(app.result_actions,"2선승 시리즈 종료 · 재대결 불가",14)
+ 		app._button(app.result_actions,"새 랭크 매칭",func(): app._return_home(); await app._match_command("join"),"primary")
+-		app._button(app.result_actions,"로비로",app._return_home)
++		app._button(app.result_actions,"홈으로",app._return_home)
+ 	elif not app.view.get("oppConnected",false):
+ 		app._label(app.result_actions,"상대가 나갔어요",14)
+-		app._button(app.result_actions,"나가기",app._leave_prompt)
++		app._button(app.result_actions,"홈으로",app._leave_prompt)
+ 	elif rematch.get("me",false) and not rematch.get("opp",false):
+-		app._label(app.result_actions,"재대결을 제안했어요 · 상대 응답 대기 중…",14)
++		app._label(app.result_actions,"다음 판을 제안했어요 · 상대 응답 대기 중…",14)
+ 		app._button(app.result_actions,"제안 취소",func(): await app._act({"type":"rematch_decline"}))
+-		app._button(app.result_actions,"나가기",app._leave_prompt)
++		app._button(app.result_actions,"홈으로",app._leave_prompt)
+ 	elif rematch.get("opp",false) and not rematch.get("me",false):
+-		app._label(app.result_actions,"상대가 재대결을 제안했어요"+(" · 수락하면 같은 상대와 새 레이팅전(배치부터)" if app.view.get("rated",false) else ""),14)
+-		app._button(app.result_actions,"수락 · 재대결",func(): await app._act({"type":"rematch"}),"primary")
++		app._label(app.result_actions,"상대가 다음 판을 제안했어요"+(" · 수락하면 같은 상대와 새 레이팅전(배치부터)" if app.view.get("rated",false) else ""),14)
++		app._button(app.result_actions,"다음 판 수락",func(): await app._act({"type":"rematch"}),"primary")
+ 		app._button(app.result_actions,"거절",func(): await app._act({"type":"rematch_decline"}))
+ 	else:
+-		app._button(app.result_actions,"재대결 제안",func(): await app._act({"type":"rematch"}),"primary")
+-		app._button(app.result_actions,"나가기",app._leave_prompt)
++		if app.view.get("rated",false): app._label(app.result_actions,"다음 판도 새 레이팅전 · 배치부터 시작",12)
++		app._button(app.result_actions,"다음 판 제안",func(): await app._act({"type":"rematch"}),"primary")
++		app._button(app.result_actions,"홈으로",app._leave_prompt)
+ 		app._label(app.result_actions,"나가도 이번 판 결과는 그대로예요"+(" · 추가 레이팅 변동 없음" if app.view.get("rated",false) else ""),12)
+ 	if app.view.get("replayId") and not app.replay.active:
+ 		app._button(app.result_actions,"기보 / 리플레이 보기",func(): await app.replay.open(str(app.view.replayId),app.token),"tertiary")
+@@ -280,7 +284,7 @@
+ 			child.custom_minimum_size.x = 200
+ 
+ func _game_menu() -> void:
+-	var pair = app._small_window("대국 메뉴",480,500)
++	var pair = app._small_window("대국 메뉴",480,560)
+ 	pair[0].name = "MatchMenu"
+ 	var box: VBoxContainer = pair[1]
+ 	box.add_theme_constant_override("separation",12)
+@@ -323,9 +327,11 @@
+ 	exit_actions.add_theme_constant_override("separation",10)
+ 	box.add_child(exit_actions)
+ 	if app.view.get("phase") in ["setup","play"] and app.seat!="spectator" and not app.replay.active:
+-		var resign := _menu_button(exit_actions,"기권",func(): pair[0].queue_free(); app._confirm("기권하면 상대가 승리합니다.",func(): await app._act({"type":"resign"})),"danger")
++		var resign := _menu_button(exit_actions,"기권",func(): app.game_session.resign_prompt(),"danger")
+ 		resign.name = "ResignMatch"
+-	var leave := _menu_button(exit_actions,app.game_session.leave_label(),func(): pair[0].queue_free(); app._leave_prompt())
++	var leave := _menu_button(exit_actions,app.game_session.leave_label(),func(): app._leave_prompt(),"danger" if app.game_session.leave_is_resignation() else "secondary")
++	var exit_note: Label = app._label(box,"",12)
++	exit_note.name = "ExitConsequences"
+ 	leave.name = "LeaveMatch"
+ 	_refresh_menu()
+ 	resume.grab_focus()
+@@ -343,7 +349,9 @@
+ 	if is_instance_valid(leave):
+ 		leave.text = app.game_session.leave_label()
+ 		leave.accessibility_name = leave.text
++		app.ui_components._style_button(leave,"danger" if app.game_session.leave_is_resignation() else "secondary")
+ 		leave.tooltip_text = "확인 후 기권 패배로 처리하고 홈으로 돌아갑니다." if app.game_session.leave_is_resignation() else "홈으로 돌아갑니다."
++	menu.find_child("ExitConsequences",true,false).text = "둘 다 기권 패배입니다.\n기권: 결과 화면 · 기권 후 나가기: 홈으로" if app.game_session.leave_is_resignation() else ""
+ 	var resign: Button = menu.find_child("ResignMatch",true,false)
+ 	if is_instance_valid(resign): resign.visible = app.view.get("phase") in ["setup","play"] and app.seat!="spectator" and not app.replay.active
+ 
+@@ -368,7 +376,7 @@
+ 
+ func _board_help() -> void:
+ 	var pair = app._window("보드 표시 도움말")
+-	app._label(pair[1],"● 이동할 수 있는 칸\n◎ 공격 가능한 대상\n색칠된 사각형: 능력 적용 범위\n어두운 칸: 시야 밖 — 적의 유무를 알 수 없음\n부쉬: 은폐 지형\n\n기물 클릭 → 행동 아이콘 → 목표 선택\n같은 기물 재클릭 / 우클릭 / Esc: 선택 취소\n드래그 이동도 사용할 수 있습니다.\n이동 중 숨은 적을 만나면 그 칸에서 포획하고 멈춥니다.\n내 기물의 ! 표시: 상대에게 위치가 보이는 중입니다.\n모든 기물에 적용되며, 다시 은폐되면 사라집니다.\n부쉬 안에서도 연결된 부쉬의 적·스캔·사격 노출로 보일 수 있습니다.\n내 기물의 파란 ? 표시: 사격 후 내 차례 한 턴 동안 재장전 중입니다. 이동·포획은 가능합니다.\n승격 선택 시간이 끝나면 전차로 자동 승격합니다.",14)
++	app._label(pair[1],"● 이동할 수 있는 칸\n◎ 공격 가능한 대상\n색칠된 사각형: 능력 적용 범위\n어두운 칸: 시야 밖 — 적의 유무를 알 수 없음\n부쉬: 은폐 지형\n\n기물 클릭 → 행동 아이콘 → 목표 선택\n같은 기물 재선택 / 선택 안내의 × / 우클릭 / Esc: 선택 취소\n? 도움말: 호버 없이 행동 설명과 행동 변경 버튼 확인\n키보드: Tab 이동 · Enter 선택 · Esc 취소\n드래그 이동도 사용할 수 있습니다.\n이동 중 숨은 적을 만나면 그 칸에서 포획하고 멈춥니다.\n내 기물의 ! 표시: 상대에게 위치가 보이는 중입니다.\n모든 기물에 적용되며, 다시 은폐되면 사라집니다.\n부쉬 안에서도 연결된 부쉬의 적·스캔·사격 노출로 보일 수 있습니다.\n내 기물의 파란 ? 표시: 사격 후 내 차례 한 턴 동안 재장전 중입니다. 재장전은 이동·포획을 제한하지 않습니다. 실제 가능한 칸은 보드 표시로 확인하세요.\n승격 선택 시간이 끝나면 전차로 자동 승격합니다.",14)
+ 
+ func _compact_history(line: String) -> String:
+ 	for event in ["resign","timeout","disconnect"]:
+--- a/godot/features/game_session(입장·재접속·서버 통신).gd
++++ b/godot/features/game_session(입장·재접속·서버 통신).gd
+@@ -1,6 +1,9 @@
+ extends RefCounted
+ ## Feature implementation. Shared scene state and cross-feature entry points live on app.
+ var app
++var request_status := ""
++var awaiting_state := false
++var request_serial := 0
+ 
+ func _init(context: Control) -> void:
+ 	app = context
+@@ -22,6 +25,8 @@
+ 	app.room = str(data.room)
+ 	app.token = str(data.token)
+ 	app.seat = str(data.color)
++	reset_request()
++	app.game_ux.reset_room()
+ 	app.chat.reset()
+ 	app.view = {}
+ 	app.spectating.last_count = -1
+@@ -64,6 +69,7 @@
+ 	app._apply_state(response)
+ 
+ func _apply_state(data: Dictionary) -> void:
++	if awaiting_state: reset_request()
+ 	if app.view.get("turnCount")!=data.get("turnCount") or app.view.get("phase")!=data.get("phase"):
+ 		app._clear_selection()
+ 	if int(data.get("turnCount",0)) < app.last_turn: app.last_fx = 0
+@@ -87,9 +93,12 @@
+ 
+ func _act(body: Dictionary) -> void:
+ 	if app.replay.active: return
+-	if app.busy or app.room.is_empty() or app.seat=="spectator": return
++	if app.busy or awaiting_state or app.room.is_empty() or app.seat=="spectator": return
+ 	app.busy = true
+ 	app.generation += 1
++	var stamp: int = app.generation
++	request_serial += 1
++	_delayed_status(request_serial)
+ 	app._update_selection_ui()
+ 	body["room"] = app.room
+ 	body["token"] = app.token
+@@ -99,6 +108,13 @@
+ 		origin = [app.selection.cell.x,app.selection.cell.y]
+ 	var response: Dictionary = await app.api.request("/action",body)
+ 	app.busy = false
++	if stamp!=app.generation: return
++	request_serial += 1
++	request_status = ""
++	if response.get("network_error",false):
++		awaiting_state = true
++		request_status = "결과 확인 중…"
++		app._update_selection_ui()
+ 	if response.get("ok"):
+ 		if body.type=="rematch" and not response.get("pending"): app.last_fx = 0
+ 		if body.type=="place": app.audio.cue("place")
+@@ -112,7 +128,9 @@
+ 					app.pending_fx["to"] = response.fx.cells[0] if not response.fx.cells.is_empty() else [body.r,body.c]
+ 		app._clear_selection()
+ 		app._message("상대가 생각 중입니다." if response.get("pending") else "")
+-	else: app._report(response)
++	else:
++		app._report(response)
++		app._update_selection_ui()
+ 	await app._poll()
+ 
+ func _promotion() -> void:
+@@ -145,7 +163,7 @@
+ 	if app.room.is_empty(): app._navigation_home(); return
+ 	if app.busy: return
+ 	var committed: bool = leave_is_resignation()
+-	app._confirm("지금 나가면 기권 패배로 처리됩니다." if committed else "대국을 나가 홈으로 돌아갈까요?",func():
++	app.ui_components.confirm_action("기권 후 나가기" if committed else "나가기","기권 패배로 종료한 뒤 홈으로 돌아갑니다." if committed else "대국을 나가 홈으로 돌아갈까요?","기권 후 홈으로" if committed else "홈으로",func():
+ 		if committed:
+ 			await app._act({"type":"resign"})
+ 			if app.view.get("phase")!="over": app._message("기권 결과를 확인할 수 없어 방에 남아 있습니다."); return
+@@ -153,6 +171,7 @@
+ 		app._return_home())
+ 
+ func _return_home() -> void:
++	reset_request()
+ 	app.spectating.leave()
+ 	app.board.show()
+ 	app.board.fx.clear()
+@@ -166,6 +185,7 @@
+ 	app.game.hide()
+ 	app.subpage.hide()
+ 	app.home.show()
++	app.game_ux.refresh_learning()
+ 	app._layout()
+ 	app._message("")
+ 	app.page_scroll.scroll_vertical = 0
+@@ -178,3 +198,17 @@
+ 	app.code_field.text = code.strip_edges().to_upper().left(8)
+ 	app._friend_menu()
+ 	app._message("초대받은 방이에요. 닉네임을 확인하고 참가하세요.")
++
++func resign_prompt() -> void:
++	app.ui_components.confirm_action("기권","기권하면 패배로 종료되며 결과 화면에 남습니다.","기권하고 결과 보기",func(): await app._act({"type":"resign"}))
++
++func reset_request() -> void:
++	request_serial += 1
++	request_status = ""
++	awaiting_state = false
++
++func _delayed_status(serial: int) -> void:
++	await app.get_tree().create_timer(.35).timeout
++	if serial!=request_serial or not app.busy or app.room.is_empty(): return
++	request_status = "행동 전달 중…"
++	app._update_selection_ui()
+--- a/godot/features/help_screens(기물 설명·튜토리얼·인트로).gd
++++ b/godot/features/help_screens(기물 설명·튜토리얼·인트로).gd
+@@ -103,7 +103,7 @@
+ 	var tutorial = preload("res://tutorial(튜토리얼 진행).gd").new()
+ 	var saved = int(app.prefs.get_value("settings","tutorial_step",0))
+ 	tutorial.step = 0 if saved>=3 else saved
+-	tutorial.progress_changed.connect(func(value): app.prefs.set_value("settings","tutorial_step",value); app._save())
++	tutorial.progress_changed.connect(func(value): app.prefs.set_value("settings","tutorial_step",value); app._save(); app.game_ux.refresh_learning())
+ 	tutorial.start_game.connect(func(): window.queue_free(); await app._join({"vs_bot":true,"level":"easy"}))
+ 	window.add_child(tutorial)
+ 	window.popup_centered(Vector2i(mini(int(app.size.x)-24,1060),mini(int(app.size.y)-24,720)))
+@@ -126,13 +126,13 @@
+ 	demo.effects = app.board.effects
+ 	demo.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+ 	pair[1].add_child(demo)
+-	var title = app._label(pair[1],str(spec.title),19)
++	var title = app._label(pair[1],"1. 배치 · 기본 배치로 시작하거나 바꿀 수 있어요" if step==0 else str(spec.title),19)
+ 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+ 	title.custom_minimum_size.y = 46
+-	var caption = app._rich(pair[1],str(spec.frames[0].cap),14)
++	var caption = app._rich(pair[1],_intro_caption(str(spec.frames[0].cap),step),14)
+ 	caption.custom_minimum_size.y = 44
+ 	demo.caption_changed.connect(func(text):
+-		caption.text = text.replace("<b>","[b]").replace("</b>","[/b]")
++		caption.text = _intro_caption(text,step).replace("<b>","[b]").replace("</b>","[/b]")
+ 		caption.modulate.a = 0
+ 		app.create_tween().tween_property(caption,"modulate:a",1,.4))
+ 	var nav = HFlowContainer.new()
+@@ -141,7 +141,8 @@
+ 	if step>0: app._button(nav,"← 이전",func(): pair[0].queue_free(); app._intro(step-1))
+ 	if step<3: app._button(nav,"다음 →",func(): pair[0].queue_free(); app._intro(step+1))
+ 	elif app.room.is_empty():
+-		app._button(nav,"컴퓨터(쉬움)와 첫 판 두기",func(): pair[0].queue_free(); await app._join({"vs_bot":true,"level":"easy"}))
++		app._button(nav,"직접 조작하며 배우기",func(): pair[0].queue_free(); app._tutorial(),"primary")
++		app._button(nav,"바로 쉬움 봇 대국",func(): pair[0].queue_free(); await app._join({"vs_bot":true,"level":"easy"}))
+ 		app._button(nav,"나중에",pair[0].queue_free)
+ 	else: app._button(nav,"알겠어요",pair[0].queue_free)
+ 	app._rich(pair[1],"기물별 행마·능력은 왼쪽 사이드바 <b>기물 설명</b>에서, 이 안내는 거기 <b>처음 안내 다시 보기</b>로 언제든 다시 볼 수 있어요.",12)
+@@ -166,3 +167,8 @@
+ 		["승리",{"type":"victory"}],["패배",{"type":"defeat"}],["무승부",{"type":"drawend"}]]
+ 	for spec in specs: app._button(buttons,spec[0],func(): demo.play(spec[1]); app.audio.cue(spec[1].type))
+ 	app._label(pair[1],"보드 위 레이어에서 재생되는 파티클 연출입니다. 브라우저의 '동작 줄이기'가 켜져 있으면 최소 연출로 나옵니다.",12)
++
++func _intro_caption(text: String,step: int) -> String:
++	if step==0 and "배치" in text:
++		return "기본 배치로 시작하거나 내 진영 3줄 안에서 바꿀 수 있어요. 준비가 되면 <b>준비 완료</b>를 누르세요."
++	return text
+--- a/godot/features/match_ui(대국 HUD·행동 안내·기보).gd
++++ b/godot/features/match_ui(대국 HUD·행동 안내·기보).gd
+@@ -21,6 +21,7 @@
+ var mobile_help: Button
+ var mobile_cancel: Button
+ var exposure_summary: Label
++var footer_meta: HBoxContainer
+ 
+ func _init(context: Control) -> void:
+ 	app = context
+@@ -43,7 +44,7 @@
+ 	button.icon = load("res://ui/icons/match-"+icon_name+".svg")
+ 	button.expand_icon = true
+ 	button.add_theme_constant_override("icon_max_width",18)
+-	button.custom_minimum_size = Vector2(42,42)
++	button.custom_minimum_size = Vector2(44,44)
+ 	button.tooltip_text = caption
+ 	button.accessibility_name = caption
+ 	button.set_meta("match_tool",true)
+@@ -158,7 +159,14 @@
+ 	app.ui_shell.self_row = HBoxContainer.new()
+ 	app.ui_shell.self_row.add_theme_constant_override("separation",8)
+ 	app.ui_shell.self_row.custom_minimum_size.y = 30
+-	app.ui_shell.self_panel.add_child(app.ui_shell.self_row)
++	var footer_stack := VBoxContainer.new()
++	footer_stack.add_theme_constant_override("separation",0)
++	app.ui_shell.self_panel.add_child(footer_stack)
++	footer_stack.add_child(app.ui_shell.self_row)
++	footer_meta = HBoxContainer.new()
++	footer_meta.custom_minimum_size.y = 30
++	footer_stack.add_child(footer_meta)
++	footer_meta.hide()
+ 	self_icon = _portrait(app.ui_shell.self_row)
+ 	app.self_line = app._label(app.ui_shell.self_row,"",13)
+ 	app.self_line.autowrap_mode = TextServer.AUTOWRAP_OFF
+@@ -176,13 +184,13 @@
+ 
+ func build_selection(parent: Node) -> void:
+ 	var header := HBoxContainer.new()
+-	header.add_theme_constant_override("separation",10)
++	header.add_theme_constant_override("separation",8)
+ 	parent.add_child(header)
+-	selection_reopen = app._button(header,"",func():
++	selection_reopen = app._button(header,"행동 바꾸기",func():
+ 		if not app.selection.is_empty() and app.view.get("phase")=="play":
+ 			app._show_actions()
+ 			app._update_selection_ui(),"tertiary")
+-	selection_reopen.custom_minimum_size = Vector2(42,44)
++	selection_reopen.custom_minimum_size = Vector2(50,44)
+ 	selection_reopen.tooltip_text = "선택한 기물의 행동 아이콘 다시 열기"
+ 	selection_reopen.accessibility_name = "기물 행동 아이콘 다시 열기"
+ 	app.selection_icon = TextureRect.new()
+@@ -194,7 +202,9 @@
+ 	app.selection_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+ 	app.selection_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+ 	app.selection_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+-	selection_reopen.add_child(app.selection_icon)
++	header.add_child(app.selection_icon)
++	app.selection_icon.custom_minimum_size = Vector2(28,32)
++	app.selection_icon.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+ 	var names := VBoxContainer.new()
+ 	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+ 	names.alignment = BoxContainer.ALIGNMENT_CENTER
+@@ -204,42 +214,47 @@
+ 	app.selection_label.add_theme_font_override("font",app._original_font(700))
+ 	selection_position = app._label(names,"",13)
+ 	selection_position.set_meta("match_muted",true)
+-	app.action_details_button = _tool(header,"help","기물 능력과 주의사항을 확인합니다.",func(): app.action_details.visible = not app.action_details.visible)
+-	app.action_details_button.custom_minimum_size = Vector2(30,32)
++	app.action_details_button = _tool(header,"help","기물 능력과 주의사항을 확인합니다.",_mobile_details)
++	app.action_details_button.custom_minimum_size = Vector2(44,44)
+ 	app.action_details_button.add_theme_constant_override("icon_max_width",15)
+ 	app.cancel_selection_button = _tool(header,"close","선택 취소 · Esc / 우클릭",app._clear_selection)
+-	app.cancel_selection_button.custom_minimum_size = Vector2(30,32)
++	app.cancel_selection_button.custom_minimum_size = Vector2(44,44)
+ 	app.cancel_selection_button.hide()
++	selection_reopen.reparent(parent)
++	selection_position.autowrap_mode = TextServer.AUTOWRAP_OFF
++	selection_position.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
++	app.selection_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+ 
+ func render_selection() -> void:
+ 	var selected: bool = not app.selection.is_empty()
+-	selection_reopen.get_parent().visible = selected
++	app.selection_icon.get_parent().visible = selected
++	selection_reopen.visible = selected
+ 	render_mobile_actions()
+-	selection_reopen.disabled = app.view.get("phase")!="play" or app.view.get("turn")!=app.view.get("yourColor") or app.busy
++	selection_reopen.disabled = app.view.get("phase")!="play" or app.view.get("turn")!=app.view.get("yourColor") or app.busy or app.game_session.awaiting_state
+ 	if selected:
+ 		var cell: Vector2i = app.selection.cell
+ 		app.selection_label.text = app.NAMES.get(app.selection.t,"기물")
+-		selection_position.text = "%s%d · 선택됨" % [String.chr(97+cell.y),cell.x+1]
++		selection_position.text = "%s%d · %s" % [String.chr(97+cell.y),cell.x+1,app.game_ux.action_name(app.mode)]
+ 
+ func build_mobile_actions() -> void:
+ 	mobile_actions = PanelContainer.new()
+ 	mobile_actions.name = "MobileActions"
+ 	mobile_actions.set_meta("match_card",true)
+ 	# A reserved footprint keeps the board steady when selection/status changes.
+-	mobile_actions.custom_minimum_size.y = 112
++	mobile_actions.custom_minimum_size.y = 126
+ 	app.game_left.add_child(mobile_actions)
+ 	app.game_left.move_child(mobile_actions,app.board.get_index()+1)
+ 	var content := VBoxContainer.new()
+ 	content.add_theme_constant_override("separation",3)
+ 	mobile_actions.add_child(content)
+ 	var header := HBoxContainer.new()
+-	header.custom_minimum_size.y = 36
++	header.custom_minimum_size.y = 44
+ 	content.add_child(header)
+ 	mobile_title = app._label(header,"",14)
+ 	mobile_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+ 	mobile_help = _tool(header,"help","선택 기물의 행동·상태 자세히 보기",_mobile_details)
+ 	mobile_cancel = _tool(header,"close","기물 선택 취소",app._clear_selection)
+-	for button in [mobile_help,mobile_cancel]: button.custom_minimum_size = Vector2(36,36)
++	for button in [mobile_help,mobile_cancel]: button.custom_minimum_size = Vector2(44,44)
+ 	mobile_instruction = app._label(content,"",13)
+ 	mobile_status = app._label(content,"",13)
+ 	for label in [mobile_title,mobile_instruction,mobile_status]:
+@@ -261,6 +276,14 @@
+ func _refresh_footer_summary() -> void:
+ 	if not is_instance_valid(exposure_summary): return
+ 	var view: Dictionary = app.view
++	var meta_parent: Node = footer_meta if app.split.vertical else app.ui_shell.self_row
++	if exposure_summary.get_parent()!=meta_parent:
++		exposure_summary.reparent(meta_parent)
++		app.ui_shell.presence_cell.reparent(meta_parent)
++	footer_meta.visible = app.split.vertical
++	exposure_summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL if app.split.vertical else Control.SIZE_SHRINK_END
++	app.ui_shell.presence_cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
++	app.ui_shell.presence_slot.alignment = BoxContainer.ALIGNMENT_END
+ 	var exposed: Array = view.get("exposed",[])
+ 	var active: bool = view.get("phase")=="play" and not exposed.is_empty() and app.seat!="spectator" and not app.replay.active
+ 	exposure_summary.visible = app.split.vertical and active
+@@ -270,7 +293,7 @@
+ 	app.self_line.text = identity + ("" if exposure_summary.visible else full_status)
+ 	app.self_line.tooltip_text = identity + full_status
+ 	if exposure_summary.visible:
+-		exposure_summary.text = "노출 %d" % exposed.size()
++		exposure_summary.text = "내 노출 기물 %d" % exposed.size()
+ 		exposure_summary.tooltip_text = "상대에게 위치가 보이는 내 기물 %d개" % exposed.size()
+ 		exposure_summary.add_theme_color_override("font_color",Color("#76521e") if app.prefs.get_value("settings","light",false) else Color("#e3bd78"))
+ 
+@@ -286,27 +309,37 @@
+ 	mobile_cancel.disabled = not selected
+ 	if selected:
+ 		var cell: Vector2i = app.selection.cell
+-		mobile_title.text = "%s · %s%d" % [app.NAMES.get(app.selection.t,"기물"),String.chr(97+cell.y),cell.x+1]
+-		if app.mode=="choose" and app.piece_input.preview_mode.is_empty(): mobile_instruction.text = "기물 옆 공격 · 능력 · 이동 선택"
+-		if app.moves.get("reloading",false): status.append("재장전 · 이동/포획 가능")
++		mobile_title.text = "%s %s%d · %s" % [app.NAMES.get(app.selection.t,"기물"),String.chr(97+cell.y),cell.x+1,app.game_ux.action_name(app.mode)]
++		if app.mode=="choose" and app.piece_input.preview_mode.is_empty(): mobile_instruction.text = "공격 · %s · 이동 중 선택" % app.game_ux.ability_name()
++		if app.moves.get("reloading",false): status.append("재장전 중")
+ 		for exposure in app.view.get("exposed",[]):
+ 			if exposure.get("pid")==app.selection.get("id"):
+-				status.append("위치 노출")
++				status.append("이 기물 위치 노출")
+ 				break
+ 		if status.is_empty() and int(app.board.tile(cell).get("t",0))==3: status.append("부쉬 안 · 연결 시야 공유")
+ 		if status.is_empty(): status.append(app.action_hint.text.split("\n")[0])
+ 	else:
+ 		status.append("선택한 기물의 행동과 상태가 여기에 표시됩니다")
++	if not app.game_session.request_status.is_empty(): mobile_instruction.text = app.game_session.request_status
+ 	mobile_status.text = " · ".join(status)
+ 	mobile_status.add_theme_color_override("font_color",palette.text if selected else palette.muted)
+ 	for label in [mobile_title,mobile_instruction,mobile_status]: label.tooltip_text = label.text
+ 
+ func _mobile_details() -> void:
+ 	if app.selection.is_empty(): return
+-	var pair: Array = app._small_window(mobile_title.text,420,360)
++	var pair: Array = app._small_window(app.selection_label.text+" · 행동과 규칙",440,560)
+ 	app._label(pair[1],app.coach_label.text,16)
+ 	app._label(pair[1],app.action_hint.text,14)
+ 	app._label(pair[1],app.action_details.text,14)
++	app._label(pair[1],"행동 선택 → 대상 선택\n공격은 적 기물을 잡는 포획입니다.\n터치: 행동을 누른 뒤 대상 선택 · ×로 취소\n키보드: Tab으로 버튼 이동 · Enter로 선택 · Esc로 취소",14)
++	var choices := HFlowContainer.new()
++	pair[1].add_child(choices)
++	for action in ["attack",app.game_ux.ability_mode(),"move"]:
++		if action=="none": continue
++		var choice: Button = app._button(choices,app.game_ux.action_name(action),func(): pair[0].queue_free(); app._choose_action(action))
++		choice.disabled = app.busy or app.game_session.awaiting_state or app.view.get("turn")!=app.view.get("yourColor") or not app.game_ux.action_available(action)
++	app._button(pair[1],"행동 바꾸기",func(): pair[0].queue_free(); app._show_actions(); app._update_selection_ui())
++	app._button(pair[1],"선택 취소",func(): pair[0].queue_free(); app._clear_selection())
+ 
+ func build_history(parent: Node) -> void:
+ 	var content := card(parent)
+@@ -388,10 +421,12 @@
+ 	self_icon.visible = opponent_icon.visible
+ 	top_sound.icon = load("res://ui/icons/match-%s.svg" % ("volume" if app.audio.enabled else "muted"))
+ 	top_sound.tooltip_text = "효과음 끄기" if app.audio.enabled else "효과음 켜기"
++	top_sound.accessibility_name = top_sound.tooltip_text
+ 	app.coach_label.add_theme_color_override("font_color",palette.text)
+ 	layout_mobile_actions()
+ 	render_selection()
+ 	render_history()
++	app.game_ux.render()
+ 
+ func apply_theme() -> void:
+ 	var palette: Dictionary = app.ui_components._palette()
+--- a/godot/features/piece_input(기물 선택·이동·공격·능력).gd
++++ b/godot/features/piece_input(기물 선택·이동·공격·능력).gd
+@@ -39,30 +39,32 @@
+ 		app.selection_icon.texture = app.board.textures.get(str(app.selection.t).to_lower()+("l" if app.selection.o=="W" else "d"))
+ 		app.action_details.text = {"B":"저격: 사거리 5 안의 보이는 적만 공격합니다. 사격 후 내 위치가 노출됩니다.","R":"돌파 사격: 상하좌우 최대 4칸을 관통합니다. 숲에 막히며 아군도 맞습니다. 빈 방향에도 턴을 사용합니다.","Q":"스캔: 선택 칸을 시작으로 2×2를 감시합니다. 적이 없어도 턴을 사용하며 퀸 위치는 노출되지 않습니다."}.get(app.selection.t,"이동·포획은 표시된 칸에서 가능합니다. 안개 속 이동은 숨은 적에게 가로막힐 수 있습니다.")
+ 		app.coach_label.text = {"choose":"어떤 행동을 할까요?","move":"이동할 칸을 선택하세요","attack":"표시된 적을 선택하세요","fire":"저격할 적을 선택하세요","barrage":"사격 방향을 선택하세요","scan":"스캔 지점을 선택하세요"}.get(shown_mode,"내 진영에 배치하세요")
+-		app.action_hint.text = {"choose":"기물 옆 아이콘을 선택하세요.\n마우스를 올리면 범위를 볼 수 있어요.","move":"1턴 사용 · 안개 속 경로 주의","attack":"1턴 사용 · 포획","fire":"1턴 사용 · 발사 후 위치 노출","barrage":"1턴 사용 · 아군 피격 / 위치 노출","scan":"1턴 사용 · 2×2 감시"}.get(shown_mode,"")
++		app.action_hint.text = {"choose":"기물 옆 아이콘을 선택하세요.\n행동 선택 → 대상 선택 · 공격은 포획입니다.","move":"1턴 사용 · 안개 속 경로 주의","attack":"1턴 사용 · 포획","fire":"1턴 사용 · 발사 후 위치 노출","barrage":"1턴 사용 · 아군 피격 / 위치 노출","scan":"1턴 사용 · 2×2 감시"}.get(shown_mode,"")
+ 		if shown_mode=="fire" and app.board.targets.is_empty(): app.coach_label.text="저격 표적 없음"; app.action_hint.text="사거리만 확인할 수 있습니다"
+ 		elif shown_mode=="move" and app.view.get("phase")=="play" and app.board.targets.is_empty(): app.coach_label.text="이동 가능한 칸이 없습니다"
+ 		elif shown_mode=="attack" and app.board.targets.is_empty(): app.coach_label.text="포획 가능한 적이 없습니다"
+ 		elif shown_mode=="choose" and app.moves.get("canFire",false) and app.moves.get("fireCells",[]).is_empty(): app.action_hint.text="저격 표적 없음 · 사거리 확인 가능"
+ 		if app.moves.get("reloading",false):
+-			app.action_hint.text = "? 재장전 · 다음 내 차례부터 사격 가능\n이번 차례에는 이동·포획 가능"
++			app.action_hint.text = "? 재장전 중 · 사격은 다음 내 차례부터"
+ 			if shown_mode in ["fire","barrage"]: app.coach_label.text = "재장전 중"
+ 		if app.selection.t in ["B","R"]:
+-			app.action_details.text += "\n사격 후 다음 내 차례 한 번은 재장전합니다. 이동하거나 다른 기물로 행동할 수 있습니다."
++			app.action_details.text += "\n사격 후 다음 내 차례 한 번은 재장전합니다. 재장전은 이동·포획을 제한하지 않습니다. 실제 가능한 칸은 보드 표시를 확인하세요."
+ 		if int(app.board.tile(cell).get("t",0))==3:
+ 			app.action_hint.text += "\n부쉬 안 · 연결 시야 공유"
+ 			app.action_details.text += "\n부쉬 안에서도 스캔이나 공격 노출로 발각될 수 있습니다."
+ 		for exposure in app.view.get("exposed",[]):
+ 			if exposure.get("pid")==app.selection.get("id"):
+-				app.action_hint.text += "\n! 상대에게 위치가 보이는 중입니다"
+-				app.action_details.text += "\n상대의 실제 시야에 들어온 상태입니다. 다시 은폐되면 ! 표시가 사라집니다."
++				app.action_hint.text += "\n! 이 기물: 상대에게 위치가 보이는 중입니다"
++				app.action_details.text += "\n상대의 실제 시야에 들어온 상태입니다. 다시 은폐되면 ! 표시가 사라집니다. 누가 보고 있는지는 알려주지 않습니다."
+ 				break
+ 	if app.view.get("phase")=="setup":
+-		app.coach_label.text = "내 진영에 배치한 뒤 준비 완료"
+-		app.action_hint.text = "내 진영 3줄 안에서 배치"
++		app.coach_label.text = "준비 완료 · 상대를 기다리는 중" if app.view.get("ready",false) else "현재 배치로 시작하려면 준비 완료"
++		app.action_hint.text = "양쪽 준비 또는 배치 시간 종료 시 시작합니다.\n기물을 바꾸려면 내 진영 3줄 안에서 배치하세요."
+ 		app.action_details_button.hide()
+ 		app.action_details.hide()
+ 
++	if not app.game_session.request_status.is_empty():
++		app.coach_label.text = app.game_session.request_status
+ 	app.match_ui.render_selection()
+ 
+ func _invalid_target(cell: Vector2i) -> void:
+@@ -76,7 +78,7 @@
+ 	elif app.mode=="attack": reason="현재 표시된 포획 가능한 적을 선택하세요."
+ 	elif app.mode=="move": reason="이 기물의 이동 범위·경로를 확인하세요."
+ 	app.coach_label.text = reason
+-	app.action_hint.text = "턴 소모 없음 · 우클릭으로 취소"
++	app.action_hint.text = "턴 소모 없음 · × 선택 취소" if app.split.vertical else "턴 소모 없음 · Esc / 우클릭 취소"
+ 	app.match_ui.render_mobile_actions()
+ 
+ func _set_mode(value: String) -> void:
+@@ -91,7 +93,7 @@
+ 	return result
+ 
+ func _choose_action(value: String) -> void:
+-	if app.busy or app.selection.is_empty() or app.view.get("phase")!="play" or app.view.get("turn")!=app.view.get("yourColor"): return
++	if app.busy or app.game_session.awaiting_state or app.selection.is_empty() or app.view.get("phase")!="play" or app.view.get("turn")!=app.view.get("yourColor"): return
+ 	if value in ["fire","barrage"] and app.moves.get("reloading",false): return
+ 	preview_mode = ""
+ 	app.mode = value
+@@ -102,6 +104,7 @@
+ 	app._update_selection_ui()
+ 
+ func _show_actions(animate: bool=true) -> void:
++	if app.selection.is_empty() or app.busy or app.game_session.awaiting_state or app.view.get("phase")!="play" or app.view.get("turn")!=app.view.get("yourColor"): return
+ 	preview_mode = ""
+ 	var ability = "none"
+ 	for pair in [["canFire","fire"],["canBarrage","barrage"],["canScan","scan"]]:
+@@ -121,6 +124,7 @@
+ 		app.action_menu.buttons[1].queue_redraw()
+ 
+ func _select(cell: Vector2i) -> void:
++	if app.game_session.awaiting_state: return
+ 	var p: Variant = app.board.tile(cell).get("p")
+ 	if not p is Dictionary or not p.has("id") or p.o!=app.view.get("yourColor"): return
+ 	app.selection = p.duplicate()
+@@ -142,7 +146,7 @@
+ 	app._update_selection_ui()
+ 
+ func _tap(cell: Vector2i) -> void:
+-	if app.busy or app.view.is_empty() or app.view.get("phase")=="over" or app.view.get("promote"): return
++	if app.busy or app.game_session.awaiting_state or app.view.is_empty() or app.view.get("phase")=="over" or app.view.get("promote"): return
+ 	if app.seat=="spectator":
+ 		app.spectating.inspect(cell)
+ 		return
+@@ -162,7 +166,7 @@
+ 
+ func _drag(origin: Vector2i,target: Vector2i) -> void:
+ 	if app.seat=="spectator": return
+-	if app.busy or app.view.is_empty() or app.view.get("phase")=="over" or app.view.get("promote"): return
++	if app.busy or app.game_session.awaiting_state or app.view.is_empty() or app.view.get("phase")=="over" or app.view.get("promote"): return
+ 	if app.view.get("phase")=="play" and app.view.get("turn")!=app.view.get("yourColor"): return
+ 	app._clear_selection()
+ 	await app._select(origin)
+--- a/godot/features/settings(설정·테마·소리).gd
++++ b/godot/features/settings(설정·테마·소리).gd
+@@ -16,7 +16,7 @@
+ func _settings() -> void:
+ 	var box = app._subscreen("설정")
+ 	app._nav_active("설정")
+-	for item in [["sound","효과음","",true],["music","배경음악","",true],["colorblind","색약 모드","빨강·초록 대신 파랑·주황 계열로 구분",false],["effects","파티클 이펙트","폭발·안개·물결 연출",true]]:
++	for item in [["sound","효과음","",true],["music","배경음악","",true],["colorblind","색약 모드","빨강·초록 대신 파랑·주황 계열로 구분",false],["effects","파티클 이펙트","폭발·안개·물결 연출",true],["practice_tips","연습 학습 안내","컴퓨터 대국·혼자 연습에서 상황별 규칙 설명",true]]:
+ 		var content = app._card(box,"")
+ 		var row = HBoxContainer.new()
+ 		content.add_child(row)
+--- a/godot/features/ui_components(공통 버튼·입력·팝업).gd
++++ b/godot/features/ui_components(공통 버튼·입력·팝업).gd
+@@ -1,6 +1,12 @@
+ extends RefCounted
+ ## Feature implementation. Shared scene state and cross-feature entry points live on app.
+ var app
++
++class DismissibleWindow extends Window:
++	func _unhandled_key_input(event: InputEvent) -> void:
++		if event.is_action_pressed("ui_cancel"):
++			set_input_as_handled()
++			close_requested.emit()
+ 
+ func _init(context: Control) -> void:
+ 	app = context
+@@ -18,7 +24,8 @@
+ func _button(parent: Node,text: String,callback: Callable,role: String="secondary") -> Button:
+ 	var button = Button.new()
+ 	button.text = text
+-	button.custom_minimum_size.y = 42
++	button.accessibility_name = text
++	button.custom_minimum_size.y = 44
+ 	button.add_theme_font_size_override("font_size",14)
+ 	button.pressed.connect(callback)
+ 	if text.begins_with("← 뒤로"):
+@@ -50,7 +57,8 @@
+ 	# queue_free() alone runs at frame end and otherwise leaves two active modals.
+ 	for child in app.get_children():
+ 		if child is Window and child.visible: child.hide()
+-	var window = Window.new()
++	var return_focus: Control = app.get_viewport().gui_get_focus_owner()
++	var window = DismissibleWindow.new()
+ 	window.title = title
+ 	window.borderless = true
+ 	window.transparent = true
+@@ -65,7 +73,9 @@
+ 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+ 	app.add_child(shade)
+ 	window.visibility_changed.connect(func(): if is_instance_valid(shade): shade.visible = window.visible)
+-	window.tree_exiting.connect(func(): if is_instance_valid(shade): shade.queue_free())
++	window.tree_exiting.connect(func():
++		if is_instance_valid(shade): shade.queue_free()
++		_restore_focus.call_deferred(return_focus))
+ 	app.add_child(window)
+ 	var panel = PanelContainer.new()
+ 	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+@@ -80,20 +90,51 @@
+ 	var head = HBoxContainer.new()
+ 	box.add_child(head)
+ 	app._label(head,title,20)
+-	_button(head,"×",window.queue_free,"tertiary")
++	var close := _button(head,"×",window.queue_free,"tertiary")
++	close.custom_minimum_size = Vector2(44,44)
++	close.accessibility_name = title+" 닫기"
++	close.tooltip_text = close.accessibility_name
+ 	window.popup_centered(Vector2i(mini(int(app.size.x)-24,560),mini(int(app.size.y)-30,600)))
++	close.grab_focus()
+ 	return [window,box]
+ 
++func _restore_focus(control: Control) -> void:
++	if not is_instance_valid(control) or not control.is_visible_in_tree(): return
++	for child in app.get_children():
++		if child is Window and child.visible and not child.is_queued_for_deletion() and control.get_window()!=child: return
++	control.grab_focus()
++
+ func _confirm(text: String,callback: Callable) -> void:
++	confirm_action("확인",text,"확인",callback)
++
++func confirm_action(title: String,text: String,action: String,callback: Callable) -> void:
++	var return_focus: Control = app.get_viewport().gui_get_focus_owner()
++	var previous_window: Window
++	for child in app.get_children():
++		if child is Window and child.visible and not child.is_queued_for_deletion():
++			previous_window = child
++			return_focus = child.gui_get_focus_owner()
++			child.hide()
+ 	var dialog = ConfirmationDialog.new()
+-	dialog.title = "확인"
++	dialog.title = title
+ 	dialog.dialog_text = text
+-	dialog.ok_button_text = "확인"
+-	dialog.cancel_button_text = "취소"
++	dialog.dialog_autowrap = true
++	dialog.ok_button_text = action
++	dialog.cancel_button_text = "취소하고 계속하기"
++	dialog.transient = true
++	dialog.exclusive = true
+ 	app.add_child(dialog)
+-	dialog.confirmed.connect(func(): dialog.queue_free(); callback.call())
+-	dialog.canceled.connect(dialog.queue_free)
+-	dialog.popup_centered()
++	dialog.confirmed.connect(func():
++		dialog.queue_free()
++		if is_instance_valid(previous_window): previous_window.queue_free()
++		callback.call())
++	dialog.canceled.connect(func():
++		dialog.hide()
++		dialog.queue_free()
++		if is_instance_valid(previous_window): previous_window.show())
++	dialog.tree_exiting.connect(func(): _restore_focus.call_deferred(return_focus))
++	dialog.popup_centered(Vector2i(mini(440,int(app.size.x)-24),210))
++	dialog.get_cancel_button().grab_focus()
+ 
+ func _form(title: String,definitions: Array,submit: Callable) -> void:
+ 	var pair = app._window(title)
+--- a/godot/features/ui_shell(화면 구성·배치·전환).gd
++++ b/godot/features/ui_shell(화면 구성·배치·전환).gd
+@@ -219,7 +219,7 @@
+ 	app.utility_actions = actions
+ 	action_card.add_child(actions)
+ 	app.sound_button = app._button(actions,"소리 켜짐",app._toggle_sound)
+-	app.resign_button = app._button(actions,"기권",func(): app._confirm("기권하면 상대가 승리합니다.",func(): await app._act({"type":"resign"})),"danger")
++	app.resign_button = app._button(actions,"기권",func(): app.game_session.resign_prompt(),"danger")
+ 	app._button(actions,"나가기",app._leave_prompt).name = "LeaveMatch"
+ 	app.coach_label = app._label(action_card,"",16)
+ 	app.coach_label.add_theme_color_override("font_color",Color("#eed29a"))
+@@ -255,6 +255,7 @@
+ 	app.spectating.build()
+ 	app.replay.build()
+ 	app._load_home_ranks.call_deferred()
++	app.game_ux.build(root)
+ 	app.game_left.minimum_size_changed.connect(app._layout.call_deferred)
+ 
+ func _grid_panel(parent: Node) -> PanelContainer:
+@@ -347,12 +348,14 @@
+ 	app.game_left.custom_minimum_size.x = board_width
+ 	for card in app.mode_cards:
+ 		if is_instance_valid(card): card.custom_minimum_size.y = 82 if menu_width<380 else 68
++	app.game_ux.update_scroll_bar.call_deferred()
+ 	app._nav_active("설정" if app.subpage.visible and app.subpage.get_child_count()>0 and app.subpage.get_child(0).text=="설정" else "플레이")
+ 
+ func _navigation_home() -> void:
+ 	if app.room.is_empty():
+ 		app.subpage.hide()
+ 		app.home.show()
++		app.game_ux.refresh_learning()
+ 		app._nav_active("플레이")
+ 	else:
+ 		app.subpage.hide()
+--- a/godot/tests/board_focus.gd
++++ b/godot/tests/board_focus.gd
+@@ -244,7 +244,7 @@
+ 	check(contrast_ratio(feed_row.get_child(0).get_theme_color("font_color"),panel_color)>=4.5,"light-theme owner label has readable contrast")
+ 	check(not app.match_ui.mobile_actions.visible and app.coach_label.get_parent().get_parent().visible,"desktop selection card returns after resizing")
+ 	app._clear_selection()
+-	check(not app.match_ui.selection_reopen.get_parent().visible,"empty selection hides the piece header")
++	check(not app.match_ui.selection_reopen.visible and not app.selection_icon.get_parent().visible,"empty selection hides the piece header")
+ 	print("BOARD_FOCUS_FAILURES="+str(failures))
+ 	app.queue_free()
+ 	await process_frame
+--- a/godot/tests/remaining.gd
++++ b/godot/tests/remaining.gd
+@@ -39,7 +39,7 @@
+ 		check.call(is_equal_approx(demos[2].frame_duration(2),.85),"guide advances every 850ms")
+ 	await close()
+ 	app._intro(3)
+-	check.call(button(app,"컴퓨터(쉬움)와 첫 판 두기")!=null,"intro final action starts original easy bot flow")
++	check.call(button(app,"직접 조작하며 배우기")!=null and button(app,"바로 쉬움 봇 대국")!=null,"intro offers learning and a direct easy-bot path")
+ 	await shot("intro_final")
+ 	tree.root.size=Vector2i(390,844)
+ 	await shot("intro_final_mobile")
+@@ -100,9 +100,9 @@
+ 	app._render_result()
+ 	check.call(button(app.result_actions,"제안 취소")!=null and "+16" in app.result_sub.text and "기권" in app.result_sub.text,"result preserves rating reason and cancel proposal")
+ 	app.view.rematch={"me":false,"opp":true}; app._render_result()
+-	check.call(button(app.result_actions,"거절")!=null and button(app.result_actions,"수락 · 재대결")!=null,"opponent rematch offer exposes both responses")
++	check.call(button(app.result_actions,"거절")!=null and button(app.result_actions,"다음 판 수락")!=null,"opponent rematch offer exposes both responses")
+ 	app.view.oppConnected=false; app._render_result()
+-	check.call(button(app.result_actions,"재대결 제안")==null and button(app.result_actions,"나가기")!=null,"departed opponent prevents rematch")
++	check.call(button(app.result_actions,"다음 판 제안")==null and button(app.result_actions,"홈으로")!=null,"departed opponent prevents rematch")
+ 	app.view={"winner":"B","solo":true}; app._render_result()
+ 	check.call(app.result_label.text=="흑 승리" and app.result_sub.text=="혼자 연습","solo result never presents player defeat")
+ 	app.view=saved_view; app.seat=saved_seat; app.result_signature=""
+--- /dev/null
++++ b/godot/features/game_ux(학습·기록·접근성).gd
+@@ -0,0 +1,153 @@
++extends RefCounted
++## Presentation only: consumes the public server view and never infers hidden opponents.
++var app
++var scroll_bar: PanelContainer
++var scroll_label: Label
++var return_button: Button
++var learn_button: Button
++var learn_note: Label
++var practice_card: VBoxContainer
++var practice_label: Label
++var practice_next: Button
++var active_tip := ""
++var seen_tips: Dictionary = {}
++var feed_expanded := false
++var feed_toggle: Button
++var announcement: Label
++var last_announcement := ""
++
++func _init(context: Control) -> void:
++	app = context
++
++func action_name(mode: String) -> String:
++	return {"choose":"행동 선택","move":"이동","attack":"공격","fire":"저격","barrage":"돌파","scan":"스캔"}.get(mode,"행동 선택")
++
++func ability_mode() -> String:
++	return {"B":"fire","R":"barrage","Q":"scan"}.get(app.selection.get("t",""),"none")
++
++func ability_name() -> String:
++	return action_name(ability_mode()) if ability_mode()!="none" else "고유 능력 없음"
++
++func action_available(action: String) -> bool:
++	if app.view.get("phase")!="play": return false
++	if action in ["move","attack"]: return not app._move_targets(action=="attack").is_empty()
++	if action in ["fire","barrage"] and app.moves.get("reloading",false): return false
++	return bool(app.moves.get({"fire":"canFire","barrage":"canBarrage","scan":"canScan"}.get(action,""),false))
++
++func build(page_root: VBoxContainer) -> void:
++	scroll_bar = PanelContainer.new()
++	scroll_bar.name = "RecordReturnBar"
++	page_root.add_child(scroll_bar)
++	page_root.move_child(scroll_bar,0)
++	var row := HBoxContainer.new()
++	scroll_bar.add_child(row)
++	scroll_label = app._label(row,"",14)
++	scroll_label.autowrap_mode = TextServer.AUTOWRAP_OFF
++	scroll_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
++	return_button = app._button(row,"보드로",func():
++		app.page_scroll.scroll_vertical = 0
++		update_scroll_bar()
++		app.match_ui.mobile_help.grab_focus(),"primary")
++	return_button.accessibility_name = "시간과 체스판으로 돌아가기"
++	scroll_bar.hide()
++	app.page_scroll.get_v_scroll_bar().value_changed.connect(func(_value): update_scroll_bar())
++	app.game.visibility_changed.connect(update_scroll_bar)
++	var learn: VBoxContainer = app._card(app.menu,"")
++	app.menu.move_child(learn.get_parent(),2)
++	learn_note = app._label(learn,"처음이라면 · 시간제한 없이 직접 배우기",12)
++	learn_button = app._button(learn,"",func():
++		if int(app.prefs.get_value("settings","tutorial_step",0))>=3: await app._join({"vs_bot":true,"level":"easy"})
++		else: app._tutorial(),"primary")
++	learn_button.name = "LearningEntry"
++	refresh_learning()
++	practice_card = app.match_ui.card(app.controls,"연습 · 상황별 안내")
++	app.controls.move_child(practice_card.get_parent(),3)
++	practice_label = app._label(practice_card,"",13)
++	practice_label.custom_minimum_size.y = 72
++	var practice_actions := HFlowContainer.new()
++	practice_card.add_child(practice_actions)
++	practice_next = app._button(practice_actions,"알겠어요",func():
++		seen_tips[active_tip] = true
++		active_tip = ""
++		render_practice(),"tertiary")
++	app._button(practice_actions,"안내 끄기",func():
++		app.prefs.set_value("settings","practice_tips",false)
++		app._save()
++		render_practice(),"tertiary")
++	practice_card.get_parent().hide()
++	var feed_card: VBoxContainer = app.feed_box.get_parent()
++	feed_card.get_child(0).text = "대국 기록 · 킬로그"
++	feed_toggle = app._button(feed_card,"",func():
++		feed_expanded = not feed_expanded
++		app.game_display._render_feed()
++		render(),"tertiary")
++	feed_card.move_child(feed_toggle,1)
++	feed_toggle.add_theme_font_size_override("font_size",12)
++	feed_toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
++	announcement = app._label(page_root,"",1)
++	# Live announcements change only at semantic transitions, never every second.
++	announcement.custom_minimum_size = Vector2.ZERO
++	announcement.clip_text = true
++	announcement.modulate.a = 0
++	announcement.accessibility_live = AccessibilityServer.LIVE_POLITE
++	app.notice.accessibility_live = AccessibilityServer.LIVE_POLITE
++
++func reset_room() -> void:
++	feed_expanded = false
++	seen_tips.clear()
++	active_tip = ""
++	last_announcement = ""
++
++func refresh_learning() -> void:
++	if not is_instance_valid(learn_button): return
++	var completed: bool = int(app.prefs.get_value("settings","tutorial_step",0))>=3
++	learn_button.text = "쉬움 봇으로 연습 계속하기" if completed else "직접 배우기 · 왕 찾기 미션"
++	learn_button.accessibility_name = learn_button.text
++	learn_note.text = "미션 완료 · 첫 대국으로 이어가기" if completed else "처음이라면 · 시간제한 없이 직접 배우기"
++
++func update_scroll_bar() -> void:
++	if not is_instance_valid(scroll_bar): return
++	if not app.game.visible and is_instance_valid(announcement):
++		announcement.text = ""
++		last_announcement = ""
++	var eligible: bool = app.game.visible and app.split.vertical and app.view.get("phase") in ["setup","play"] and not app.replay.active and app.seat!="spectator"
++	var header_bottom: float = app.match_ui.turn_panel.get_global_rect().end.y-app.page_scroll.get_child(0).global_position.y
++	var past_header: bool = app.page_scroll.scroll_vertical>0 and app.page_scroll.scroll_vertical>=header_bottom
++	scroll_bar.visible = eligible and past_header
++	if not scroll_bar.visible: return
++	var low: bool = app.view.get("turn")==app.view.get("yourColor") and app.view.get("phase")=="play" and app.view.get("turnSecondsLeft")!=null and int(app.view.turnSecondsLeft)<=10
++	scroll_label.text = ("시간 부족" if low else app.state_label.text)+" · "+app.clock_label.text
++	scroll_label.add_theme_color_override("font_color",app.clock_label.get_theme_color("font_color"))
++	scroll_bar.add_theme_stylebox_override("panel",app.match_ui._surface(app.ui_components._palette().surface,6,8))
++
++func render_practice() -> void:
++	if not is_instance_valid(practice_card): return
++	var visible: bool = app.view.get("phase")=="play" and (app.view.get("bot",false) or app.view.get("solo",false)) and app.seat!="spectator" and not app.replay.active and bool(app.prefs.get_value("settings","practice_tips",true))
++	practice_card.get_parent().visible = visible
++	if not visible: return
++	var eligible: Array[String] = []
++	if not app.view.get("reloading",[]).is_empty(): eligible.append("reload")
++	if not app.view.get("exposed",[]).is_empty(): eligible.append("exposure")
++	eligible.append("fog")
++	if active_tip.is_empty():
++		for tip in eligible:
++			if not seen_tips.has(tip): active_tip = tip; break
++	var tips := {"fog":"어두운 칸은 빈칸이 아닙니다. 이동 중 숨은 적을 만나면 그 칸에서 포획하고 멈춥니다.","reload":"파란 ?는 재장전 상태입니다. 재장전은 이동·포획을 제한하지 않습니다. 현재 가능한 칸은 보드 표시로 확인하세요.","exposure":"노란 !는 내 위치가 상대에게 보인다는 뜻입니다. 누가 보고 있는지는 알려주지 않으며 다시 은폐되면 사라집니다."}
++	practice_label.text = tips.get(active_tip,"새로운 노출·재장전 상황이 생기면 여기서 설명합니다. 규칙은 ? 도움말에서 다시 볼 수 있어요.")
++	practice_next.disabled = active_tip.is_empty()
++
++func render() -> void:
++	if not is_instance_valid(feed_toggle): return
++	update_scroll_bar()
++	render_practice()
++	var count: int = app.view.get("feed",[]).size()
++	feed_toggle.visible = count>3
++	feed_toggle.text = "받은 교전 기록 %d건 · 접기" % count if feed_expanded else "최근 3건 · 받은 기록 %d건 펼치기" % count
++	feed_toggle.accessibility_name = feed_toggle.text
++	var status: String = app.state_label.text
++	if app.warning_label.visible: status += " · "+app.warning_label.text
++	if app.seat!="spectator" and not app.replay.active:
++		status += " · 내 노출 기물 %d" % app.view.get("exposed",[]).size()
++	if status!=last_announcement:
++		last_announcement = status
++		announcement.text = status
+--- /dev/null
++++ b/godot/tests/expert_ui.gd
+@@ -0,0 +1,248 @@
++extends SceneTree
++var app: Control
++var failures := 0
++var confirmed := false
++
++class DelayedAPI extends Node:
++	var base_url := "http://127.0.0.1"
++	var actions := 0
++	var recover := false
++	var snapshot: Dictionary
++	var delay := .55
++	func request(path: String,_body: Dictionary={}) -> Dictionary:
++		if path=="/action":
++			actions += 1
++			await get_tree().create_timer(delay).timeout
++			return {"ok":true} if recover else {"network_error":true,"msg":"테스트 연결 끊김"}
++		if path.begins_with("/state"):
++			return snapshot.duplicate(true) if recover else {"network_error":true}
++		return {}
++
++func _initialize() -> void:
++	_run.call_deferred()
++
++func check(value: bool,message: String) -> void:
++	if value: print("PASS: "+message)
++	else: failures+=1; push_error("FAIL: "+message)
++
++func settle() -> void:
++	await process_frame
++	await process_frame
++	await create_timer(.12).timeout
++
++func capture(label: String) -> void:
++	await settle()
++	if not "--capture" in OS.get_cmdline_user_args(): return
++	RenderingServer.force_draw(false)
++	var directory := ProjectSettings.globalize_path("res://../.dev-data/qa-captures")
++	DirAccess.make_dir_recursive_absolute(directory)
++	root.get_texture().get_image().save_png(directory.path_join("expert-"+label+".png"))
++
++func _run() -> void:
++	root.size = Vector2i(1280,900)
++	app = load("res://main(게임 시작 씬).tscn").instantiate()
++	root.add_child(app)
++	await settle()
++	for child in app.get_children():
++		if child is Timer: child.stop()
++	app.audio.enabled = false
++	check("직접 배우기" in app.game_ux.learn_button.text,"new player sees direct learning entry")
++	await capture("home")
++	root.size=Vector2i(390,844)
++	await capture("home_mobile")
++	app.prefs.set_value("settings","tutorial_step",3)
++	app.game_ux.refresh_learning()
++	check("쉬움 봇" in app.game_ux.learn_button.text,"completed tutorial leads to easy bot")
++	var tutorial = load("res://tutorial(튜토리얼 진행).gd").new()
++	root.add_child(tutorial)
++	await settle()
++	check(tutorial.board.view.grid[8][2].f==0 and tutorial.board.view.grid[9][2].f==1,"tutorial knight sight boundary is two, not three")
++	check("2칸" in tutorial.hint.text,"tutorial explains current knight radius")
++	for spec in [[Vector2i(6,2),Vector2i(4,1),"move"],[Vector2i(6,4),Vector2i(1,5),"scan"],[Vector2i(5,2),Vector2i(1,5),"fire"]]:
++		tutorial._tap(spec[0])
++		tutorial.action_menu.chosen.emit(spec[2])
++		tutorial._tap(spec[1])
++	check(tutorial.step==3 and tutorial.finish.visible,"all tutorial missions still complete")
++	tutorial.queue_free()
++	var fixture: Dictionary=await app.api.request("/test-focus",{})
++	app._enter(fixture)
++	await app._poll()
++	app._message("")
++	await app._select(Vector2i(7,5))
++	app.moves.reloading = true
++	app.moves.moves = []
++	app._choose_action("move")
++	check("없습니다" in app.coach_label.text and not "이동/포획 가능" in app.match_ui.mobile_status.text,"empty moves and reload status do not contradict")
++	check("제한하지 않습니다" in app.action_details.text,"general reload rule remains in details")
++	app.piece_input._invalid_target(Vector2i(0,0))
++	check("×" in app.action_hint.text and not "우클릭" in app.action_hint.text,"mobile invalid-target recovery uses actual cancel control")
++	app._update_selection_ui()
++	var selected: Dictionary=app.selection.duplicate(true)
++	for width in [390,320]:
++		root.size=Vector2i(width,844)
++		app.page_scroll.scroll_vertical=0
++		app._layout()
++		app._render()
++		await settle()
++		var board_size: Vector2=app.board.size
++		check(not app.game_ux.scroll_bar.visible,"return bar hidden with visible original clock "+str(width))
++		for button in [app.match_ui.mobile_help,app.match_ui.mobile_cancel,app.match_ui.top_sound]:
++			check(button.size.x>=44 and button.size.y>=44,"outside-board touch target at least 44 logical units: "+button.accessibility_name)
++		check(not app.match_ui.mobile_help.get_global_rect().intersects(app.match_ui.mobile_cancel.get_global_rect()),"mobile help and cancel targets do not overlap")
++		await capture("mobile_"+str(width))
++		app.page_scroll.scroll_vertical=600
++		await settle()
++		check(app.game_ux.scroll_bar.visible,"records scroll preserves live clock "+str(width))
++		check(app.game_ux.scroll_bar.get_global_rect().end.y<=app.page_scroll.global_position.y,"return bar reserves space outside scrolling content")
++		check(app.board.size.is_equal_approx(board_size),"return bar does not resize board")
++		await capture("records_"+str(width))
++		app.game_ux.return_button.pressed.emit()
++		await settle()
++		check(app.page_scroll.scroll_vertical==0 and app.selection==selected,"one-tap return preserves selected piece")
++	app.match_ui.mobile_help.grab_focus()
++	app.match_ui._mobile_details()
++	await settle()
++	var details: Window
++	for child in app.get_children():
++		if child is Window and child.visible: details=child
++	check(is_instance_valid(details),"touch detail path opens without hover")
++	var texts := ""
++	for child in details.find_children("*","Label",true,false): texts += child.text
++	check("Tab" in texts and "공격은" in texts,"detail path explains keyboard and attack/capture terms")
++	var esc := InputEventKey.new()
++	esc.keycode=KEY_ESCAPE
++	esc.pressed=true
++	details.push_input(esc,true)
++	await settle()
++	check(not is_instance_valid(details),"Esc closes detail modal")
++	check(app.match_ui.mobile_help.has_focus(),"detail modal restores the invoking focus")
++	app.ui_components.confirm_action("기권 테스트","테스트에서는 서버 명령을 보내지 않습니다.","기권",func(): confirmed=true)
++	await settle()
++	var dialog: ConfirmationDialog
++	for child in app.get_children():
++		if child is ConfirmationDialog: dialog=child
++	check(dialog.get_cancel_button().has_focus(),"destructive confirmation initially focuses cancel")
++	var enter := InputEventKey.new()
++	enter.keycode=KEY_ENTER
++	enter.pressed=true
++	dialog.push_input(enter,true)
++	var release: InputEventKey=enter.duplicate()
++	release.pressed=false
++	dialog.push_input(release,true)
++	await settle()
++	check(not confirmed,"opening confirmation then Enter does not resign")
++	check(not is_instance_valid(dialog),"Enter on default cancel closes confirmation")
++	if is_instance_valid(dialog): dialog.queue_free()
++	await settle()
++	app._promotion()
++	var promotion: Window=app.promote_window
++	promotion.push_input(esc,true)
++	await settle()
++	check(is_instance_valid(promotion) and promotion.visible,"Esc cannot dismiss required promotion choice")
++	promotion.queue_free()
++	await settle()
++	app._game_menu()
++	await capture("menu_320")
++	var menu: Window=app.get_node("MatchMenu")
++	check(menu.find_child("LeaveMatch",true,false).get_meta("ui_role")=="danger","committed leave shares resignation danger styling")
++	check("홈으로" in menu.find_child("ExitConsequences",true,false).text,"menu distinguishes result screen from home")
++	menu.find_child("ResignMatch",true,false).grab_focus()
++	menu.find_child("ResignMatch",true,false).pressed.emit()
++	await settle()
++	check(not menu.visible,"resignation prompt suspends underlying menu")
++	for child in app.get_children():
++		if child is ConfirmationDialog and child.visible: dialog=child
++	dialog.get_cancel_button().pressed.emit()
++	await settle()
++	check(menu.visible and menu.find_child("ResignMatch",true,false).has_focus(),"cancel restores menu and the invoking resignation button")
++	menu.queue_free()
++	await settle()
++	root.size=Vector2i(1280,900)
++	app._layout()
++	app._render()
++	await capture("desktop")
++	app.prefs.set_value("settings","light",true)
++	app._apply_theme()
++	await capture("light")
++	app.prefs.set_value("settings","light",false)
++	app._apply_theme()
++	app.view.bot = true
++	app.view.reloading=[{"pid":"W_B1","type":"B"}]
++	app.game_ux.active_tip=""
++	app._render()
++	check("再" not in app.game_ux.practice_label.text and "재장전" in app.game_ux.practice_label.text,"practice explains a public reload occurrence")
++	app.game_ux.practice_next.pressed.emit()
++	check(app.game_ux.seen_tips.has("reload"),"practice acknowledgement prevents repeating the same lesson")
++	await capture("practice")
++	app.view.bot=false
++	app._render()
++	check(not app.game_ux.practice_card.get_parent().visible,"ranked/friend play does not auto-display practice lessons")
++	var public_feed: Array=app.view.feed.duplicate(true)
++	app.view.feed.append_array(public_feed)
++	app._render()
++	check(app.feed_box.get_child_count()==3,"record overview preserves recent three events")
++	app.game_ux.feed_toggle.pressed.emit()
++	check(app.feed_box.get_child_count()==6,"expand shows all received public feed events")
++	app.game_ux.feed_toggle.pressed.emit()
++	check(app.feed_box.get_child_count()==3,"collapse restores overview without nested scrolling")
++	var speech: String=app.game_ux.announcement.text
++	app.view.turnSecondsLeft=24
++	app._render()
++	check(app.game_ux.announcement.text==speech,"clock tick does not repeat a live announcement")
++	app.view.turnSecondsLeft=7
++	app._render()
++	check("시간" in app.game_ux.announcement.text,"low time has a semantic live announcement")
++	var live: Dictionary=app.view.duplicate(true)
++	app.view.phase="over"
++	app.view.winner="B"
++	app.view.series={"me":1,"opp":2,"complete":true,"final":false,"winner":"B"}
++	app._render()
++	check(app.result_label.text=="시리즈 패배","completed series title names series outcome")
++	await capture("series")
++	root.size=Vector2i(320,844)
++	app._layout()
++	await capture("series_mobile")
++	check(app.result_actions.get_global_rect().end.y<=root.size.y,"mobile series result actions remain in the viewport")
++	check(app.result_actions.get_global_rect().end.x<=root.size.x,"mobile series result actions fit the width")
++	root.size=Vector2i(1280,900)
++	app._layout()
++	app.view.series={"me":1,"opp":0,"complete":false,"final":false}
++	app.view.winner="W"
++	app._render()
++	check(app.result_label.text=="이번 판 승리" and "먼저 2승" in app.result_sub.text,"individual win remains distinct from series win")
++	app._apply_state(live)
++	var selection_before_clear: Dictionary=app.selection.duplicate(true)
++	app._clear_selection()
++	app._show_actions()
++	check(not app.action_menu.opened,"stale detail action cannot reopen actions after selection clears")
++	app.selection=selection_before_clear
++	var real_api: Node=app.api
++	var slow:=DelayedAPI.new()
++	root.add_child(slow)
++	slow.snapshot=live.duplicate(true)
++	slow.snapshot.turnCount=int(live.turnCount)+1
++	slow.snapshot.turn="B"
++	app.api=slow
++	app._act({"type":"move","pid":"W_B1","r":7,"c":6})
++	await create_timer(.42).timeout
++	check(app.game_session.request_status=="행동 전달 중…","slow request reports sending after delay threshold")
++	app._act({"type":"move","pid":"W_B1","r":7,"c":6})
++	check(slow.actions==1,"repeated action during transmission is blocked")
++	await create_timer(.25).timeout
++	check(app.game_session.awaiting_state and app.game_session.request_status=="결과 확인 중…","lost response remains unknown until authoritative state arrives")
++	app._act({"type":"move","pid":"W_B1","r":7,"c":6})
++	check(slow.actions==1,"uncertain result never auto-retries or accepts a duplicate")
++	slow.recover=true
++	await app._poll()
++	check(not app.game_session.awaiting_state and app.game_session.request_status.is_empty(),"state recovery releases pending result lock")
++	check(app.view.turnCount==slow.snapshot.turnCount,"recovery uses authoritative updated turn")
++	slow.delay=.02
++	await app._act({"type":"ready","value":true})
++	check(app.game_session.request_status.is_empty(),"fast response avoids transient waiting message")
++	app.api=real_api
++	slow.queue_free()
++	await create_timer(.4).timeout
++	print("EXPERT_UI_FAILURES="+str(failures))
++	app.queue_free()
++	await process_frame
++	quit(0 if failures==0 else 1)
+--- /dev/null
++++ b/tests/run_expert_ui_smoke.py
+@@ -0,0 +1,52 @@
++from pathlib import Path
++import json, os, subprocess, sys, tempfile, threading, time, uuid
++
++ROOT=Path(__file__).resolve().parents[1]
++sys.path.insert(0,str(ROOT))
++from run_godot_smoke import FixtureHandler, server
++from tools.godot_runtime import default_godot
++
++class FocusFixture(FixtureHandler):
++    def _post(self):
++        if self.path!='/test-focus': return super()._post()
++        self.rfile.read(int(self.headers['Content-Length']))
++        code=server.gen_code(); room=server.new_room(code)
++        white=uuid.uuid4().hex; black=uuid.uuid4().hex
++        room.update(seats={'W':white,'B':black},tokens={white:'W',black:'B'},seen={white:time.time(),black:time.time()},names={'W':'moon','B':'raven'},ratings={'W':1458,'B':1512})
++        st=room['state'];st.update(phase='play',turn='W',turnCount=22,turn_deadline=time.time()+60)
++        # Deliberate UI fixture in a temporary server, never a live development room.
++        for pid,rc in {'W_B1':(7,5),'W_N1':(5,8),'B_N1':(4,8),'B_P1':(8,6)}.items():
++            st['pieces'][pid].update(r=rc[0],c=rc[1],alive=True,moved=True)
++            for group in ['forests','bushes','rivers','impassable']: room['terrain'][group].discard(rc)
++        st['feed']=[{'seq':1,'actor':'W','atype':'N','method':'melee','victim':'B','vtype':'R'},{'seq':2,'actor':'B','atype':'N','method':'melee','victim':'W','vtype':'P'},{'seq':3,'actor':'W','atype':'B','method':'artillery','victim':'B','vtype':'N'}]
++        st['feedseq']=3
++        st['move_history']={'W':['12. e10','14. Nf7','16. Nxh6','18. Bg9','20. Bh10','22. Bf8']}
++        for pid in ['B_P2','B_P3','B_P4','B_R1','B_N2']: st['pieces'][pid]['alive']=False
++        st['captured']={'W':['P','P','P','R','N'],'B':['P']}
++        with server.lock: server.ROOMS[code]=room
++        self._json({'room':code,'token':white,'color':'W'})
++
++def main():
++    sys.stdout.reconfigure(encoding='utf-8')
++    with tempfile.TemporaryDirectory(prefix='fog-focus-test-') as directory:
++        server.accounts.init_db(str(Path(directory)/'test.db'))
++        httpd=server.ThreadingServer(('127.0.0.1',0),FocusFixture)
++        threading.Thread(target=httpd.serve_forever,daemon=True).start()
++        args=[default_godot(),'--path',str(ROOT/'godot'),'--script','res://tests/expert_ui.gd',
++              '--log-file',str(ROOT/'.dev-data'/'expert-ui-runtime.log')]
++        if '--capture' in sys.argv: args+=['--position','-16000,-16000']
++        else: args+=['--headless']
++        args+=['--','--smoke']
++        if '--capture' in sys.argv: args+=['--capture']
++        try:
++            p=subprocess.run(args,env=dict(os.environ,FOG_TEST_URL=f'http://127.0.0.1:{httpd.server_port}'),capture_output=True,timeout=60)
++            out=p.stdout.decode('utf-8',errors='replace')+p.stderr.decode('utf-8',errors='replace')
++            print(out)
++            return int(p.returncode!=0 or 'EXPERT_UI_FAILURES=0' not in out or 'SCRIPT ERROR' in out)
++        except subprocess.TimeoutExpired as exc:
++            print((exc.stdout or b'').decode('utf-8',errors='replace'))
++            print((exc.stderr or b'').decode('utf-8',errors='replace'))
++            raise
++        finally: httpd.shutdown();httpd.server_close()
++
++if __name__=='__main__': raise SystemExit(main())

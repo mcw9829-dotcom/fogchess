@@ -1,0 +1,16 @@
+{
+  "date": "2026-10-23",
+  "tests_passed": {
+    "배치 카드": 20,
+    "Material": 32,
+    "보드 UI": 128,
+    "기존 UX": 58,
+    "통합": 255
+  },
+  "total": 493,
+  "protected_unchanged": 328,
+  "limitations": [
+    "Native Godot test windows; no physical mobile or web build validation.",
+    "Board/UX tests emit two ObjectDB cleanup warnings at exit; no script errors."
+  ]
+}

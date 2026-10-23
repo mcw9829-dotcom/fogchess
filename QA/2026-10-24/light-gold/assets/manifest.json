@@ -1,0 +1,135 @@
+{
+  "name": "Fogchess Gold & Blue UI",
+  "version": "2.1",
+  "viewBox": [
+    0,
+    0,
+    48,
+    48
+  ],
+  "nativeRasterSize": 96,
+  "usageSizes": [
+    24,
+    26,
+    40,
+    48
+  ],
+  "stroke": 2.2,
+  "colors": {
+    "dark": {
+      "surface": "#202c40",
+      "outline": "#516885",
+      "primary": "#ffcf73",
+      "secondary": "#c3d9f4"
+    },
+    "light": {
+      "surface": "#edf3ff",
+      "outline": "#a9bed9",
+      "primary": "#9b780a",
+      "secondary": "#284e7b"
+    }
+  },
+  "aliases": {
+    "play": "rank",
+    "people": "lobby",
+    "target": "practice"
+  },
+  "icons": {
+    "rank": {
+      "file": "rank.svg",
+      "label": "랭크 매칭",
+      "lightFile": "light/rank.svg"
+    },
+    "lobby": {
+      "file": "lobby.svg",
+      "label": "로비 만들기",
+      "lightFile": "light/lobby.svg"
+    },
+    "replay": {
+      "file": "replay.svg",
+      "label": "리플레이",
+      "lightFile": "light/replay.svg"
+    },
+    "watch": {
+      "file": "watch.svg",
+      "label": "대국 관전",
+      "lightFile": "light/watch.svg"
+    },
+    "join": {
+      "file": "join.svg",
+      "label": "친구 방 참가",
+      "lightFile": "light/join.svg"
+    },
+    "computer": {
+      "file": "computer.svg",
+      "label": "컴퓨터와 대국",
+      "lightFile": "light/computer.svg"
+    },
+    "practice": {
+      "file": "practice.svg",
+      "label": "혼자 연습",
+      "lightFile": "light/practice.svg"
+    },
+    "settings": {
+      "file": "settings.svg",
+      "label": "설정",
+      "lightFile": "light/settings.svg"
+    },
+    "book": {
+      "file": "book.svg",
+      "label": "기물 설명",
+      "lightFile": "light/book.svg"
+    },
+    "trophy": {
+      "file": "trophy.svg",
+      "label": "순위·레이팅",
+      "lightFile": "light/trophy.svg"
+    },
+    "chat": {
+      "file": "chat.svg",
+      "label": "피드백",
+      "lightFile": "light/chat.svg"
+    },
+    "user": {
+      "file": "user.svg",
+      "label": "계정",
+      "lightFile": "light/user.svg"
+    },
+    "easy": {
+      "file": "easy.svg",
+      "label": "쉬움",
+      "lightFile": "light/easy.svg"
+    },
+    "normal": {
+      "file": "normal.svg",
+      "label": "보통",
+      "lightFile": "light/normal.svg"
+    },
+    "hard": {
+      "file": "hard.svg",
+      "label": "어려움",
+      "lightFile": "light/hard.svg"
+    },
+    "accept": {
+      "file": "accept.svg",
+      "label": "확인",
+      "lightFile": "light/accept.svg"
+    },
+    "decline": {
+      "file": "decline.svg",
+      "label": "닫기",
+      "lightFile": "light/decline.svg"
+    }
+  },
+  "themePaths": {
+    "dark": ".",
+    "light": "light"
+  },
+  "refined": [
+    "rank",
+    "replay",
+    "join",
+    "practice",
+    "settings"
+  ]
+}

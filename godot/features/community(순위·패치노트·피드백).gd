@@ -1,14 +1,99 @@
 extends RefCounted
 ## Feature implementation. Shared scene state and cross-feature entry points live on app.
 var app
+var pending_update: Dictionary = {}
+var update_server := ""
+var update_timer: Timer
 
 func _init(context: Control) -> void:
 	app = context
 
+func check_updates() -> void:
+	var source: String = app.api.base_url
+	var data: Dictionary = await app.api.request("/patchnotes")
+	# An optional announcement must never block sign-in, joining, or playing.
+	if source!=app.api.base_url or data.get("network_error") or data.get("ok",true)==false: return
+	queue_update(data)
+
+func _update_key(data: Dictionary) -> String:
+	var entries: Array = data.get("entries",[])
+	if entries.is_empty(): return ""
+	return str(data.get("revision",JSON.stringify(entries[0]).sha256_text()))
+
+func queue_update(data: Dictionary) -> void:
+	_stop_update_timer()
+	pending_update = data.duplicate(true)
+	update_server = app.api.base_url
+	var version: String = str(data.get("version",""))
+	if not version.is_empty(): app.rail_version.text = "v"+version+" · 패치노트"
+	if show_pending_update(): return
+	update_timer = Timer.new()
+	update_timer.wait_time = 1.0
+	update_timer.timeout.connect(show_pending_update)
+	app.add_child(update_timer)
+	update_timer.start()
+
+func _stop_update_timer() -> void:
+	if is_instance_valid(update_timer):
+		update_timer.stop()
+		update_timer.queue_free()
+	update_timer = null
+
+func show_pending_update() -> bool:
+	var key := _update_key(pending_update)
+	if update_server!=app.api.base_url or key.is_empty() or str(app.prefs.get_value(update_server,"patchnotes_seen",""))==key:
+		pending_update = {}
+		_stop_update_timer()
+		return true
+	# Keep reconnects, invitation forms, tutorials, and existing dialogs uninterrupted.
+	if not app.room.is_empty() or app.busy or app.matching or app.replay.active or not app.home.visible or app.subpage.visible: return false
+	for child in app.get_children():
+		if child is Window and child.visible: return false
+	var entry: Dictionary = pending_update.entries[0]
+	var pair = app._small_window("새 업데이트",600,580)
+	pair[0].name = "UpdateNotice"
+	# Keep dismiss/details reachable even when the release text needs scrolling.
+	var scroll: ScrollContainer = pair[1].get_parent()
+	var panel: PanelContainer = scroll.get_parent()
+	panel.remove_child(scroll)
+	var layout = VBoxContainer.new()
+	layout.add_theme_constant_override("separation",12)
+	panel.add_child(layout)
+	var header: HBoxContainer = pair[1].get_child(0)
+	pair[1].remove_child(header)
+	layout.add_child(header)
+	layout.add_child(scroll)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	app._label(pair[1],"%s  ·  %s" % [entry.get("version",""),entry.get("date","")],12)
+	var heading = app._label(pair[1],str(entry.get("title","")),24)
+	heading.add_theme_font_override("font",app._original_font(700))
+	app._label(pair[1],"이번 업데이트에서 달라진 내용을 확인하세요.",13)
+	var items: Array = entry.get("items",[])
+	for index in range(mini(items.size(),4)):
+		var item: Dictionary = items[index]
+		var card = app._card(pair[1],"")
+		app._label(card,str(item.get("tag","업데이트")),11)
+		app._label(card,str(item.get("text","")),14)
+	if items.size()>4: app._label(pair[1],"외 %d개 변경 사항은 전체 패치노트에서 확인할 수 있어요." % (items.size()-4),12)
+	var actions = HFlowContainer.new()
+	actions.alignment = FlowContainer.ALIGNMENT_END
+	layout.add_child(HSeparator.new())
+	layout.add_child(actions)
+	app._button(actions,"전체 패치노트",func(): pair[0].hide(); pair[0].queue_free(); await _patchnotes())
+	var dismiss = app._button(actions,"확인 · 플레이하기",pair[0].queue_free,"primary")
+	dismiss.name = "UpdateDismiss"
+	dismiss.grab_focus()
+	app._label(layout,"같은 업데이트는 다시 띄우지 않아요. 패치노트에서 언제든 다시 볼 수 있어요.",11)
+	app.prefs.set_value(update_server,"patchnotes_seen",key)
+	app._save()
+	pending_update = {}
+	_stop_update_timer()
+	return true
+
 func _leaderboard() -> void:
 	var data: Dictionary = await app.api.request("/leaderboard")
 	if not app._report(data): return
-	var pair = app._window("리더보드")
+	var pair = app._small_window("리더보드",460,680)
 	pair[0].size = Vector2i(mini(int(app.size.x)-24,460),mini(int(app.size.y)-24,680))
 	pair[0].position = (app.get_viewport_rect().size-Vector2(pair[0].size))/2
 	app._label(pair[1],"티어 사다리",14)
@@ -42,34 +127,9 @@ func _leaderboard() -> void:
 		var threshold = "%d+" % int(tier[0]) if index==0 else "%d~%d" % [int(tier[0]),int(tiers[index-1][0])-1]
 		label = app._label(card,threshold,9)
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var rules = VBoxContainer.new()
-	pair[1].add_child(rules)
-	rules.hide()
-	var toggle = app._button(pair[1],"+ 레이팅 규칙 — 어떻게 오르고 내리나",func(): rules.visible = not rules.visible)
-	pair[1].move_child(toggle,rules.get_index())
-	var rule: Dictionary = data.get("rules",{})
-	var base = int(rule.get("default",1000))
-	var k = int(rule.get("k",32))
-	app._rich(rules,"시작 <b>%d점</b>, 바닥 <b>%d점</b>. 티어는 레이팅 구간으로 자동 결정됩니다.\n변동 = <b>%d × (결과 − 기대승률)</b>. 상대가 강할수록 승리 보상이 커집니다(400점 차 = 10배)." % [base,int(rule.get("floor",0)),k],12)
-	var table = GridContainer.new()
-	table.columns = 4
-	rules.add_child(table)
-	for text in ["%d점인 내가…" % base,"승리","패배","무승부"]: app._label(table,text,12)
-	for difference in [0,300,-300]:
-		app._label(table,"상대 %d점" % (base+difference),12)
-		var expected = 1.0/(1.0+pow(10.0,float(difference)/400.0))
-		for score in [1.0,0.0,.5]:
-			var delta = int(floor(k*(score-expected)+.5))
-			var label = app._label(table,("+" if delta>0 else "")+str(delta),12)
-			label.modulate = Color("83bd8a") if delta>0 else (Color("df8b7e") if delta<0 else Color.WHITE)
-	if rule.get("botRated",false):
-		var bots: Dictionary = rule.get("bot",{})
-		app._rich(rules,"<b>컴퓨터 대국</b>: 이기면 오르고 "+("져도 내려가지 않습니다." if rule.get("botNoLoss",false) else "지면 내려갑니다."),12)
-		for level_name in ["easy","normal","hard"]:
-			var rating = int(bots.get(level_name,0))
-			app._label(rules,"%s: %d점%s" % [{"easy":"쉬움","normal":"보통","hard":"어려움"}[level_name],rating," · 상승 상한 %d점" % (rating+int(rule.botCap)) if rule.get("botCap")!=null else ""],12)
-	else: app._label(rules,"컴퓨터 대국은 레이팅에 반영되지 않습니다.",12)
-	app._rich(rules,"<b>랭크 매칭</b>: 로그인 회원끼리 레이팅전. 친구 대전·혼자 연습·게스트는 미반영.\n기권, 접속 끊김 90초, 연속 3회 미행동은 패배로 정산합니다. 정산은 종료 시 한 번입니다.",12)
+	var rules_button = app._button(pair[1],"레이팅 규칙 보기",func(): pass)
+	rules_button.name = "RatingRulesOpen"
+	rules_button.pressed.connect(func(): preload("res://features/rating_rules(레이팅 안내 팝업).gd").new(app).show_rules(data.get("rules",{}),pair[0],rules_button))
 
 	app._label(pair[1],"순위 · 레이팅 순 상위 50명",14)
 	_rank_table(pair[1],data.get("rows",[]))
@@ -157,6 +217,7 @@ func _patchnotes() -> void:
 
 func _feedback() -> void:
 	var pair = app._small_window("개발자에게 피드백",440,440)
+	pair[0].set_meta("suppress_hover_tooltips",true)
 	var form = VBoxContainer.new()
 	pair[1].add_child(form)
 	app._label(form,"버그·밸런스·아이디어 뭐든 좋아요. 로그인 상태면 닉네임이 함께 전달되고, 아니면 익명입니다.",12)

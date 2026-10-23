@@ -23,26 +23,28 @@ func _ready() -> void:
 
 func open_at(point: Vector2, ability: String, available: Array, light: bool, animate: bool=true) -> void:
 	if is_instance_valid(motion): motion.kill()
-	origin = point-Vector2(23,23)
+	origin = point-Vector2.ONE*(Icon.DIAMETER/2)
 	opened = true
 	show()
-	var direction := 1.0 if point.y<104 else -1.0
-	var offsets := [Vector2(-44,37*direction),Vector2(0,76*direction),Vector2(44,37*direction)]
-	var center_x := clampf(point.x,76,size.x-76)
+	var direction := 1.0 if point.y<116 else -1.0
+	var offsets := [Vector2(-60,40*direction),Vector2(0,84*direction),Vector2(60,40*direction)]
+	var center_x := clampf(point.x,90,size.x-90)
 	var actions := ["attack",ability,"move"]
 	var labels := {"attack":"공격","move":"이동","scan":"스캔","fire":"저격","barrage":"돌파","none":"능력 없음"}
 	motion = create_tween().set_parallel(true)
 	for index in range(3):
 		var button = buttons[index]
 		button.kind = actions[index]
+		button.show()
 		button.caption = labels.get(button.kind,"능력")
+		button.accessibility_name = button.caption
 		button.light = light
 		button.disabled = not available[index]
 		button.tooltip_text = button.caption if available[index] else button.caption+" · 사용 가능한 대상/능력이 없습니다"
 		button.mouse_filter = Control.MOUSE_FILTER_STOP
 		button.focus_mode = Control.FOCUS_ALL if available[index] else Control.FOCUS_NONE
-		var target: Vector2 = Vector2(center_x,point.y)+offsets[index]-Vector2(23,23)
-		target = target.clamp(Vector2.ZERO,size-Vector2(46,46))
+		var target: Vector2 = Vector2(center_x,point.y)+offsets[index]-Vector2.ONE*(Icon.DIAMETER/2)
+		target = target.clamp(Vector2.ZERO,size-Vector2.ONE*Icon.DIAMETER)
 		button.position = origin if animate else target
 		button.scale = Vector2.ONE*.18 if animate else Vector2.ONE
 		button.modulate.a = 0.0 if animate else 1.0

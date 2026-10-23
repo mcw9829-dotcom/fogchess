@@ -1,0 +1,99 @@
+{
+  "name": "Fogchess Grove UI",
+  "version": 1,
+  "viewBox": [
+    0,
+    0,
+    48,
+    48
+  ],
+  "nativeRasterSize": 96,
+  "usageSizes": [
+    24,
+    26,
+    40,
+    48
+  ],
+  "stroke": 2.2,
+  "colors": {
+    "surface": "#293630",
+    "outline": "#526258",
+    "primary": "#e7c68d",
+    "secondary": "#9cbaaa"
+  },
+  "aliases": {
+    "play": "rank",
+    "people": "lobby",
+    "target": "practice"
+  },
+  "icons": {
+    "rank": {
+      "file": "rank.svg",
+      "label": "랭크 매칭"
+    },
+    "lobby": {
+      "file": "lobby.svg",
+      "label": "로비 만들기"
+    },
+    "replay": {
+      "file": "replay.svg",
+      "label": "리플레이"
+    },
+    "watch": {
+      "file": "watch.svg",
+      "label": "대국 관전"
+    },
+    "join": {
+      "file": "join.svg",
+      "label": "친구 방 참가"
+    },
+    "computer": {
+      "file": "computer.svg",
+      "label": "컴퓨터와 대국"
+    },
+    "practice": {
+      "file": "practice.svg",
+      "label": "혼자 연습"
+    },
+    "settings": {
+      "file": "settings.svg",
+      "label": "설정"
+    },
+    "book": {
+      "file": "book.svg",
+      "label": "기물 설명"
+    },
+    "trophy": {
+      "file": "trophy.svg",
+      "label": "순위·레이팅"
+    },
+    "chat": {
+      "file": "chat.svg",
+      "label": "피드백"
+    },
+    "user": {
+      "file": "user.svg",
+      "label": "계정"
+    },
+    "easy": {
+      "file": "easy.svg",
+      "label": "쉬움"
+    },
+    "normal": {
+      "file": "normal.svg",
+      "label": "보통"
+    },
+    "hard": {
+      "file": "hard.svg",
+      "label": "어려움"
+    },
+    "accept": {
+      "file": "accept.svg",
+      "label": "확인"
+    },
+    "decline": {
+      "file": "decline.svg",
+      "label": "닫기"
+    }
+  }
+}

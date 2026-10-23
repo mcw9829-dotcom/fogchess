@@ -83,6 +83,7 @@ func _run() -> void:
 		if child is Window: child.queue_free()
 	await process_frame
 	await preload("res://tests/remaining.gd").new().run(app,self,check)
+	await preload("res://tests/update_notice.gd").new().run(app,self,check)
 	app._tutorial()
 	await process_frame
 	for child in app.get_children():
@@ -246,9 +247,14 @@ func _run() -> void:
 	root.size = Vector2i(390,844)
 	await process_frame
 	await capture("trophies_mobile")
-	check(app.controls_scroll.size.y>=400,"mobile kill log and trophies have a nonzero scrollable panel")
+	await process_frame
+	await process_frame
+	check(app.controls_scroll.vertical_scroll_mode==ScrollContainer.SCROLL_MODE_DISABLED and app.controls_scroll.size.y>=app.controls.get_combined_minimum_size().y,"mobile information rail exposes its full content without nested scrolling")
 	app.page_scroll.scroll_vertical = 1000
 	await capture("trophies_mobile_log")
+	await process_frame
+	await process_frame
+	check(app.enemy_icons.get_global_rect().intersects(Rect2(Vector2.ZERO,Vector2(root.size))),"mobile trophies remain reachable through the page scroll")
 	app.page_scroll.scroll_vertical = 0
 	root.size = Vector2i(1280,720)
 	await process_frame

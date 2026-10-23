@@ -1,0 +1,10 @@
+{
+  "tests_passed": {
+    "상태 툴팁": 24,
+    "보드 UI": 128
+  },
+  "protected_files_unchanged": 327,
+  "board_change": "Only the custom tooltip factory was added; rest of board script equals backup.",
+  "validation": "Native Godot hover events, both orientations, opaque surface, state dismissal, light reload card, placement function at 320px viewport corners.",
+  "limits": "No physical mobile or web build validation. Native hover timer required a longer test wait (1.3 seconds); production timing unchanged."
+}

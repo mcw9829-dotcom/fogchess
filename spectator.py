@@ -30,7 +30,7 @@ def capture(room, now=None):
         for cell in row:
             if cell['p']:
                 cell['p'].pop('id', None)
-    v.update(yourColor='spectator', promote=None, exposed=[], ready=False,
+    v.update(yourColor='spectator', promote=None, exposed=[], reloading=[], ready=False,
              oppReady=False, captured=[], feed=copy.deepcopy(st['feed'][-8:]),
              capturedBy=copy.deepcopy(st.get('captured', {})),
              names=dict(room['names']), ratings=dict(room['ratings']),

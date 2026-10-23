@@ -16,7 +16,7 @@ func _save() -> void:
 func _settings() -> void:
 	var box = app._subscreen("설정")
 	app._nav_active("설정")
-	for item in [["sound","효과음","",true],["music","배경음악","",true],["colorblind","색약 모드","빨강·초록 대신 파랑·주황 계열로 구분",false],["effects","파티클 이펙트","폭발·안개·물결 연출",true]]:
+	for item in [["sound","효과음","",true],["music","배경음악","",true],["colorblind","색약 모드","빨강·초록 대신 파랑·주황 계열로 구분",false],["effects","파티클 이펙트","폭발·안개·물결 연출",true],["practice_tips","연습 학습 안내","컴퓨터 대국·혼자 연습에서 상황별 규칙 설명",true]]:
 		var content = app._card(box,"")
 		var row = HBoxContainer.new()
 		content.add_child(row)
@@ -29,7 +29,7 @@ func _settings() -> void:
 		status.custom_minimum_size.x = 30
 		status.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		var toggle = CheckButton.new()
+		var toggle = preload("res://material_switch(정돈된 설정 스위치).gd").new()
 		toggle.name = "Setting_"+str(item[0])
 		toggle.tooltip_text = str(item[1])+" 켜기 / 끄기"
 		toggle.button_pressed = bool(app.prefs.get_value("settings",item[0],item[3]))
@@ -186,6 +186,7 @@ func _apply_theme() -> void:
 	for state in ["normal","hover","pressed","disabled"]: design.set_stylebox(state,"CheckButton",StyleBoxEmpty.new())
 	design.set_icon("checked","CheckButton",load("res://ui/icons/switch_on.svg"))
 	design.set_icon("unchecked","CheckButton",load("res://ui/icons/switch_off.svg"))
+	design.set_constant("light_mode","FogMenuIcon",1 if light else 0)
 	app.theme = design
 	app.coach_label.add_theme_color_override("font_color",Color("#76521e") if light else Color("#eed29a"))
 	app.ui_components._refresh_button_styles(app)

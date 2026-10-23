@@ -85,6 +85,27 @@ func tile(cell: Vector2i) -> Dictionary:
 	if cell.x < 0 or cell.y < 0 or cell.x >= grid.size() or cell.y >= grid[cell.x].size(): return {}
 	return grid[cell.x][cell.y]
 
+func _get_tooltip(at_position: Vector2) -> String:
+	if is_dragging or down.x>=0: return ""
+	var cell := cell_at(at_position)
+	var p: Variant = tile(cell).get("p")
+	if not p is Dictionary or p.get("o")!=view.get("yourColor"): return ""
+	var s := geometry().size.x/12.0
+	# The same screen-space offsets as the drawn badges, including flipped boards.
+	var badge := center(cell)+Vector2(s*.3,-s*.3)
+	if at_position.distance_to(badge)<=maxf(7.0,s*.18):
+		for exposure in view.get("exposed",[]):
+			if exposure.get("pid")==p.get("id"): return "상대에게 위치가 보이는 중입니다."
+	badge = center(cell)+Vector2(-s*.3,-s*.3)
+	if at_position.distance_to(badge)<=maxf(7.0,s*.18):
+		for reload_state in view.get("reloading",[]):
+			if reload_state.get("pid")==p.get("id"): return "사격 후 내 차례 한 턴 동안 재장전합니다. 이동은 가능합니다."
+	return ""
+
+func _make_custom_tooltip(for_text: String) -> Object:
+	if for_text.is_empty(): return null
+	return preload("res://status_tooltip(상태 설명 카드).gd").new(self,for_text)
+
 func contains(cells: Array, cell: Vector2i) -> bool:
 	for rc in cells:
 		if int(rc[0]) == cell.x and int(rc[1]) == cell.y: return true
@@ -217,10 +238,15 @@ func _draw() -> void:
 				elif data.get("p") or mode!="move": draw_arc(at,s*.42,0,TAU,32,col,3,true)
 				else: draw_circle(at,s*.17,col)
 			if p is Dictionary and p.get("o")==view.get("yourColor"):
+				for reload_state in view.get("reloading",[]):
+					if reload_state.get("pid")==p.get("id"):
+						# ? means reload; ! at top-right means the enemy can see this piece.
+						var badge := box.position+Vector2(s*.2,s*.2)
+						preload("res://status_badge(공통 상태 배지).gd").draw_reload(self,badge,s)
 				for exposure in view.get("exposed",[]):
 					if exposure.get("pid")==p.get("id"):
-						draw_circle(box.position+Vector2(s*.8,s*.2),s*.15,Color("#e69f00"))
-						draw_string(ThemeDB.fallback_font,box.position+Vector2(s*.75,s*.28),"!",HORIZONTAL_ALIGNMENT_LEFT,-1,12,Color.BLACK)
+						var badge := box.position+Vector2(s*.8,s*.2)
+						preload("res://status_badge(공통 상태 배지).gd").exposure(self,badge,s)
 			if hover==cell and selected!=cell: draw_rect(box.grow(-1),Color(1,1,1,.45),false,1)
 	if not piece_motion.is_empty():
 		var t: float = clampf(piece_motion.age/piece_motion.duration,0,1)

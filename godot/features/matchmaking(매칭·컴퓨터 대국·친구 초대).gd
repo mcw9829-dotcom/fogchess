@@ -57,6 +57,7 @@ func _match_update(data: Dictionary) -> void:
 			counter.text = ("상대 수락 대기 중… %d초" if data.get("accepted",false) else "%d초 안에 수락하세요") % int(data.get("secondsLeft",0)) if state=="found" else "대기 %d초 · 대기열 %d명" % [int(data.get("waited",0)),int(data.get("queue",0))]
 		return
 	app.match_body.set_meta("signature",signature)
+	if previous!=state: app.ui_motion.pulse(app.match_body)
 	app._clear_form(app.match_body)
 	app._label(app.match_body,"상대를 찾았어요!" if state=="found" else ("매칭 성사!" if state=="matched" else "상대를 찾는 중…"),20).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	app._label(app.match_body,"%s · %d (%s)" % [app.me.get("name",""),int(app.me.get("rating",1000)),app.NAMES.get(app.me.get("tier","N"),"나이트")],14).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

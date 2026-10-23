@@ -1,0 +1,9 @@
+{
+  "scope": "Visible match screen only. Home and subpages use default native tooltips, including settings opened during a match. Board custom status cards unchanged.",
+  "tests": {
+    "unified-tooltip": 33,
+    "status-tooltip": 24
+  },
+  "passed": 57,
+  "protected_files_unchanged": 327
+}

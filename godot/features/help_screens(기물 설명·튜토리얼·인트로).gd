@@ -7,12 +7,23 @@ func _init(context: Control) -> void:
 
 func _help() -> void:
 	var pair = app._small_window("기물 설명",1230,540)
+	pair[0].set_meta("suppress_hover_tooltips",true)
+	var header: HBoxContainer = pair[1].get_child(0)
+	var title: Label = header.get_child(0)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# Balance the close button so the title sits on the window centerline.
+	var balance := Control.new()
+	balance.custom_minimum_size.x = header.get_child(1).get_combined_minimum_size().x
+	balance.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header.add_child(balance)
+	header.move_child(balance,0)
 	pair[1].add_theme_constant_override("separation",8)
 	var links = HFlowContainer.new()
+	links.alignment = FlowContainer.ALIGNMENT_CENTER
 	pair[1].add_child(links)
 	app._button(links,"처음 안내(1분) 다시 보기",func(): pair[0].queue_free(); app._intro())
 	app._button(links,"직접 배우기 · 왕 찾기 미션",func(): pair[0].queue_free(); app._tutorial())
-	app._rich(pair[1],"기물 카드에 <b>마우스를 올리면</b>(모바일은 <b>탭</b>) 행마 → 공격 → 능력 순으로 애니메이션을 보여줍니다. 이펙트와 효과음은 설정을 따릅니다.",12)
+	app._rich(pair[1],"[center]기물 카드에 <b>마우스를 올리면</b>(모바일은 <b>탭</b>) 행마 → 공격 → 능력 순으로 애니메이션을 보여줍니다. 이펙트와 효과음은 설정을 따릅니다.[/center]",12)
 	var nav = HBoxContainer.new()
 	pair[1].add_child(nav)
 	var prev = app._button(nav,"◀",func(): pass)
@@ -103,7 +114,7 @@ func _tutorial() -> void:
 	var tutorial = preload("res://tutorial(튜토리얼 진행).gd").new()
 	var saved = int(app.prefs.get_value("settings","tutorial_step",0))
 	tutorial.step = 0 if saved>=3 else saved
-	tutorial.progress_changed.connect(func(value): app.prefs.set_value("settings","tutorial_step",value); app._save())
+	tutorial.progress_changed.connect(func(value): app.prefs.set_value("settings","tutorial_step",value); app._save(); app.game_ux.refresh_learning())
 	tutorial.start_game.connect(func(): window.queue_free(); await app._join({"vs_bot":true,"level":"easy"}))
 	window.add_child(tutorial)
 	window.popup_centered(Vector2i(mini(int(app.size.x)-24,1060),mini(int(app.size.y)-24,720)))
@@ -126,13 +137,13 @@ func _intro(step: int=0) -> void:
 	demo.effects = app.board.effects
 	demo.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	pair[1].add_child(demo)
-	var title = app._label(pair[1],str(spec.title),19)
+	var title = app._label(pair[1],"1. 배치 · 기본 배치로 시작하거나 바꿀 수 있어요" if step==0 else str(spec.title),19)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.custom_minimum_size.y = 46
-	var caption = app._rich(pair[1],str(spec.frames[0].cap),14)
+	var caption = app._rich(pair[1],_intro_caption(str(spec.frames[0].cap),step),14)
 	caption.custom_minimum_size.y = 44
 	demo.caption_changed.connect(func(text):
-		caption.text = text.replace("<b>","[b]").replace("</b>","[/b]")
+		caption.text = _intro_caption(text,step).replace("<b>","[b]").replace("</b>","[/b]")
 		caption.modulate.a = 0
 		app.create_tween().tween_property(caption,"modulate:a",1,.4))
 	var nav = HFlowContainer.new()
@@ -141,7 +152,8 @@ func _intro(step: int=0) -> void:
 	if step>0: app._button(nav,"← 이전",func(): pair[0].queue_free(); app._intro(step-1))
 	if step<3: app._button(nav,"다음 →",func(): pair[0].queue_free(); app._intro(step+1))
 	elif app.room.is_empty():
-		app._button(nav,"컴퓨터(쉬움)와 첫 판 두기",func(): pair[0].queue_free(); await app._join({"vs_bot":true,"level":"easy"}))
+		app._button(nav,"직접 조작하며 배우기",func(): pair[0].queue_free(); app._tutorial(),"primary")
+		app._button(nav,"바로 쉬움 봇 대국",func(): pair[0].queue_free(); await app._join({"vs_bot":true,"level":"easy"}))
 		app._button(nav,"나중에",pair[0].queue_free)
 	else: app._button(nav,"알겠어요",pair[0].queue_free)
 	app._rich(pair[1],"기물별 행마·능력은 왼쪽 사이드바 <b>기물 설명</b>에서, 이 안내는 거기 <b>처음 안내 다시 보기</b>로 언제든 다시 볼 수 있어요.",12)
@@ -166,3 +178,8 @@ func _effect_preview() -> void:
 		["승리",{"type":"victory"}],["패배",{"type":"defeat"}],["무승부",{"type":"drawend"}]]
 	for spec in specs: app._button(buttons,spec[0],func(): demo.play(spec[1]); app.audio.cue(spec[1].type))
 	app._label(pair[1],"보드 위 레이어에서 재생되는 파티클 연출입니다. 브라우저의 '동작 줄이기'가 켜져 있으면 최소 연출로 나옵니다.",12)
+
+func _intro_caption(text: String,step: int) -> String:
+	if step==0 and "배치" in text:
+		return "기본 배치로 시작하거나 내 진영 3줄 안에서 바꿀 수 있어요. 준비가 되면 <b>준비 완료</b>를 누르세요."
+	return text

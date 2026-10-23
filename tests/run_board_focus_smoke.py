@@ -32,7 +32,8 @@ def main():
         server.accounts.init_db(str(Path(directory)/'test.db'))
         httpd=server.ThreadingServer(('127.0.0.1',0),FocusFixture)
         threading.Thread(target=httpd.serve_forever,daemon=True).start()
-        args=[default_godot(),'--path',str(ROOT/'godot'),'--script','res://tests/board_focus.gd']
+        args=[default_godot(),'--path',str(ROOT/'godot'),'--script','res://tests/board_focus.gd',
+              '--log-file',str(ROOT/'.dev-data'/'board-focus-runtime.log')]
         if '--capture' in sys.argv: args+=['--position','-16000,-16000']
         else: args+=['--headless']
         args+=['--','--smoke']
@@ -42,6 +43,10 @@ def main():
             out=p.stdout.decode('utf-8',errors='replace')+p.stderr.decode('utf-8',errors='replace')
             print(out)
             return int(p.returncode!=0 or 'BOARD_FOCUS_FAILURES=0' not in out or 'SCRIPT ERROR' in out)
+        except subprocess.TimeoutExpired as exc:
+            print((exc.stdout or b'').decode('utf-8',errors='replace'))
+            print((exc.stderr or b'').decode('utf-8',errors='replace'))
+            raise
         finally: httpd.shutdown();httpd.server_close()
 
 if __name__=='__main__': raise SystemExit(main())

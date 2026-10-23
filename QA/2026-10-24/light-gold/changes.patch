@@ -1,0 +1,477 @@
+--- a/godot/original_icon(원본 스타일 아이콘).gd
++++ b/godot/original_icon(원본 스타일 아이콘).gd
+@@ -1,14 +1,19 @@
+ extends Control
+-## Shared semantic SVG assets; no operating-system emoji dependency.
++## Shared SVGs follow the inherited application theme, including new modal windows.
+ const ALIASES = {"play":"rank","people":"lobby","target":"practice"}
+ var key := "rank"
+ var texture: Texture2D
+ static var cache: Dictionary = {}
+-static func asset_path(value: String) -> String:
+-	return "res://ui/icons/menu/%s.svg" % ALIASES.get(value,value)
++static func asset_path(value: String, light: bool=false) -> String:
++	return "res://ui/icons/menu/%s%s.svg" % ["light/" if light else "",ALIASES.get(value,value)]
+ func _ready() -> void:
+ 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+-	var path := asset_path(key)
++	_refresh_texture()
++func _notification(what: int) -> void:
++	if what==NOTIFICATION_THEME_CHANGED and is_node_ready(): _refresh_texture()
++func _refresh_texture() -> void:
++	var light := has_theme_constant("light_mode","FogMenuIcon") and get_theme_constant("light_mode","FogMenuIcon")==1
++	var path := asset_path(key,light)
+ 	if ResourceLoader.exists(path):
+ 		if not cache.has(path): cache[path] = load(path)
+ 		texture = cache[path]
+--- a/godot/features/settings(설정·테마·소리).gd
++++ b/godot/features/settings(설정·테마·소리).gd
+@@ -186,6 +186,7 @@
+ 	for state in ["normal","hover","pressed","disabled"]: design.set_stylebox(state,"CheckButton",StyleBoxEmpty.new())
+ 	design.set_icon("checked","CheckButton",load("res://ui/icons/switch_on.svg"))
+ 	design.set_icon("unchecked","CheckButton",load("res://ui/icons/switch_off.svg"))
++	design.set_constant("light_mode","FogMenuIcon",1 if light else 0)
+ 	app.theme = design
+ 	app.coach_label.add_theme_color_override("font_color",Color("#76521e") if light else Color("#eed29a"))
+ 	app.ui_components._refresh_button_styles(app)
+--- a/godot/ui/icons/menu/accept.svg
++++ b/godot/ui/icons/menu/accept.svg
+@@ -1 +1 @@
+-<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>확인</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="14" stroke="#9cbaaa"/><path d="m17 24 5 5 10-11"/></g></svg>
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>확인</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#202c40" stroke="#516885"/><g fill="none" stroke="#ffcf73" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="14" stroke="#c3d9f4"/><path d="m17 24 5 5 10-11"/></g></svg>
+--- a/godot/ui/icons/menu/book.svg
++++ b/godot/ui/icons/menu/book.svg
+@@ -1 +1 @@
+-<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>기물 설명</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M24 15c-4-3-9-4-14-3v23c5-1 10 0 14 3 4-3 9-4 14-3V12c-5-1-10 0-14 3Z" stroke="#9cbaaa"/><path d="M24 15v23m-9-19 5 1m-5 5 5 1m8-6 5-1m-5 7 5-1"/></g></svg>
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>기물 설명</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#202c40" stroke="#516885"/><g fill="none" stroke="#ffcf73" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M24 15c-4-3-9-4-14-3v23c5-1 10 0 14 3 4-3 9-4 14-3V12c-5-1-10 0-14 3Z" stroke="#c3d9f4"/><path d="M24 15v23m-9-19 5 1m-5 5 5 1m8-6 5-1m-5 7 5-1"/></g></svg>
+--- a/godot/ui/icons/menu/chat.svg
++++ b/godot/ui/icons/menu/chat.svg
+@@ -1 +1 @@
+-<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>피드백</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12h24v20H23l-9 6v-6h-2Z" stroke="#9cbaaa"/><path d="M18 19h12m-12 6h8"/></g></svg>
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>피드백</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#202c40" stroke="#516885"/><g fill="none" stroke="#ffcf73" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12h24v20H23l-9 6v-6h-2Z" stroke="#c3d9f4"/><path d="M18 19h12m-12 6h8"/></g></svg>
+--- a/godot/ui/icons/menu/computer.svg
++++ b/godot/ui/icons/menu/computer.svg
+@@ -1 +1 @@
+-<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>컴퓨터와 대국</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="11" y="12" width="26" height="20" rx="4" stroke="#9cbaaa"/><path d="M19 37h10m-5-5v5m-5-17 4 3-4 3m8 0h3"/></g></svg>
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>컴퓨터와 대국</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#202c40" stroke="#516885"/><g fill="none" stroke="#ffcf73" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="11" y="12" width="26" height="20" rx="4" stroke="#c3d9f4"/><path d="M19 37h10m-5-5v5m-5-17 4 3-4 3m8 0h3"/></g></svg>
+--- a/godot/ui/icons/menu/decline.svg
++++ b/godot/ui/icons/menu/decline.svg
+@@ -1 +1 @@
+-<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>닫기</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="14" stroke="#9cbaaa"/><path d="m19 19 10 10m0-10L19 29"/></g></svg>
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>닫기</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#202c40" stroke="#516885"/><g fill="none" stroke="#ffcf73" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="14" stroke="#c3d9f4"/><path d="m19 19 10 10m0-10L19 29"/></g></svg>
+--- a/godot/ui/icons/menu/easy.svg
++++ b/godot/ui/icons/menu/easy.svg
+@@ -1 +1 @@
+-<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>쉬움</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M24 36V23M24 27C10 27 11 16 11 16s13-1 13 11ZM24 23c0-14 13-13 13-13s1 13-13 13Z" stroke="#9cbaaa"/><path d="M17 37h14"/></g></svg>
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>쉬움</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#202c40" stroke="#516885"/><g fill="none" stroke="#ffcf73" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M24 36V23M24 27C10 27 11 16 11 16s13-1 13 11ZM24 23c0-14 13-13 13-13s1 13-13 13Z" stroke="#c3d9f4"/><path d="M17 37h14"/></g></svg>
+--- a/godot/ui/icons/menu/hard.svg
++++ b/godot/ui/icons/menu/hard.svg
+@@ -1 +1 @@
+-<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>어려움</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M25 9c2 9-7 10-4 17 5-1 7-4 8-7 7 6 9 12 3 17-7 6-19 1-19-7 0-8 8-12 12-20Z" stroke="#9cbaaa"/><path d="M24 27c-6 5-5 10 0 11 5-1 6-5 0-11Z"/></g></svg>
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>어려움</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#202c40" stroke="#516885"/><g fill="none" stroke="#ffcf73" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M25 9c2 9-7 10-4 17 5-1 7-4 8-7 7 6 9 12 3 17-7 6-19 1-19-7 0-8 8-12 12-20Z" stroke="#c3d9f4"/><path d="M24 27c-6 5-5 10 0 11 5-1 6-5 0-11Z"/></g></svg>
+--- a/godot/ui/icons/menu/join.svg
++++ b/godot/ui/icons/menu/join.svg
+@@ -1 +1 @@
+-<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>친구 방 참가</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M25 12h10v24H25" stroke="#9cbaaa"/><path d="M10 24h17m-6-6 6 6-6 6"/><circle cx="30" cy="24" r="1" fill="#9cbaaa" stroke="none"/></g></svg>
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>친구 방 참가</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#202c40" stroke="#516885"/><g fill="none" stroke="#ffcf73" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="13" y="10" width="22" height="27" rx="1" stroke="#c3d9f4"/><path d="m14 11 13 5v24l-13-4Z" fill="#202c40"/><circle cx="23" cy="27" r="1.5" fill="#ffcf73" stroke="none"/></g></svg>
+--- a/godot/ui/icons/menu/lobby.svg
++++ b/godot/ui/icons/menu/lobby.svg
+@@ -1 +1 @@
+-<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>로비 만들기</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 23 24 12l13 11M15 21v15h18V21" stroke="#9cbaaa"/><circle cx="24" cy="23" r="3"/><path d="M19 34v-3a5 5 0 0 1 10 0v3"/></g></svg>
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>로비 만들기</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#202c40" stroke="#516885"/><g fill="none" stroke="#ffcf73" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 23 24 12l13 11M15 21v15h18V21" stroke="#c3d9f4"/><circle cx="24" cy="23" r="3"/><path d="M19 34v-3a5 5 0 0 1 10 0v3"/></g></svg>
+--- a/godot/ui/icons/menu/manifest.json
++++ b/godot/ui/icons/menu/manifest.json
+@@ -1,6 +1,6 @@
+ {
+-  "name": "Fogchess Grove UI",
+-  "version": 1,
++  "name": "Fogchess Gold & Blue UI",
++  "version": 2,
+   "viewBox": [
+     0,
+     0,
+@@ -16,10 +16,18 @@
+   ],
+   "stroke": 2.2,
+   "colors": {
+-    "surface": "#293630",
+-    "outline": "#526258",
+-    "primary": "#e7c68d",
+-    "secondary": "#9cbaaa"
++    "dark": {
++      "surface": "#202c40",
++      "outline": "#516885",
++      "primary": "#ffcf73",
++      "secondary": "#c3d9f4"
++    },
++    "light": {
++      "surface": "#edf3ff",
++      "outline": "#a9bed9",
++      "primary": "#955600",
++      "secondary": "#284e7b"
++    }
+   },
+   "aliases": {
+     "play": "rank",
+@@ -29,71 +37,99 @@
+   "icons": {
+     "rank": {
+       "file": "rank.svg",
+-      "label": "랭크 매칭"
++      "label": "랭크 매칭",
++      "lightFile": "light/rank.svg"
+     },
+     "lobby": {
+       "file": "lobby.svg",
+-      "label": "로비 만들기"
++      "label": "로비 만들기",
++      "lightFile": "light/lobby.svg"
+     },
+     "replay": {
+       "file": "replay.svg",
+-      "label": "리플레이"
++      "label": "리플레이",
++      "lightFile": "light/replay.svg"
+     },
+     "watch": {
+       "file": "watch.svg",
+-      "label": "대국 관전"
++      "label": "대국 관전",
++      "lightFile": "light/watch.svg"
+     },
+     "join": {
+       "file": "join.svg",
+-      "label": "친구 방 참가"
++      "label": "친구 방 참가",
++      "lightFile": "light/join.svg"
+     },
+     "computer": {
+       "file": "computer.svg",
+-      "label": "컴퓨터와 대국"
++      "label": "컴퓨터와 대국",
++      "lightFile": "light/computer.svg"
+     },
+     "practice": {
+       "file": "practice.svg",
+-      "label": "혼자 연습"
++      "label": "혼자 연습",
++      "lightFile": "light/practice.svg"
+     },
+     "settings": {
+       "file": "settings.svg",
+-      "label": "설정"
++      "label": "설정",
++      "lightFile": "light/settings.svg"
+     },
+     "book": {
+       "file": "book.svg",
+-      "label": "기물 설명"
++      "label": "기물 설명",
++      "lightFile": "light/book.svg"
+     },
+     "trophy": {
+       "file": "trophy.svg",
+-      "label": "순위·레이팅"
++      "label": "순위·레이팅",
++      "lightFile": "light/trophy.svg"
+     },
+     "chat": {
+       "file": "chat.svg",
+-      "label": "피드백"
++      "label": "피드백",
++      "lightFile": "light/chat.svg"
+     },
+     "user": {
+       "file": "user.svg",
+-      "label": "계정"
++      "label": "계정",
++      "lightFile": "light/user.svg"
+     },
+     "easy": {
+       "file": "easy.svg",
+-      "label": "쉬움"
++      "label": "쉬움",
++      "lightFile": "light/easy.svg"
+     },
+     "normal": {
+       "file": "normal.svg",
+-      "label": "보통"
++      "label": "보통",
++      "lightFile": "light/normal.svg"
+     },
+     "hard": {
+       "file": "hard.svg",
+-      "label": "어려움"
++      "label": "어려움",
++      "lightFile": "light/hard.svg"
+     },
+     "accept": {
+       "file": "accept.svg",
+-      "label": "확인"
++      "label": "확인",
++      "lightFile": "light/accept.svg"
+     },
+     "decline": {
+       "file": "decline.svg",
+-      "label": "닫기"
++      "label": "닫기",
++      "lightFile": "light/decline.svg"
+     }
+-  }
++  },
++  "themePaths": {
++    "dark": ".",
++    "light": "light"
++  },
++  "refined": [
++    "rank",
++    "replay",
++    "join",
++    "practice",
++    "settings"
++  ]
+ }--- a/godot/ui/icons/menu/normal.svg
++++ b/godot/ui/icons/menu/normal.svg
+@@ -1 +1 @@
+-<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>보통</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 36v-8h5v8m5 0V20h5v16m5 0V12h5v24" stroke="#9cbaaa"/><path d="m12 20 10-8m-6 0h6v6"/></g></svg>
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>보통</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#202c40" stroke="#516885"/><g fill="none" stroke="#ffcf73" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 36v-8h5v8m5 0V20h5v16m5 0V12h5v24" stroke="#c3d9f4"/><path d="m12 20 10-8m-6 0h6v6"/></g></svg>
+--- a/godot/ui/icons/menu/practice.svg
++++ b/godot/ui/icons/menu/practice.svg
+@@ -1 +1 @@
+-<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>혼자 연습</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="13" stroke="#9cbaaa"/><circle cx="24" cy="24" r="7"/><path d="m24 24 13-13m-6 0h6v6"/><circle cx="24" cy="24" r="2" fill="#e7c68d" stroke="none"/></g></svg>
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>혼자 연습</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#202c40" stroke="#516885"/><g fill="none" stroke="#ffcf73" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="21" cy="27" r="12" stroke="#c3d9f4"/><circle cx="21" cy="27" r="6.5" stroke="#c3d9f4"/><path d="m22 26 13-13" stroke="#202c40" stroke-width="5"/><path d="m22 26 13-13"/><path d="m21 27 2-7 5 5Z" fill="#ffcf73" stroke="none"/><path d="M31 17v-5l5-5v5Zm0 0h5l5-5h-5Z" fill="#ffcf73" stroke="none"/></g></svg>
+--- a/godot/ui/icons/menu/rank.svg
++++ b/godot/ui/icons/menu/rank.svg
+@@ -1 +1 @@
+-<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>랭크 매칭</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M24 10 35 14v10c0 7-6 11-11 14-5-3-11-7-11-14V14Z" stroke="#9cbaaa"/><path d="m18 29 12-14v7M30 15h-6M17 24l7 6m-8 1 3-4"/></g></svg>
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>랭크 매칭</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#202c40" stroke="#516885"/><g fill="none" stroke="#ffcf73" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M24 8 37 13v10c0 8-7 13-13 17-6-4-13-9-13-17V13Z" stroke="#c3d9f4"/><path d="m24 13 3 4v10h-6V17Z" fill="#ffcf73" stroke="none"/><path d="M18 28h12m-6 0v6"/><circle cx="24" cy="35" r="1.5" fill="#ffcf73" stroke="none"/></g></svg>
+--- a/godot/ui/icons/menu/README.txt
++++ b/godot/ui/icons/menu/README.txt
+@@ -1,9 +1,15 @@
+-Fogchess Grove UI — reusable SVG assets
++Fogchess Gold & Blue UI — v2
+ 
+-Original vector artwork created for this project; no external icon pack or fonts.
+-48 x 48 viewBox, 2.2-unit rounded strokes; 96px default import for crisp UI scaling.
+-Use 40px on mode cards and 26px in navigation. Preserve aspect ratio and colors.
+-Files are standalone, transparent outside the tile; usable in Godot, web and design tools.
+-manifest.json defines semantic names, colors and legacy aliases.
+-Godot: app._icon(parent, "watch", 40). Existing play/people/target aliases remain supported.
+-Keep gameplay action icons and chess piece artwork separate.
++17 semantic icons × dark/light variants = 34 standalone SVG files.
++Original project vector artwork; no external pack or font dependency.
++48×48 viewBox, 96px import, 2.2-unit rounded strokes.
++Use 40px on menu cards and 26px in navigation.
++Root SVGs are dark variants; light/ contains matching light variants.
++manifest.json records semantic names, palettes, aliases and file paths.
++
++Godot: app._icon(parent, "rank", 40)
++The common icon Control reads FogMenuIcon/light_mode from the inherited Theme.
++Theme switches update existing icons and new dialogs automatically.
++Static access: Icon.asset_path("rank", true) selects the light SVG.
++Existing play / people / target aliases remain supported.
++Web or other applications: choose the root/light file from the current theme.
+--- a/godot/ui/icons/menu/replay.svg
++++ b/godot/ui/icons/menu/replay.svg
+@@ -1 +1 @@
+-<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>리플레이</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 17a13 13 0 1 1-2 12M14 11v7H7" stroke="#9cbaaa"/><path d="m21 18 10 6-10 6Z" fill="#e7c68d" stroke="none"/></g></svg>
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>리플레이</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#202c40" stroke="#516885"/><g fill="none" stroke="#ffcf73" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="14" stroke="#c3d9f4"/><path d="m21 17 10 7-10 7Z" fill="#ffcf73" stroke="none"/></g></svg>
+--- a/godot/ui/icons/menu/settings.svg
++++ b/godot/ui/icons/menu/settings.svg
+@@ -1 +1 @@
+-<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>설정</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 10-1 5-4 2-5-1-3 6 4 3v4l-2 4 5 5 5-3h4l3 3 6-3-1-5 2-4 4-2-2-7-5 1-3-3-1-5Z" stroke="#9cbaaa"/><circle cx="23" cy="24" r="6"/></g></svg>
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>설정</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#202c40" stroke="#516885"/><g fill="none" stroke="#ffcf73" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="34.6246,19.5991 35.1081,21.0236 38.6722,20.8813 38.6722,27.1187 35.1081,26.9764 34.6246,28.4009 34.6246,28.4009 33.9593,29.7500 36.5801,32.1696 32.1696,36.5801 29.7500,33.9593 28.4009,34.6246 28.4009,34.6246 26.9764,35.1081 27.1187,38.6722 20.8813,38.6722 21.0236,35.1081 19.5991,34.6246 19.5991,34.6246 18.2500,33.9593 15.8304,36.5801 11.4199,32.1696 14.0407,29.7500 13.3754,28.4009 13.3754,28.4009 12.8919,26.9764 9.3278,27.1187 9.3278,20.8813 12.8919,21.0236 13.3754,19.5991 13.3754,19.5991 14.0407,18.2500 11.4199,15.8304 15.8304,11.4199 18.2500,14.0407 19.5991,13.3754 19.5991,13.3754 21.0236,12.8919 20.8813,9.3278 27.1187,9.3278 26.9764,12.8919 28.4009,13.3754 28.4009,13.3754 29.7500,14.0407 32.1696,11.4199 36.5801,15.8304 33.9593,18.2500 34.6246,19.5991" stroke="#c3d9f4"/><circle cx="24" cy="24" r="5.5"/></g></svg>
+--- a/godot/ui/icons/menu/trophy.svg
++++ b/godot/ui/icons/menu/trophy.svg
+@@ -1 +1 @@
+-<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>순위·레이팅</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 11h16v10a8 8 0 0 1-16 0Zm8 18v7m-7 1h14"/><path d="M16 14h-6v5a7 7 0 0 0 7 7m15-12h6v5a7 7 0 0 1-7 7" stroke="#9cbaaa"/></g></svg>
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>순위·레이팅</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#202c40" stroke="#516885"/><g fill="none" stroke="#ffcf73" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 11h16v10a8 8 0 0 1-16 0Zm8 18v7m-7 1h14"/><path d="M16 14h-6v5a7 7 0 0 0 7 7m15-12h6v5a7 7 0 0 1-7 7" stroke="#c3d9f4"/></g></svg>
+--- a/godot/ui/icons/menu/user.svg
++++ b/godot/ui/icons/menu/user.svg
+@@ -1 +1 @@
+-<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>계정</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="18" r="6"/><path d="M12 36v-3a12 9 0 0 1 24 0v3" stroke="#9cbaaa"/></g></svg>
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>계정</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#202c40" stroke="#516885"/><g fill="none" stroke="#ffcf73" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="18" r="6"/><path d="M12 36v-3a12 9 0 0 1 24 0v3" stroke="#c3d9f4"/></g></svg>
+--- a/godot/ui/icons/menu/watch.svg
++++ b/godot/ui/icons/menu/watch.svg
+@@ -1 +1 @@
+-<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>대국 관전</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#293630" stroke="#526258"/><g fill="none" stroke="#e7c68d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 24s5-10 15-10 15 10 15 10-5 10-15 10S9 24 9 24Z" stroke="#9cbaaa"/><circle cx="24" cy="24" r="5"/><circle cx="25" cy="23" r="1" fill="#e7c68d" stroke="none"/></g></svg>
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>대국 관전</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#202c40" stroke="#516885"/><g fill="none" stroke="#ffcf73" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 24s5-10 15-10 15 10 15 10-5 10-15 10S9 24 9 24Z" stroke="#c3d9f4"/><circle cx="24" cy="24" r="5"/><circle cx="25" cy="23" r="1" fill="#ffcf73" stroke="none"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/light/accept.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>확인</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#edf3ff" stroke="#a9bed9"/><g fill="none" stroke="#955600" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="14" stroke="#284e7b"/><path d="m17 24 5 5 10-11"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/light/book.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>기물 설명</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#edf3ff" stroke="#a9bed9"/><g fill="none" stroke="#955600" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M24 15c-4-3-9-4-14-3v23c5-1 10 0 14 3 4-3 9-4 14-3V12c-5-1-10 0-14 3Z" stroke="#284e7b"/><path d="M24 15v23m-9-19 5 1m-5 5 5 1m8-6 5-1m-5 7 5-1"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/light/chat.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>피드백</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#edf3ff" stroke="#a9bed9"/><g fill="none" stroke="#955600" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12h24v20H23l-9 6v-6h-2Z" stroke="#284e7b"/><path d="M18 19h12m-12 6h8"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/light/computer.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>컴퓨터와 대국</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#edf3ff" stroke="#a9bed9"/><g fill="none" stroke="#955600" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="11" y="12" width="26" height="20" rx="4" stroke="#284e7b"/><path d="M19 37h10m-5-5v5m-5-17 4 3-4 3m8 0h3"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/light/decline.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>닫기</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#edf3ff" stroke="#a9bed9"/><g fill="none" stroke="#955600" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="14" stroke="#284e7b"/><path d="m19 19 10 10m0-10L19 29"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/light/easy.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>쉬움</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#edf3ff" stroke="#a9bed9"/><g fill="none" stroke="#955600" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M24 36V23M24 27C10 27 11 16 11 16s13-1 13 11ZM24 23c0-14 13-13 13-13s1 13-13 13Z" stroke="#284e7b"/><path d="M17 37h14"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/light/hard.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>어려움</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#edf3ff" stroke="#a9bed9"/><g fill="none" stroke="#955600" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M25 9c2 9-7 10-4 17 5-1 7-4 8-7 7 6 9 12 3 17-7 6-19 1-19-7 0-8 8-12 12-20Z" stroke="#284e7b"/><path d="M24 27c-6 5-5 10 0 11 5-1 6-5 0-11Z"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/light/join.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>친구 방 참가</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#edf3ff" stroke="#a9bed9"/><g fill="none" stroke="#955600" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="13" y="10" width="22" height="27" rx="1" stroke="#284e7b"/><path d="m14 11 13 5v24l-13-4Z" fill="#edf3ff"/><circle cx="23" cy="27" r="1.5" fill="#955600" stroke="none"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/light/lobby.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>로비 만들기</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#edf3ff" stroke="#a9bed9"/><g fill="none" stroke="#955600" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 23 24 12l13 11M15 21v15h18V21" stroke="#284e7b"/><circle cx="24" cy="23" r="3"/><path d="M19 34v-3a5 5 0 0 1 10 0v3"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/light/normal.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>보통</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#edf3ff" stroke="#a9bed9"/><g fill="none" stroke="#955600" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 36v-8h5v8m5 0V20h5v16m5 0V12h5v24" stroke="#284e7b"/><path d="m12 20 10-8m-6 0h6v6"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/light/practice.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>혼자 연습</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#edf3ff" stroke="#a9bed9"/><g fill="none" stroke="#955600" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="21" cy="27" r="12" stroke="#284e7b"/><circle cx="21" cy="27" r="6.5" stroke="#284e7b"/><path d="m22 26 13-13" stroke="#edf3ff" stroke-width="5"/><path d="m22 26 13-13"/><path d="m21 27 2-7 5 5Z" fill="#955600" stroke="none"/><path d="M31 17v-5l5-5v5Zm0 0h5l5-5h-5Z" fill="#955600" stroke="none"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/light/rank.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>랭크 매칭</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#edf3ff" stroke="#a9bed9"/><g fill="none" stroke="#955600" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M24 8 37 13v10c0 8-7 13-13 17-6-4-13-9-13-17V13Z" stroke="#284e7b"/><path d="m24 13 3 4v10h-6V17Z" fill="#955600" stroke="none"/><path d="M18 28h12m-6 0v6"/><circle cx="24" cy="35" r="1.5" fill="#955600" stroke="none"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/light/replay.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>리플레이</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#edf3ff" stroke="#a9bed9"/><g fill="none" stroke="#955600" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="14" stroke="#284e7b"/><path d="m21 17 10 7-10 7Z" fill="#955600" stroke="none"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/light/settings.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>설정</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#edf3ff" stroke="#a9bed9"/><g fill="none" stroke="#955600" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="34.6246,19.5991 35.1081,21.0236 38.6722,20.8813 38.6722,27.1187 35.1081,26.9764 34.6246,28.4009 34.6246,28.4009 33.9593,29.7500 36.5801,32.1696 32.1696,36.5801 29.7500,33.9593 28.4009,34.6246 28.4009,34.6246 26.9764,35.1081 27.1187,38.6722 20.8813,38.6722 21.0236,35.1081 19.5991,34.6246 19.5991,34.6246 18.2500,33.9593 15.8304,36.5801 11.4199,32.1696 14.0407,29.7500 13.3754,28.4009 13.3754,28.4009 12.8919,26.9764 9.3278,27.1187 9.3278,20.8813 12.8919,21.0236 13.3754,19.5991 13.3754,19.5991 14.0407,18.2500 11.4199,15.8304 15.8304,11.4199 18.2500,14.0407 19.5991,13.3754 19.5991,13.3754 21.0236,12.8919 20.8813,9.3278 27.1187,9.3278 26.9764,12.8919 28.4009,13.3754 28.4009,13.3754 29.7500,14.0407 32.1696,11.4199 36.5801,15.8304 33.9593,18.2500 34.6246,19.5991" stroke="#284e7b"/><circle cx="24" cy="24" r="5.5"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/light/trophy.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>순위·레이팅</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#edf3ff" stroke="#a9bed9"/><g fill="none" stroke="#955600" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 11h16v10a8 8 0 0 1-16 0Zm8 18v7m-7 1h14"/><path d="M16 14h-6v5a7 7 0 0 0 7 7m15-12h6v5a7 7 0 0 1-7 7" stroke="#284e7b"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/light/user.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>계정</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#edf3ff" stroke="#a9bed9"/><g fill="none" stroke="#955600" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="18" r="6"/><path d="M12 36v-3a12 9 0 0 1 24 0v3" stroke="#284e7b"/></g></svg>
+--- /dev/null
++++ b/godot/ui/icons/menu/light/watch.svg
+@@ -0,0 +1 @@
++<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 48 48"><title>대국 관전</title><rect x="1.5" y="1.5" width="45" height="45" rx="13" fill="#edf3ff" stroke="#a9bed9"/><g fill="none" stroke="#955600" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 24s5-10 15-10 15 10 15 10-5 10-15 10S9 24 9 24Z" stroke="#284e7b"/><circle cx="24" cy="24" r="5"/><circle cx="25" cy="23" r="1" fill="#955600" stroke="none"/></g></svg>
+--- /dev/null
++++ b/godot/tests/icon_theme.gd
+@@ -0,0 +1,76 @@
++extends SceneTree
++const Icon = preload("res://original_icon(원본 스타일 아이콘).gd")
++var app: Control
++var failures := 0
++func _initialize() -> void: run.call_deferred()
++func check(ok: bool, message: String) -> void:
++	if ok: print("PASS: "+message)
++	else: failures+=1; push_error(message)
++func capture(label: String) -> void:
++	await create_timer(.4).timeout
++	if "--capture" not in OS.get_cmdline_user_args(): return
++	RenderingServer.force_draw(false)
++	var folder := ProjectSettings.globalize_path("res://../.dev-data/icon-theme-captures")
++	DirAccess.make_dir_recursive_absolute(folder)
++	root.get_texture().get_image().save_png(folder.path_join(label+".png"))
++func verify_tree(parent: Node, light: bool) -> int:
++	var count := 0
++	for child in parent.get_children():
++		if child.get_script()==Icon:
++			count+=1
++			check(child.texture!=null and child.texture.resource_path==Icon.asset_path(child.key,light),"visible icon follows theme: "+child.key+" / "+str(light))
++		count+=verify_tree(child,light)
++	return count
++func run() -> void:
++	root.size = Vector2i(1280,900)
++	app = load("res://main(게임 시작 씬).tscn").instantiate()
++	root.add_child(app)
++	await create_timer(.5).timeout
++	for child in app.get_children():
++		if child is Timer: child.stop()
++	for light in [false,true]:
++		for key in ["rank","lobby","replay","watch","join","computer","practice","settings","book","trophy","chat","user","easy","normal","hard","accept","decline"]:
++			var texture = load(Icon.asset_path(key,light))
++			check(texture is Texture2D and texture.get_width()==96,key+" variant loads: "+str(light))
++	app.prefs.set_value("settings","light",false)
++	app._apply_theme()
++	await process_frame
++	check(verify_tree(app,false)>8,"menu and sidebar icons are covered")
++	await capture("menu-dark")
++	app.prefs.set_value("settings","light",true)
++	app._apply_theme()
++	await process_frame
++	verify_tree(app,true)
++	await capture("menu-light")
++	var pair: Array = app._small_window("아이콘 크기 비교 · 64 / 40 / 26px",1000,360)
++	var grid := GridContainer.new()
++	grid.columns = 5
++	grid.add_theme_constant_override("h_separation",12)
++	pair[1].add_child(grid)
++	for spec in [["rank","랭크"],["practice","혼자 연습"],["replay","리플레이"],["join","친구 방 참가"],["settings","설정"]]:
++		var box: VBoxContainer = app._card(grid,"")
++		app._label(box,spec[1],16)
++		var row := HBoxContainer.new()
++		row.add_theme_constant_override("separation",6)
++		box.add_child(row)
++		for dimension in [64,40,26]: app._icon(row,spec[0],dimension)
++	await process_frame
++	check(verify_tree(pair[0],true)==15,"new modal icons inherit the light theme")
++	await capture("detail-light")
++	app.prefs.set_value("settings","light",false)
++	app._apply_theme()
++	await process_frame
++	check(verify_tree(pair[0],false)==15,"open modal icons switch back to dark")
++	verify_tree(app,false)
++	await capture("detail-dark")
++	pair[0].queue_free()
++	await process_frame
++	root.size = Vector2i(390,844)
++	app._layout()
++	await capture("menu-mobile")
++	for card in app.mode_cards:
++		check(card.size.y>=card.get_node("ModeCardContent").get_combined_minimum_size().y,"mobile card contains description: "+str(card.get_meta("action_title")))
++	app.queue_free()
++	await process_frame
++	print("ICON_THEME_FAILURES="+str(failures))
++	quit(0 if failures==0 else 1)
+--- /dev/null
++++ b/tests/run_icon_theme_smoke.py
+@@ -0,0 +1,29 @@
++"""Native Material motion regression; --capture writes local screenshots."""
++from pathlib import Path
++import subprocess
++import sys
++
++ROOT = Path(__file__).resolve().parents[1]
++sys.path.insert(0, str(ROOT))
++from tools.godot_runtime import default_godot
++
++
++def main():
++    log = ROOT / '.dev-data' / 'icon-theme-runtime.log'
++    log.parent.mkdir(parents=True, exist_ok=True)
++    capture = '--capture' in sys.argv
++    args = [default_godot(), '--path', str(ROOT / 'godot'), '--script',
++            'res://tests/icon_theme.gd', '--log-file', str(log)]
++    args += ['--position', '-16000,-16000'] if capture else ['--headless']
++    args += ['--', '--smoke'] + (['--capture'] if capture else [])
++    result = subprocess.run(args, capture_output=True, timeout=60)
++    output = (result.stdout + result.stderr).decode('utf-8', errors='replace')
++    sys.stdout.reconfigure(encoding='utf-8')
++    print(output)
++    return int(result.returncode != 0 or 'ERROR:' in output or
++               'ICON_THEME_FAILURES=0' not in output)
++
++
++if __name__ == '__main__':
++    raise SystemExit(main())
++
