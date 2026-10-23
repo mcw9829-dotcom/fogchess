@@ -44,12 +44,12 @@ import matchmaking
 import spectator
 import replays
 import match_social
+import security
 
 BOT_TOKEN = '__bot__'   # 내부 봇 좌석 표식. 외부 인증 토큰으로 사용하지 않는다.
 MAX_BODY = 64 * 1024    # 요청 본문 상한(바이트) — 게임 액션은 수백 바이트면 충분
 FB_LAST = {}            # 피드백 도배 방지: ip -> 마지막 전송 시각
 FB_COOLDOWN = 10        # 같은 IP는 이 시간(초)에 한 번만
-ADMIN_FAILS = {}        # 관리자 비밀번호 틀린 기록: ip -> [횟수, 첫 실패 시각]
 ADMIN_MAX_FAILS = 5     # 이만큼 틀리면
 ADMIN_LOCK = 600        # 이 시간(초) 동안 그 IP는 관리자 인증을 거부(무차별 대입 방지)
 
@@ -93,23 +93,12 @@ def load_patchnotes():
 def admin_ok(key_given):
     """관리자 키(FOG_ADMIN_KEY 환경변수) 일치? 키가 설정되지 않았으면 항상 거부."""
     key = os.environ.get('FOG_ADMIN_KEY')
-    return bool(key) and hmac.compare_digest(str(key_given or ''), key)
+    return bool(key) and hmac.compare_digest(str(key_given or '').encode('utf-8'), key.encode('utf-8'))
 
 
 def admin_gate(ip, key_given, now=None):
     """관리자 인증 판정: 'ok' / 'forbidden' / 'locked'. 같은 IP가 ADMIN_MAX_FAILS번 틀리면 ADMIN_LOCK초 잠금."""
-    now = time.time() if now is None else now
-    f = ADMIN_FAILS.get(ip)
-    if f and f[0] >= ADMIN_MAX_FAILS and now - f[1] < ADMIN_LOCK:
-        return 'locked'
-    if admin_ok(key_given):
-        ADMIN_FAILS.pop(ip, None)
-        return 'ok'
-    if not f or now - f[1] >= ADMIN_LOCK:
-        ADMIN_FAILS[ip] = [1, now]
-    else:
-        f[0] += 1
-    return 'forbidden'
+    return security.admin_attempt(ip, admin_ok(key_given), ADMIN_MAX_FAILS, ADMIN_LOCK, now)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CLASSIC_ROOT = os.path.join(HERE, 'web')
@@ -663,11 +652,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
-    def _json(self, obj, code=200):
+    def _json(self, obj, code=200, retry_after=None):
         body = json.dumps(obj).encode('utf-8')
         self.send_response(code)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('Referrer-Policy', 'no-referrer')
+        if retry_after is not None:
+            self.send_header('Retry-After', str(retry_after))
         self.end_headers()
         self.wfile.write(body)
         self._sent = True
@@ -691,16 +684,39 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def _room(self, code):
         return ROOMS.get((code or '').strip().upper())
 
+    def _client_ip(self):
+        return security.client_ip(self.client_address[0] if self.client_address else '?', self.headers)
+
+    def _request_budget(self, path, data):
+        rules = security.request_rules(path, data, self._client_ip())
+        if not rules:
+            return True
+        try:
+            retry = security.consume(rules)
+        except (OSError, security.sqlite3.Error):
+            self._json({'ok': False, 'msg': '잠시 후 다시 시도해 주세요.'}, 503, 30)
+            return False
+        if retry:
+            self._json({'ok': False, 'error': 'rate_limited', 'msg': f'요청이 많습니다. {retry}초 후 다시 시도해 주세요.'}, 429, retry)
+            return False
+        return True
+
     def _admin(self, data=None):
-        """관리자 인증: X-Admin-Key 헤더 → ?key= → 본문 key 순으로 읽어 검사. 실패면 403/429 응답을 보내고 False."""
-        u = urlparse(self.path)
-        key = (self.headers.get('X-Admin-Key') or parse_qs(u.query).get('key', [''])[0] or (data or {}).get('key') or '')
-        ip = self.client_address[0] if self.client_address else '?'
-        res = admin_gate(ip, key)
+        """Header-only authentication. URL and body credentials are never accepted."""
+        key = self.headers.get('X-Admin-Key') or ''
+        try:
+            retry = security.consume([('admin-ip', self._client_ip(), 120, 60)])
+            if retry:
+                self._json({'ok': False, 'error': 'rate_limited', 'msg': '잠시 후 다시 시도해 주세요.'}, 429, retry)
+                return False
+            res = admin_gate(self._client_ip(), key)
+        except (OSError, security.sqlite3.Error):
+            self._json({'ok': False, 'msg': '잠시 후 다시 시도해 주세요.'}, 503, 30)
+            return False
         if res == 'ok':
             return True
         if res == 'locked':
-            self._json({'ok': False, 'error': 'locked', 'msg': '틀린 시도가 많아 잠시 잠겼어요. 10분 뒤 다시.'}, 429)
+            self._json({'ok': False, 'error': 'locked', 'msg': '틀린 시도가 많아 잠시 잠겼어요. 10분 뒤 다시.'}, 429, ADMIN_LOCK)
         else:
             self._json({'ok': False, 'error': 'forbidden'}, 403)
         return False
@@ -829,8 +845,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         u = urlparse(self.path)
         try:
             length = int(self.headers.get('Content-Length', 0) or 0)
+            if length < 0 or len(self.headers.get_all('Content-Length', [])) > 1 or self.headers.get('Transfer-Encoding'):
+                raise ValueError('unsupported framing')
         except ValueError:
-            length = 0
+            self.close_connection = True
+            self._json({'ok': False, 'msg': '잘못된 요청입니다.'}, 400)
+            return
         if length > MAX_BODY:                                   # 본문 상한(메모리 남용 방지)
             self.close_connection = True  # Do not parse the unread body as another request.
             self._json({'ok': False, 'msg': '요청이 너무 큽니다.'}, 413)
@@ -839,9 +859,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             data = json.loads(raw.decode('utf-8') or '{}')
         except Exception:
-            data = {}
+            self._json({'ok': False, 'msg': '잘못된 요청입니다.'}, 400)
+            return
         if not isinstance(data, dict):                          # 본문은 JSON 객체만 받는다
-            data = {}
+            self._json({'ok': False, 'msg': '잘못된 요청입니다.'}, 400)
+            return
+        if not self._request_budget(u.path, data):
+            return
         now = time.time()
 
         if data.get('token') == BOT_TOKEN:
@@ -867,7 +891,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._json({'ok': ok, 'msg': err})
             return
         if u.path == '/recover/code':                          # 복구 코드로 비밀번호 재설정(코드는 1회용 → 새 코드) — 비밀번호·닉네임 찾기
-            ip = self.client_address[0] if self.client_address else '?'
+            ip = self._client_ip()
             res, err = accounts.recover_with_code(data.get('code'), data.get('new'), ip)
             self._json({'ok': res is not None, 'msg': err, **(res or {})})
             return
@@ -936,7 +960,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._json({'ok': ok, 'msg': None if ok else '없는 항목입니다.'})
             return
         if u.path == '/feedback':                                   # 개발자 피드백 저장
-            ip = self.client_address[0] if self.client_address else '?'
+            ip = self._client_ip()
             if now - FB_LAST.get(ip, 0) < FB_COOLDOWN:
                 self._json({'ok': False, 'msg': '잠시 후 다시 보내주세요.'})
                 return

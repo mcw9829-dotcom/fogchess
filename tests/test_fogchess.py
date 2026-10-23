@@ -517,18 +517,16 @@ def test_feedback_done_migration(tmp_path):
 def test_admin_gate_lockout(monkeypatch):
     """관리자 인증: 키 미설정=항상 거부, 5번 틀리면 10분 잠금(맞아도 거부), 다른 IP 무관, 잠금 뒤 성공하면 초기화."""
     import server
-    monkeypatch.setenv('FOG_ADMIN_KEY', 'secret'); server.ADMIN_FAILS.clear()
+    monkeypatch.setenv('FOG_ADMIN_KEY', 'secret')
     assert server.admin_gate('1.1.1.1', 'secret', 1000) == 'ok'
-    assert server.admin_gate('1.1.1.1', 'Secret', 1000) == 'forbidden' and server.admin_gate('1.1.1.1', None, 1000) == 'forbidden'
-    server.ADMIN_FAILS.clear()
+    assert server.admin_gate('1.1.1.2', 'Secret', 1000) == 'forbidden' and server.admin_gate('1.1.1.2', None, 1000) == 'forbidden'
     for i in range(server.ADMIN_MAX_FAILS):
         assert server.admin_gate('1.1.1.1', 'nope', 1000 + i) == 'forbidden'
     assert server.admin_gate('1.1.1.1', 'secret', 1010) == 'locked'
     assert server.admin_gate('2.2.2.2', 'secret', 1010) == 'ok'
-    assert server.admin_gate('1.1.1.1', 'secret', 1000 + server.ADMIN_LOCK + 1) == 'ok' and '1.1.1.1' not in server.ADMIN_FAILS
+    assert server.admin_gate('1.1.1.1', 'secret', 1000 + server.ADMIN_LOCK + 1) == 'ok'
     monkeypatch.delenv('FOG_ADMIN_KEY')
     assert server.admin_gate('3.3.3.3', '', 0) == 'forbidden' and not server.admin_ok('')
-    server.ADMIN_FAILS.clear()
 
 
 

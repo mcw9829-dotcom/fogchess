@@ -242,6 +242,13 @@ Web 재빌드: python tools/prepare_release.py --godot <4.7.2 실행 파일 경�
 - 백업: ../backups/2026-10-24/before-themed-confirmation. 미리보기 및 패치: Documents/Codex/2026-10-23/wlrma/outputs/fogchess-confirmation.
 - 기존 실행 중인 게임은 유지했으며, 재시작하면 변경이 반영됨.
 
+## 첫 보안 업데이트 v1.55 (2026-10-24)
+- 관리자 URL/본문 키 인증 제거, 기존 X-Admin-Key 헤더 인증 유지. 관리자 실패 잠금과 주요 계정·입장 요청 제한을 별도 SQLite에 지속 저장.
+- Fly의 실제 IPv4 프록시 소켓에서만 Fly-Client-IP를 신뢰. API 응답 no-store, 잘못된 HTTP 본문 길이/JSON 거부.
+- HTTP 안개 정보·관전 지연·진행 중 리플레이 접근·좌석 권한 회귀 검사 추가. UI 및 대국 규칙은 그대로.
+- 운영 절차와 제한값: docs/SECURITY-UPDATE-1.md. 테스트: 전체 243개 및 하위 검사 18개 통과(버전 갱신은 별도 릴리스 검사).
+- Git 작업 체크아웃: Documents/Codex/2026-10-23/wlrma/work/fogchess-release. GitHub 저장은 codex/godot-development 브랜치, 배포는 사용자가 선택한 Fly CLI 방식.
+
 ## 차분한 깊이 모션 적용 (2026-10-24)
 - 사용자 선택: 시안의 차분한 깊이. cubic-bezier(.16,1,.3,1), 등장 340ms / 닫힘 220ms / 화면·내비·스위치 280ms. 팝업 이동 22px 및 .985 스케일. 버튼 클릭 파동 460ms.
 - 공통 팝업 등장, X/Esc 닫힘, 기권/나가기 확인창, 레이팅 확인 버튼에 적용. 확인 명령은 즉시 전달하며 퇴장 연출만 계속. 중복 입력 차단, 취소 후 포커스 복원.

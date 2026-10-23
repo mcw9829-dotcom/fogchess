@@ -10,6 +10,8 @@ primary_region = 'nrt'
 [env]
   FOG_DB = '/data/fogchess.db'
   FOG_CLIENT = 'godot'
+  FOG_TRUST_FLY_PROXY = '1'
+  FOG_SECURITY_DB = '/data/security.sqlite3'
 
 [[mounts]]
   source = 'fogchess_data'

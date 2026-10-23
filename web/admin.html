@@ -101,8 +101,8 @@ function uaShort(ua) {                      // "Windows · Chrome" 정도로만 
 // ---- 인증: 비밀번호는 이 탭의 sessionStorage 에만 두고, 요청마다 X-Admin-Key 헤더로 보낸다 ----
 let KEY = '';
 try { KEY = sessionStorage.getItem('fog_admin_key') || ''; } catch (e) {}
-const urlKey = new URLSearchParams(location.search).get('key');       // 옛 방식(?key=) 호환: 받아서 주소에서는 지운다
-if (urlKey) { KEY = urlKey; history.replaceState(null, '', location.pathname); }
+// Legacy URL credentials are discarded, never used to authenticate.
+if (new URLSearchParams(location.search).has('key')) history.replaceState(null, '', location.pathname);
 const hdr = () => ({ 'X-Admin-Key': KEY });
 class AuthError extends Error {}
 async function get(p) {
