@@ -1,0 +1,33 @@
+Fogchess 개발 소스 공개 기준 · 2026-10-31
+
+Git에 포함: Python/Godot/Web 소스, 원본 에셋, .uid/.import 참조, 라이선스, 테스트, 실행/배포 설정.
+Git에 제외: 실제 DB, DB 백업/sidecar, 운영·개인 기록, 인증 정보, 개인 설정, 로그, 엔진 캐시, Web 빌드.
+
+1. fogchess.db / .dev-data/fogchess-dev.db
+   계정 닉네임, 비밀번호 해시·salt, 복구 코드 해시, 로그인 세션 토큰, 전적과 피드백 등이 저장될 수 있음.
+   비밀번호가 해시여도 공개하면 안 됨. 빈 DB 대신 실행 시 스키마를 자동 생성.
+2. replays.sqlite3
+   대국 기보·참가자 정보·채팅/종료 대국 자료 및 접근 제어 정보가 저장될 수 있음.
+3. security.sqlite3
+   로그인/요청 제한의 대상 식별값과 횟수·만료 시각. 개인의 활동 단서가 될 수 있음.
+4. .dev-data/security/*.dpapi
+   Windows 사용자 계정으로 암호화한 관리자 키. 암호화된 파일도 Git/공유 백업에서 제외.
+   복호화 값을 로그·보고서·명령행 인수에 출력하지 않음.
+5. .env, 개인 client.cfg, export_credentials.cfg, 개인키·인증서, credentials/secrets JSON
+   실제 관리자 키, 배포 토큰, 로그인 세션 등을 포함할 수 있음.
+   FOG_ADMIN_KEY / FLY_API_TOKEN이라는 변수 이름과 ${{ secrets.FLY_API_TOKEN }} 참조는 비밀 값이 아님.
+6. QA/, .dev-data/, 백업, 로그, 원본 피드백 및 로컬 인수인계
+   응답 JSON·스크린샷·계정명·기기 경로·세션·운영 정보가 섞일 수 있어 디렉터리째 제외.
+
+소스의 TestPass 등 테스트 전용 값은 임시 계정/임시 서버에서만 사용한다.
+운영 키/비밀번호를 테스트 fixture로 재사용하지 않는다.
+.env.example은 이름·안전한 예시만 담고 실제 값을 추가하지 않는다.
+
+업로드 전:
+  git status --short
+  git diff --cached --name-only
+  git diff --cached
+  git ls-files -ci --exclude-standard
+마지막 명령 결과가 있으면 이미 추적 중인 제외 파일이다. .gitignore만 추가해도 과거 추적은 사라지지 않는다.
+삭제 대신 git rm --cached로 현재 추적을 해제하고 로컬 원본을 보존한다.
+이미 공개된 비밀은 파일 제거만으로 안전해지지 않는다. 키 폐기/교체 및 과거 이력 대응을 별도로 검토한다.

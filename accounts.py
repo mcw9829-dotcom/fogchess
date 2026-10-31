@@ -59,11 +59,12 @@ CREATE TABLE IF NOT EXISTS game_settlements(
 '''
 _lock = threading.Lock()
 _ready = False
+_ready_path = None
 
 
 def _ensure():
-    global _ready
-    if _ready:
+    global _ready, _ready_path
+    if _ready and _ready_path == DB_PATH:
         return
     c = sqlite3.connect(DB_PATH)
     c.executescript(SCHEMA)
@@ -71,6 +72,7 @@ def _ensure():
     c.commit()
     c.close()
     _ready = True
+    _ready_path = DB_PATH
 
 
 def _migrate(c):
@@ -84,6 +86,8 @@ def _migrate(c):
             if col not in ucols:
                 c.execute(f'ALTER TABLE users ADD COLUMN {col} {ddl}')
         c.execute('CREATE INDEX IF NOT EXISTS users_recov ON users(recov_hash)')
+    import admin_ops
+    admin_ops.migrate(c)
 
 
 def init_db(path=None):
@@ -171,10 +175,10 @@ def private(row):
 
 
 # ------------------------- 세션 · 복구 코드 · 비밀번호 확인 도우미 -------------------------
-def _new_session(c, uid):
+def _new_session(c, uid, scope='play'):
     c.execute('DELETE FROM sessions WHERE created < ?', (time.time() - SESSION_TTL,))   # 만료 세션 정리
     token = secrets.token_urlsafe(24)
-    c.execute('INSERT INTO sessions(token, user_id, created) VALUES(?,?,?)', (token, uid, time.time()))
+    c.execute('INSERT INTO sessions(token, user_id, created, scope) VALUES(?,?,?,?)', (token, uid, time.time(), scope))
     return token
 
 
@@ -230,7 +234,7 @@ def signup(name, pw):
     return res, err
 
 
-def login(name, pw):
+def login(name, pw, support=False):
     name, pw = _s(name).strip(), _s(pw)
     key = name.lower()
     with _db() as c:
@@ -246,7 +250,10 @@ def login(name, pw):
                 f['until'] = time.time() + LOGIN_LOCK_SEC
             return None, '닉네임 또는 비밀번호가 맞지 않습니다.'
         _fails.pop(key, None)                                    # 성공 -> 실패 카운트 초기화
-        token = _new_session(c, row['id'])
+        import admin_ops
+        if not support and any(s['kind']=='account' for s in admin_ops.active_in(c,row['id'])):
+            return None, '계정 정지 중입니다. 제재 안내·이의제기에서 확인해 주세요.'
+        token = _new_session(c, row['id'], 'support' if support else 'play')
         return {'session': token, 'user': private(row), 'weakPw': password_weak(pw)}, None   # weakPw: 옛 규칙 비밀번호 → 변경 안내
 
 
@@ -336,13 +343,13 @@ def logout(token):
         c.execute('DELETE FROM sessions WHERE token=?', (token or '',))
 
 
-def user_by_token(token, private_info=False):
+def user_by_token(token, private_info=False, support=False):
     """세션 토큰 → 회원(public). private_info=True 면 본인용(복구 코드 보유 여부)까지."""
     if not token:
         return None
     with _db() as c:
         row = c.execute('SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id '
-                        'WHERE s.token=? AND s.created > ?', (token, time.time() - SESSION_TTL)).fetchone()
+                        "WHERE s.token=? AND s.created > ? AND (s.scope='play' OR ?=1)", (token, time.time() - SESSION_TTL, int(support))).fetchone()
         return (private(row) if private_info else public(row)) if row else None
 
 
@@ -391,37 +398,42 @@ def record_result(uid_a, uid_b, score_a):
 
 
 def settle_game(game_id, request):
-    """Commit ratings, both history rows, and the idempotency receipt atomically."""
+    """Commit ratings, history and an idempotency receipt in one transaction."""
     with _db() as c:
         c.execute('BEGIN IMMEDIATE')
-        existing = c.execute('SELECT result FROM game_settlements WHERE game_id=?', (game_id,)).fetchone()
-        if existing:
-            return json.loads(existing['result'])
-        users, result = request['users'], {}
-        before = {side: c.execute('SELECT rating FROM users WHERE id=?', (uid,)).fetchone()['rating']
-                  for side, uid in users.items()}
-        if request['rated']:
-            for side, uid in users.items():
-                score = request['scores'][side]
-                opp = 'B' if side == 'W' else 'W'
-                if request['bot']:
-                    delta = fixed_delta(before[side], request['bot_rating'], score,
-                                        request['no_loss'], request['cap'])
-                else:
-                    delta = elo_delta(before[side], before[opp], score)
-                rating = _apply(c, uid, delta, score)
-                result[side] = {'delta': rating-before[side], 'rating': rating}
+        return _settle_in(c,game_id,request)
+
+
+def _settle_in(c,game_id,request):
+    """Caller owns the account transaction (normal settlement or admin retry)."""
+    existing = c.execute('SELECT result FROM game_settlements WHERE game_id=?', (game_id,)).fetchone()
+    if existing:
+        return json.loads(existing['result'])
+    users, result = request['users'], {}
+    before = {side: c.execute('SELECT rating FROM users WHERE id=?', (uid,)).fetchone()['rating']
+              for side, uid in users.items()}
+    if request['rated']:
         for side, uid in users.items():
-            opp = 'B' if side == 'W' else 'W'
-            rr = result.get(side)
             score = request['scores'][side]
-            c.execute('INSERT INTO games(created,user_id,kind,result,reason,opp_name,opp_user_id,opp_rating,rated,delta,rating_after,room) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
-                      (request['created'], uid, request['kind'], 'draw' if score == .5 else ('win' if score == 1 else 'loss'),
-                       request['reason'], request['names'].get(opp, '상대'), users.get(opp),
-                       request['bot_rating'] if request['bot'] else before.get(opp, request['ratings'].get(opp)),
-                       int(bool(rr)), rr['delta'] if rr else None, rr['rating'] if rr else None, request['room']))
-        c.execute('INSERT INTO game_settlements VALUES(?,?,?)', (game_id, json.dumps(result), time.time()))
-        return result
+            opp = 'B' if side == 'W' else 'W'
+            if request['bot']:
+                delta = fixed_delta(before[side], request['bot_rating'], score,
+                                    request['no_loss'], request['cap'])
+            else:
+                delta = elo_delta(before[side], before[opp], score)
+            rating = _apply(c, uid, delta, score)
+            result[side] = {'delta': rating-before[side], 'rating': rating}
+    for side, uid in users.items():
+        opp = 'B' if side == 'W' else 'W'
+        rr = result.get(side)
+        score = request['scores'][side]
+        c.execute('INSERT INTO games(created,user_id,kind,result,reason,opp_name,opp_user_id,opp_rating,rated,delta,rating_after,room,game_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                  (request['created'], uid, request['kind'], 'draw' if score == .5 else ('win' if score == 1 else 'loss'),
+                   request['reason'], request['names'].get(opp, '상대'), users.get(opp),
+                   request['bot_rating'] if request['bot'] else before.get(opp, request['ratings'].get(opp)),
+                   int(bool(rr)), rr['delta'] if rr else None, rr['rating'] if rr else None, request['room'], game_id))
+    c.execute('INSERT INTO game_settlements VALUES(?,?,?)', (game_id, json.dumps(result), time.time()))
+    return result
 
 
 # ------------------------- 리더보드 -------------------------
@@ -463,7 +475,7 @@ def feedback_list(limit=100, include_done=False):
     """피드백 목록(최신순) [{id, created, name, category, message, room, ua, done}]. 기본은 미처리만."""
     with _db() as c:
         rows = c.execute('SELECT id, created, name, user_id, category, message, room, ua, done FROM feedback '
-                         + ('' if include_done else 'WHERE done=0 ') + 'ORDER BY id DESC LIMIT ?', (int(limit),)).fetchall()
+                         + ('WHERE deleted=0 ' if include_done else 'WHERE done=0 AND deleted=0 ') + 'ORDER BY id DESC LIMIT ?', (int(limit),)).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -495,6 +507,16 @@ def game_history(user_id, limit=20):
     with _db() as c:
         rows = c.execute('SELECT id, created, kind, result, reason, opp_name, opp_user_id, opp_rating, rated, delta, rating_after, room '
                          'FROM games WHERE user_id=? ORDER BY id DESC LIMIT ?', (int(user_id), int(limit))).fetchall()
+    return [dict(r) for r in rows]
+
+
+
+def rating_history(user_id):
+    """The owner's last ten settled rated games, newest first (including zero delta)."""
+    with _db() as c:
+        rows = c.execute('SELECT id, created, kind, result, delta, rating_after, room '
+                         'FROM games WHERE user_id=? AND rated=1 AND rating_after IS NOT NULL '
+                         'ORDER BY id DESC LIMIT 10', (int(user_id),)).fetchall()
     return [dict(r) for r in rows]
 
 

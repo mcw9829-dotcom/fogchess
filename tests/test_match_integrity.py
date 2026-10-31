@@ -91,10 +91,138 @@ def test_active_room_survives_queue_ttl_and_session_refresh(world):
 def test_waiting_cannot_start_parallel_game(world):
     post, users = world
     post('/match/join', session='a')
-    assert not post('/join', session='a2', vs_bot=True)['ok']
+    assert not post('/join', session='a2')['ok']
     assert not server.ROOMS
     assert post('/match/cancel', session='a2')['ok']
     assert not mm.QUEUE
+
+
+@pytest.mark.parametrize('mode', ['vs_bot', 'solo'])
+def test_queue_practice_preserves_queue_and_is_owned(world, mode):
+    post, users = world
+    post('/match/join', session='a')
+    since = mm.QUEUE['a']['since']
+    joined = post('/join', session='a', **{mode: True})
+    room = server.ROOMS[joined['room']]
+    assert room['queue_practice'] and room['queue_owner'] == 1
+    assert not server.is_rated(room)
+    assert post('/match/status', session='a2')['state'] == 'waiting'
+    assert mm.QUEUE['a2']['since'] == since
+    assert server.active_account_room(1)[0] == joined['room']
+    assert post('/join', session='a2', resume=True, room=joined['room'])['token'] == joined['token']
+    assert not post('/join', session='a2', vs_bot=True)['ok']
+    assert not post('/practice/leave', session='b', room=joined['room'])['ok']
+    assert post('/practice/leave', session='a2', room=joined['room'])['ok']
+    assert not server.ROOMS
+    assert post('/match/status', session='a2')['state'] == 'waiting'
+
+
+@pytest.mark.parametrize('mode', ['vs_bot', 'solo'])
+def test_both_accept_atomically_replaces_only_owned_practice(world, mode, monkeypatch):
+    post, users = world
+    post('/match/join', session='a')
+    warmup = post('/join', session='a', **{mode: True})
+    unrelated = post('/join', session='x', vs_bot=True)
+    old_room = server.ROOMS[warmup['room']]
+    job = old_room['_bot_job'] = {'state': old_room['state'], 'turn': 0, 'color': 'B'}
+    monkeypatch.setattr(server.accounts, 'settle_game', lambda *a, **k: pytest.fail('practice must not settle'))
+    assert post('/match/join', session='b')['state'] == 'found'
+    assert post('/match/accept', session='a')['state'] == 'found'
+    assert warmup['room'] in server.ROOMS
+    assert post('/match/status', session='a')['accepted']
+    matched = post('/match/accept', session='b')
+    assert matched['state'] == 'matched'
+    assert warmup['room'] not in server.ROOMS
+    assert unrelated['room'] in server.ROOMS
+    assert not server.bot_job_current(old_room, job)
+    assert '_bot_job' not in old_room
+    assert server.ROOMS[matched['room']]['match']
+    assert post('/match/status', session='a')['room'] == matched['room']
+    assert post('/match/accept', session='a')['room'] == matched['room']
+    # Cancel racing after the other player accepted must return the committed room.
+    assert post('/match/cancel', session='a')['room'] == matched['room']
+    assert len(server.ROOMS) == 2
+
+
+@pytest.mark.parametrize('outcome', ['cancel', 'decline', 'timeout'])
+def test_decline_and_timeout_keep_practice(world, outcome):
+    post, users = world
+    post('/match/join', session='a')
+    warmup = post('/join', session='a', vs_bot=True)
+    room = server.ROOMS[warmup['room']]
+    before = copy.deepcopy(room['state'])
+    post('/match/join', session='b')
+    if outcome == 'timeout':
+        for e in mm.QUEUE.values(): e['pending']['deadline'] = time.time() - 1
+        assert post('/match/status', session='a')['state'] == 'idle'
+    else:
+        assert post('/match/'+outcome, session='a')['state'] == 'idle'
+        assert post('/match/status', session='b')['state'] == 'waiting'
+    assert room['state'] == before and server.ROOMS[warmup['room']] is room
+    assert not server.is_rated(room)
+
+
+def test_other_decline_returns_accepted_player_to_waiting_with_practice(world):
+    post, _ = world
+    post('/match/join', session='a')
+    warmup = post('/join', session='a', solo=True)
+    post('/match/join', session='b')
+    post('/match/accept', session='a')
+    post('/match/decline', session='b')
+    assert post('/match/status', session='a')['state'] == 'waiting'
+    assert warmup['room'] in server.ROOMS
+
+
+def test_practice_win_and_rematch_never_record_rating_or_history(world, monkeypatch):
+    post, _ = world
+    post('/match/join', session='a')
+    joined = post('/join', session='a', vs_bot=True)
+    room = server.ROOMS[joined['room']]
+    post('/match/cancel', session='a')
+    monkeypatch.setattr(server.accounts, 'settle_game', lambda *a, **k: pytest.fail('practice must not settle'))
+    room['state'].update(phase='over', winner=joined['color'])
+    assert server.settle_rating(room)
+    assert room['rating_result'] == {}
+    assert server.start_rematch(room)
+    assert room['queue_practice'] and not server.is_rated(room)
+    assert post('/match/join', session='a')['state'] == 'waiting'
+
+
+def test_normal_bot_game_remains_rated_and_blocks_queue(world):
+    post, _ = world
+    joined = post('/join', session='a', vs_bot=True, queue_practice=True)
+    room = server.ROOMS[joined['room']]
+    assert not room.get('queue_practice') and server.is_rated(room)
+    assert not post('/match/join', session='a')['ok']
+    assert not post('/practice/leave', session='a', room=joined['room'])['ok']
+
+
+def test_cannot_begin_practice_after_match_found(world):
+    post, _ = world
+    post('/match/join', session='a')
+    post('/match/join', session='b')
+    assert not post('/join', session='a', solo=True)['ok']
+    assert not post('/join', session='a', vs_bot=True)['ok']
+    assert not server.ROOMS
+
+
+def test_expired_or_cancelled_queue_cannot_silently_start_rated_bot(world):
+    post, _ = world
+    post('/match/join', session='a')
+    post('/match/cancel', session='a')
+    assert not post('/join', session='a', vs_bot=True, queuePractice=True)['ok']
+    assert not server.ROOMS
+
+
+def test_expired_accept_does_not_interrupt_practice(world):
+    post, _ = world
+    post('/match/join', session='a')
+    warmup = post('/join', session='a', solo=True)
+    post('/match/join', session='b')
+    post('/match/accept', session='b')
+    for entry in mm.QUEUE.values(): entry['pending']['deadline'] = time.time() - 1
+    assert post('/match/accept', session='a')['state'] == 'idle'
+    assert list(server.ROOMS) == [warmup['room']]
 
 
 def test_open_lobby_still_accepts_second_player(world):

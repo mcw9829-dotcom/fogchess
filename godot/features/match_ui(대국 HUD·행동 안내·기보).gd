@@ -22,6 +22,8 @@ var mobile_help: Button
 var mobile_cancel: Button
 var exposure_summary: Label
 var footer_meta: HBoxContainer
+var self_rating: Label
+var history_chips: Array[Button] = []
 
 func _init(context: Control) -> void:
 	app = context
@@ -142,16 +144,16 @@ func build_header() -> void:
 	opponent.add_theme_constant_override("separation",8)
 	app.game_left.add_child(opponent)
 	opponent_icon = _portrait(opponent)
-	app.opponent_line = app._label(opponent,"",13)
+	app.opponent_line = app._label(opponent,"",16)
 	app.opponent_line.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	app.opponent_line.autowrap_mode = TextServer.AUTOWRAP_OFF
 	app.opponent_line.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	app.ui_shell.opponent_rating = app._label(opponent,"",12)
+	app.ui_shell.opponent_rating = app._label(opponent,"",15)
 	app.ui_shell.opponent_rating.autowrap_mode = TextServer.AUTOWRAP_OFF
 	app.ui_shell.opponent_rating.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	app.ui_shell.opponent_rating.size_flags_horizontal = Control.SIZE_SHRINK_END
 	app.ui_shell.opponent_rating.set_meta("match_muted",true)
-	app.series_label = app._label(opponent,"",12)
+	app.series_label = app._label(opponent,"",15)
 	app.series_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	app.series_label.size_flags_horizontal = Control.SIZE_SHRINK_END
 	app.series_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -174,11 +176,17 @@ func build_footer() -> void:
 	footer_stack.add_child(footer_meta)
 	footer_meta.hide()
 	self_icon = _portrait(app.ui_shell.self_row)
-	app.self_line = app._label(app.ui_shell.self_row,"",13)
+	app.self_line = app._label(app.ui_shell.self_row,"",16)
 	app.self_line.autowrap_mode = TextServer.AUTOWRAP_OFF
 	app.self_line.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	app.self_line.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	exposure_summary = app._label(app.ui_shell.self_row,"",13)
+	app.self_line.add_theme_font_override("font",app._original_font(700))
+	self_rating = app._label(app.ui_shell.self_row,"",15)
+	self_rating.autowrap_mode = TextServer.AUTOWRAP_OFF
+	self_rating.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	self_rating.size_flags_horizontal = Control.SIZE_SHRINK_END
+	self_rating.add_theme_font_override("font",app._original_font(700))
+	exposure_summary = app._label(app.ui_shell.self_row,"",14)
 	exposure_summary.autowrap_mode = TextServer.AUTOWRAP_OFF
 	exposure_summary.size_flags_horizontal = Control.SIZE_SHRINK_END
 	exposure_summary.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -209,9 +217,9 @@ func build_selection(parent: Node) -> void:
 	names.alignment = BoxContainer.ALIGNMENT_CENTER
 	names.add_theme_constant_override("separation",1)
 	header.add_child(names)
-	app.selection_label = app._label(names,"",14)
+	app.selection_label = app._label(names,"",17)
 	app.selection_label.add_theme_font_override("font",app._original_font(700))
-	selection_position = app._label(names,"",13)
+	selection_position = app._label(parent,"",14)
 	selection_position.set_meta("match_muted",true)
 	app.action_details_button = _tool(header,"help","기물 능력과 주의사항을 확인합니다.",_mobile_details)
 	app.action_details_button.custom_minimum_size = Vector2(44,44)
@@ -226,6 +234,7 @@ func build_selection(parent: Node) -> void:
 func render_selection() -> void:
 	var selected: bool = not app.selection.is_empty()
 	app.selection_icon.get_parent().visible = selected
+	selection_position.visible = selected
 	render_mobile_actions()
 	if selected:
 		var cell: Vector2i = app.selection.cell
@@ -246,13 +255,13 @@ func build_mobile_actions() -> void:
 	var header := HBoxContainer.new()
 	header.custom_minimum_size.y = 44
 	content.add_child(header)
-	mobile_title = app._label(header,"",14)
+	mobile_title = app._label(header,"",16)
 	mobile_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	mobile_help = _tool(header,"help","선택 기물의 행동·상태 자세히 보기",_mobile_details)
 	mobile_cancel = _tool(header,"close","기물 선택 취소",app._clear_selection)
 	for button in [mobile_help,mobile_cancel]: button.custom_minimum_size = Vector2(44,44)
-	mobile_instruction = app._label(content,"",13)
-	mobile_status = app._label(content,"",13)
+	mobile_instruction = app._label(content,"",14)
+	mobile_status = app._label(content,"",14)
 	for label in [mobile_title,mobile_instruction,mobile_status]:
 		label.autowrap_mode = TextServer.AUTOWRAP_OFF
 		label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -266,7 +275,7 @@ func layout_mobile_actions() -> void:
 	if not is_instance_valid(mobile_actions): return
 	mobile_actions.visible = mobile_actions_active()
 	_refresh_footer_summary()
-	app.coach_label.get_parent().get_parent().visible = app.view.get("phase")!="over" and not mobile_actions.visible
+	app.coach_label.get_parent().get_parent().visible = app.view.get("phase")!="over" and not mobile_actions.visible and not app.replay.active
 	render_mobile_actions()
 
 func _refresh_footer_summary() -> void:
@@ -282,13 +291,14 @@ func _refresh_footer_summary() -> void:
 	app.ui_shell.presence_slot.alignment = BoxContainer.ALIGNMENT_END
 	var exposed: Array = view.get("exposed",[])
 	var active: bool = view.get("phase")=="play" and not exposed.is_empty() and app.seat!="spectator" and not app.replay.active
-	exposure_summary.visible = app.split.vertical and active
+	exposure_summary.visible = active
+	self_rating.visible = app.seat!="spectator" and not app.replay.active and view.get("myRating")!=null
 	if app.seat=="spectator" or app.replay.active: return
-	var identity: String = "%s · 나   %s" % [str(view.get("myName","나")),app._rating(view.get("myRating"))]
-	var full_status: String = " · ! 적 시야에 노출 %d개" % exposed.size() if active else ""
-	app.self_line.text = identity + ("" if exposure_summary.visible else full_status)
-	app.self_line.tooltip_text = identity + full_status
-	if exposure_summary.visible:
+	app.self_line.text = "%s · 나" % str(view.get("myName","나"))
+	self_rating.text = app._rating(view.get("myRating"))
+	self_rating.add_theme_color_override("font_color",app.ui_components._palette().text)
+	app.self_line.tooltip_text = app.self_line.text+" · "+self_rating.text
+	if active:
 		exposure_summary.text = "내 노출 기물 %d" % exposed.size()
 		exposure_summary.tooltip_text = "상대에게 위치가 보이는 내 기물 %d개" % exposed.size()
 		exposure_summary.add_theme_color_override("font_color",Color("#76521e") if app.prefs.get_value("settings","light",false) else Color("#e3bd78"))
@@ -349,17 +359,26 @@ func build_history(parent: Node) -> void:
 	history_toggle.expand_icon = true
 	history_toggle.add_theme_constant_override("icon_max_width",15)
 	history_toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	history_toggle.add_theme_font_size_override("font_size",12)
+	history_toggle.add_theme_font_size_override("font_size",15)
 	history_toggle.set_meta("match_disclosure",true)
-	history_toggle.custom_minimum_size.y = 34
-	var policy: Label = app._label(content,"",11)
+	history_toggle.custom_minimum_size.y = 44
+	var policy: Label = app._label(content,"",14)
 	policy.name = "HistoryPolicy"
 	policy.hide()
 	policy.set_meta("match_muted",true)
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation",4)
+	grid.add_theme_constant_override("v_separation",6)
+	content.add_child(grid)
+	for i in range(10):
+		var chip: Button = preload("res://features/move_record_chip.gd").build(app,grid,_history_window)
+		chip.hide()
+		history_chips.append(chip)
 	app.history_label = app._label(content,"",14)
 	app.history_label.add_theme_constant_override("line_spacing",6)
 	app.history_button = app._button(content,"전체 이동 기록",_history_window,"tertiary")
-	app.history_button.add_theme_font_size_override("font_size",12)
+	app.history_button.add_theme_font_size_override("font_size",14)
 	app.history_button.hide()
 
 func render_history() -> void:
@@ -371,13 +390,38 @@ func render_history() -> void:
 	for line in app.view.get("moveHistory",[]): lines.append(app.game_display._compact_history(str(line)))
 	var count := 10 if history_expanded else 3
 	var tail := lines.slice(maxi(0,lines.size()-count))
-	app.history_label.text = ("\n" if history_expanded else "   ").join(tail) if not lines.is_empty() else "아직 이동 기록이 없습니다."
+	app.history_label.text = "아직 이동 기록이 없습니다."
+	app.history_label.visible = lines.is_empty()
+	for i in range(history_chips.size()):
+		var chip := history_chips[i]
+		chip.visible = i<tail.size()
+		if not chip.visible: continue
+		var item := _history_item(tail[i])
+		chip.get_meta("caption").text = item.caption
+		chip.get_meta("notation").text = item.notation
+		chip.accessibility_name = tail[i]+" · 전체 이동 기록 보기"
+		preload("res://features/move_record_chip.gd").show_piece(chip,item.kind,item.side)
+		preload("res://features/move_record_chip.gd").style(app,chip,i==tail.size()-1)
 	history_toggle.text = "이동 기록    %s %s" % ["양쪽 기보" if app.seat=="spectator" or app.replay.active else "내 기보","▴" if history_expanded else "▾"]
 	history_toggle.tooltip_text = "최근 10수 펼치기 / 접기"
 	app.history_label.get_parent().get_node("HistoryPolicy").visible = history_expanded
 	app.history_button.visible = history_expanded and lines.size()>10
 	app.history_button.text = "전체 %d수 보기" % lines.size()
 	app.history_label.tooltip_text = "K 킹 · Q 퀸 · R 전차 · B 비숍 · N 나이트\nx 포획 · ! 저격 · >> 돌파 · ? 스캔 · = 승격\n숫자는 대국의 행동 순서입니다."
+
+func _history_item(line: String) -> Dictionary:
+	# Parse only the already-filtered public notation, never infer enemy actions.
+	var side: String = str(app.view.get("yourColor",""))
+	if line.begins_with("백 "): side="W"; line=line.trim_prefix("백 ")
+	elif line.begins_with("흑 "): side="B"; line=line.trim_prefix("흑 ")
+	var dot := line.find(". ")
+	var turn := line.substr(0,dot) if dot>=0 else ""
+	var notation := line.substr(dot+2) if dot>=0 else line
+	var kind := ""
+	if not notation.is_empty():
+		if notation[0] in ["K","Q","R","B","N","P"]: kind=notation[0]
+		elif notation[0] in ["a","b","c","d","e","f","g","h","i","j","k","l"] and notation!="resign": kind="P"
+	return {"caption":turn+" · "+("백" if side=="W" else "흑" if side=="B" else ""),"notation":notation,"kind":kind,"side":side}
 
 func _history_window() -> void:
 	var pair: Array = app._window("이동 기록")
@@ -408,7 +452,7 @@ func render() -> void:
 	turn_strip.add_theme_stylebox_override("fill",_surface(palette.danger if low else (palette.accent if mine else palette.muted),0,0))
 	app.ui_shell.state_group.custom_minimum_size.y = 42
 	if not app.replay.active:
-		mode_label.text = "관전 · 3분 지연" if app.seat=="spectator" else ("혼자 연습" if view.get("solo") else ("컴퓨터 대국" if view.get("bot") else ("랭크 대전" if view.get("rated") else "친구 대전")))
+		mode_label.text = "대기 연습 · 레이팅 미반영" if view.get("queuePractice",false) else "관전 · 3분 지연" if app.seat=="spectator" else ("혼자 연습" if view.get("solo") else ("컴퓨터 대국" if view.get("bot") else ("랭크 대전" if view.get("rated") else "친구 대전")))
 	else: mode_label.text = "리플레이"
 	var side: String = str(view.get("yourColor","W"))
 	var top_side := ("B" if side=="W" else "W") if app.seat!="spectator" else ("W" if app.spectating.flipped else "B")
@@ -420,6 +464,7 @@ func render() -> void:
 	top_sound.tooltip_text = "효과음 끄기" if app.audio.enabled else "효과음 켜기"
 	top_sound.accessibility_name = top_sound.tooltip_text
 	app.coach_label.add_theme_color_override("font_color",palette.text)
+	_readable_labels()
 	layout_mobile_actions()
 	render_selection()
 	render_history()
@@ -446,3 +491,11 @@ func apply_theme() -> void:
 				button.add_theme_stylebox_override(state,style)
 		for name in ["icon_normal_color","icon_hover_color","icon_focus_color","icon_pressed_color"]: button.add_theme_color_override(name,palette.muted)
 	app.coach_label.add_theme_color_override("font_color",palette.text)
+	_readable_labels()
+
+func _readable_labels() -> void:
+	var light: bool = app.prefs.get_value("settings","light",false)
+	var secondary := Color("#525d63") if light else Color("#bbc4c9")
+	for label in [app.action_hint,selection_position,app.ui_shell.opponent_rating,app.spectating.audience]:
+		if is_instance_valid(label): label.add_theme_color_override("font_color",secondary)
+	if is_instance_valid(app.chat.toggle): app.chat.apply_theme()

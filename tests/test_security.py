@@ -153,7 +153,9 @@ def test_normal_account_and_room_flow_is_unchanged(http_world):
 
 def fog_room():
     room = server.new_room('FOGTEST')
-    room['terrain'].update(forests=set(), rivers=set(), bushes={(8,9)})
+    # Clear the derived blockers too; otherwise random generated terrain can
+    # reject the valid control move in an authentication-only test.
+    room['terrain'].update(forests=set(), rivers=set(), bushes={(8,9)}, impassable=set())
     server.use_terrain(room)
     st = room['state']
     for p in st['pieces'].values():

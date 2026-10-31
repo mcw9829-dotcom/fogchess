@@ -114,7 +114,7 @@ def request_rules(path, data, ip):
         return [('signup-ip', ip, 10, 3600)]
     if path == '/recover/code':
         return [('recover-ip', ip, 5, 600)]
-    if path in ('/account/pw', '/account/recovery'):
+    if path in ('/account/pw', '/account/recovery', '/account/delete'):
         return [('account-ip', ip, 20, 300), ('account-session', str(data.get('session') or ''), 10, 300)]
     if path in ('/join', '/watch/join'):
         return [('join-ip', ip, 30, 60), ('join-hour', ip, 200, 3600)]

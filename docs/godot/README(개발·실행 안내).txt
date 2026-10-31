@@ -4,7 +4,7 @@ Fog Chess — Godot 개발 클라이언트
 다른 Windows PC에서 개발하기
 --------------------------
 Git과 Python 3.12 이상을 설치하고 새 터미널에서 다음 순서로 실행합니다.
-  git clone --branch codex/godot-development https://github.com/mcw9829-dotcom/fogchess.git
+  git clone https://github.com/mcw9829-dotcom/fogchess.git
   cd fogchess
   python tools/setup_godot_runtime.py
   .\start-dev.ps1

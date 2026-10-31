@@ -6,118 +6,47 @@ func _init(context: Control) -> void:
 	app = context
 
 func _help() -> void:
-	var pair = app._small_window("기물 설명",1230,540)
+	var pair = app._small_window("기물 설명",1080,740)
 	pair[0].set_meta("suppress_hover_tooltips",true)
-	var header: HBoxContainer = pair[1].get_child(0)
+	pair[0].name = "PieceGuide"
+	var box: VBoxContainer = pair[1]
+	box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_theme_constant_override("separation",12)
+	# Keep the title and piece/stage controls outside the scrollable explanation.
+	var outer_scroll: ScrollContainer = box.get_parent()
+	outer_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var header: HBoxContainer = box.get_child(0)
 	var title: Label = header.get_child(0)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	# Balance the close button so the title sits on the window centerline.
 	var balance := Control.new()
 	balance.custom_minimum_size.x = header.get_child(1).get_combined_minimum_size().x
 	balance.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	header.add_child(balance)
 	header.move_child(balance,0)
-	pair[1].add_theme_constant_override("separation",8)
-	var links = HFlowContainer.new()
-	links.alignment = FlowContainer.ALIGNMENT_CENTER
-	pair[1].add_child(links)
-	app._button(links,"처음 안내(1분) 다시 보기",func(): pair[0].queue_free(); app._intro())
-	app._button(links,"직접 배우기 · 왕 찾기 미션",func(): pair[0].queue_free(); app._tutorial())
-	app._rich(pair[1],"[center]기물 카드에 <b>마우스를 올리면</b>(모바일은 <b>탭</b>) 행마 → 공격 → 능력 순으로 애니메이션을 보여줍니다. 이펙트와 효과음은 설정을 따릅니다.[/center]",12)
-	var nav = HBoxContainer.new()
-	pair[1].add_child(nav)
-	var prev = app._button(nav,"◀",func(): pass)
-	prev.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var scroll = ScrollContainer.new()
-	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.custom_minimum_size.y = 386
-	nav.add_child(scroll)
-	var row = HBoxContainer.new()
-	row.add_theme_constant_override("separation",12)
-	scroll.add_child(row)
-	var next = app._button(nav,"▶",func(): pass)
-	next.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var demos: Array = []
-	var cards: Array = []
-	for spec in preload("res://original_demo(원본 시연 재현).gd").scenes().guide:
-		var card = app._card(row,"")
-		var panel: Control = card.get_parent()
-		panel.custom_minimum_size.x = 212
-		card.add_theme_constant_override("separation",5)
-		cards.append(panel)
-		panel.focus_mode = Control.FOCUS_ALL
-		panel.tooltip_text = "마우스를 올리거나 클릭하면 시연 재생 · Enter로도 재생"
-		var playback = app._label(card,"시연 대기",12)
-		playback.name = "PlaybackStatus"
-		playback.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		playback.custom_minimum_size.y = 22
-		var demo = preload("res://guide_demo(설명용 시연).gd").new()
-		demo.kind = spec.t
-		demo.effects = app.board.effects
-		demo.sound = app.audio.cue
-		demo.host = panel
-		demo.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		card.add_child(demo)
-		demos.append(demo)
-		var update_status = func(_playing: bool=false):
-			var colors: Dictionary = app.ui_components._palette()
-			var style: StyleBoxFlat = panel.get_theme_stylebox("panel").duplicate()
-			style.set_border_width_all(2)
-			style.border_color = colors.accent.lightened(.22) if demo.running else colors.border.darkened(.15)
-			style.bg_color = colors.surface.lerp(colors.accent,.07) if demo.running else colors.surface
-			panel.add_theme_stylebox_override("panel",style)
-			playback.text = "▶ 재생 중 · "+str(demo.state.get("phase","행마")) if demo.running else "시연 대기"
-			playback.add_theme_color_override("font_color",colors.text if demo.running else colors.muted)
-		update_status.call()
-		demo.playback_changed.connect(update_status)
-		demo.caption_changed.connect(func(_text): update_status.call())
-		demo.activated.connect(func():
-			for other in demos:
-				if other!=demo and is_instance_valid(other): other.stop())
-		panel.gui_input.connect(func(event):
-			if event is InputEventMouseButton and event.pressed and event.button_index==MOUSE_BUTTON_LEFT: demo.start()
-			elif event.is_action_pressed("ui_accept"): demo.start(); panel.accept_event())
-		panel.mouse_entered.connect(demo.start)
-		panel.mouse_exited.connect(func():
-			if not Rect2(Vector2.ZERO,panel.size).has_point(panel.get_local_mouse_position()): demo.stop())
-		var label = app._label(card,spec.nm,14)
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		for key in ["move","atk","abil"]:
-			if spec.has(key):
-				var description = app._rich(card,"[b]"+{"move":"행마","atk":"공격","abil":"능력"}[key]+"[/b]  "+str(spec[key]),12)
-				description.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var navigate = func(direction: int): scroll.scroll_horizontal = clampi(scroll.scroll_horizontal+direction*224,0,ceili(scroll.get_h_scroll_bar().max_value-scroll.get_h_scroll_bar().page))
-	prev.pressed.connect(func(): navigate.call(-1))
-	next.pressed.connect(func(): navigate.call(1))
-	scroll.get_h_scroll_bar().value_changed.connect(func(value):
-		prev.disabled = value<=0
-		next.disabled = value>=scroll.get_h_scroll_bar().max_value-scroll.get_h_scroll_bar().page-1)
-	prev.disabled = true
-	var chips = HFlowContainer.new()
-	pair[1].add_child(chips)
-	chips.visible = app.size.x<540
-	prev.visible = app.size.x>=540
-	next.visible = app.size.x>=540
-	for i in range(6): app._button(chips,["폰","나이트","비숍","전차","퀸","킹"][i],func(): scroll.scroll_horizontal = i*224; demos[i].start())
+	var guide = preload("res://focused_guide(기물 설명 상세 화면).gd").new(app,pair[0])
+	box.add_child(guide)
 
 func _tutorial() -> void:
+	if app.busy: return
 	for child in app.get_children():
 		if child is Window and child.visible: child.hide()
-	if app.busy or app.matching: return
-	var window = Window.new()
+	var window = preload("res://features/ui_components(공통 버튼·입력·팝업).gd").DismissibleWindow.new()
 	window.title = "직접 배우기 · 왕 찾기 미션"
+	# Use the same viewport resize contract as other dialogs, retaining room
+	# above the native-style title bar in short landscape windows.
+	window.set_meta("preferred_size",Vector2i(1060,720))
+	window.set_meta("viewport_margins",Vector2i(24,64))
 	window.transient = true
 	window.exclusive = true
 	window.close_requested.connect(window.queue_free)
 	app.add_child(window)
 	var tutorial = preload("res://tutorial(튜토리얼 진행).gd").new()
-	var saved = int(app.prefs.get_value("settings","tutorial_step",0))
-	tutorial.step = 0 if saved>=3 else saved
-	tutorial.progress_changed.connect(func(value): app.prefs.set_value("settings","tutorial_step",value); app._save(); app.game_ux.refresh_learning())
+	var saved = int(app.prefs.get_value("settings","tutorial_step_v2",0))
+	tutorial.step = 0 if saved>=4 else saved
+	tutorial.progress_changed.connect(func(value): app.prefs.set_value("settings","tutorial_step_v2",value); app._save(); app.game_ux.refresh_learning())
 	tutorial.start_game.connect(func(): window.queue_free(); await app._join({"vs_bot":true,"level":"easy"}))
 	window.add_child(tutorial)
-	window.popup_centered(Vector2i(mini(int(app.size.x)-24,1060),mini(int(app.size.y)-24,720)))
+	window.popup_centered(Vector2i(mini(int(app.get_viewport_rect().size.x)-24,1060),mini(int(app.get_viewport_rect().size.y)-64,720)))
 
 func _intro(step: int=0) -> void:
 	app.prefs.set_value("settings","intro_seen",true)
@@ -183,3 +112,4 @@ func _intro_caption(text: String,step: int) -> String:
 	if step==0 and "배치" in text:
 		return "기본 배치로 시작하거나 내 진영 3줄 안에서 바꿀 수 있어요. 준비가 되면 <b>준비 완료</b>를 누르세요."
 	return text
+

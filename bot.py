@@ -276,6 +276,7 @@ def _threat_cells(known, me):
     for e in known:
         r, c, t = e[0], e[1], e[2]
         if t == 'P':
+            danger.add((r + fr, c))
             for cc in (c - 1, c + 1):
                 danger.add((r + fr, cc)); danger.add((r, cc))
         elif t == 'N':
@@ -344,7 +345,7 @@ def _attack_candidates(st, me, enemies):
                               'move', p['id'], er, ec))
         if et == 'K' or val >= 3:                        # 값진 표적을 비숍 저격(사거리5·시야에 든 적)
             for p in mine:
-                if p['t'] == 'B' and not pieces.is_reloading(st, p['id']) and (er - p['r']) ** 2 + (ec - p['c']) ** 2 <= BISHOP_RANGE ** 2:
+                if p['t'] == 'B' and not pieces.is_reloading(st, p['id']) and (er - p['r']) ** 2 + (ec - p['c']) ** 2 <= BISHOP_RANGE ** 2 and pieces.los_clear(p['r'], p['c'], er, ec):
                     cands.append((val * 9 + kbonus, 'fire', p['id'], er, ec))
     for p in mine:                                       # 전차 돌파사격(십자 첫 기물이 보이는 적)
         if p['t'] != 'R' or pieces.is_reloading(st, p['id']):

@@ -9,11 +9,13 @@ func _init(context: Control) -> void:
 	app = context
 
 func _join(data: Dictionary) -> void:
-	if app.busy or app.matching: return
+	if app.busy or app.ui_motion.is_transition_busy(): return
+	if app.matching and not (data.get("vs_bot",false) or data.get("solo",false) or data.get("resume",false)): return
 	app.busy = true
 	app._message("대국을 준비하고 있습니다…")
 	data["name"] = app.guest_field.text
 	data["session"] = app.session
+	if app.matching and (data.get("vs_bot",false) or data.get("solo",false)): data["queuePractice"] = true
 	var response: Dictionary = await app.api.request("/join",data)
 	app.busy = false
 	if not response.has("room"): app._report(response); return
@@ -21,6 +23,7 @@ func _join(data: Dictionary) -> void:
 	await app._poll()
 
 func _enter(data: Dictionary) -> void:
+	app.game_display.reset_feed_motion()
 	app.generation += 1
 	app.room = str(data.room)
 	app.token = str(data.token)
@@ -32,10 +35,12 @@ func _enter(data: Dictionary) -> void:
 	app.spectating.last_count = -1
 	app.spectating.flipped = false
 	app.last_fx = 0
+	app.pending_fx = {}
+	app.board.fx.clear()
 	app.last_turn = -1
 	app.reveal = false
-	app.matching = false
 	app._clear_selection()
+	app.ui_motion.prepare_match_entry()
 	app.home.hide()
 	app.subpage.hide()
 	app.game.show()
@@ -46,15 +51,9 @@ func _enter(data: Dictionary) -> void:
 	app._message(("방 %s · 전체 보드 3분 지연 관전" if app.seat=="spectator" else "방 %s · 기물을 클릭하거나 드래그해 조작하세요.") % app.room)
 
 func _poll() -> void:
+	app.matchmaking.poll()
 	if app.replay.active: return
 	if app.polling or app.busy: return
-	if app.matching:
-		app.polling = true
-		var stamp = app.generation
-		var data: Dictionary = await app.api.request("/match/status",{"session":app.session})
-		app.polling = false
-		if stamp==app.generation: await app._match_update(data)
-		return
 	if app.room.is_empty(): return
 	app.polling = true
 	var stamp = app.generation
@@ -62,10 +61,16 @@ func _poll() -> void:
 	app.polling = false
 	if stamp!=app.generation: return
 	if response.get("gone"):
+		# Both accepts may remove practice just before the queue response arrives.
+		if app.matching: return
 		app._return_home()
 		app._message("서버에서 방이 종료되었습니다. 새 대국을 시작하세요.")
 		return
-	if not response.has("grid"): app._report(response); return
+	if not response.has("grid"):
+		var entering: bool = not app.ui_motion.pending_match_room.is_empty()
+		if entering: app._return_home()
+		app._report(response)
+		return
 	app._apply_state(response)
 
 func _apply_state(data: Dictionary) -> void:
@@ -88,10 +93,10 @@ func _apply_state(data: Dictionary) -> void:
 		var ending = "drawend" if data.get("winner")=="draw" else ("victory" if data.get("solo",false) or data.get("winner")==data.get("yourColor") else "defeat")
 		app.audio.cue(ending)
 		if app.board.effects: app.board.fx.play({"type":ending})
-	app.audio.music(bool(app.prefs.get_value("settings","music",true)))
 	app._render()
 
 func _act(body: Dictionary) -> void:
+	if app.ui_motion.is_transition_busy(): return
 	if app.replay.active: return
 	if app.busy or awaiting_state or app.room.is_empty() or app.seat=="spectator": return
 	app.busy = true
@@ -129,12 +134,12 @@ func _act(body: Dictionary) -> void:
 		app._clear_selection()
 		app._message("상대가 생각 중입니다." if response.get("pending") else "")
 	else:
-		app._report(response)
+		if not (app.matching and response.get("gone",false)): app._report(response)
 		app._update_selection_ui()
 	await app._poll()
 
 func _promotion() -> void:
-	var pair = app._window("폰 승격")
+	var pair = app._small_window("폰 승격",440,420)
 	app.promote_window = pair[0]
 	var box: VBoxContainer = pair[1]
 	for connection in app.promote_window.close_requested.get_connections():
@@ -142,7 +147,7 @@ func _promotion() -> void:
 	for button in box.find_children("*","Button",true,false):
 		if button.text=="×": button.hide()
 	app._label(box,"승격할 기물을 선택하세요. 시간이 끝나면 전차로 자동 승격합니다.")
-	for kind in ["R","N","B"]:
+	for kind in ["Q","R","N","B"]:
 		var button = app._button(box,app.NAMES[kind],func(): await app._act({"type":"promote","choice":kind}))
 		button.icon = load("res://pieces/Chess_%s%st45.svg" % [kind.to_lower(),"l" if app.view.get("yourColor")=="W" else "d"])
 		button.expand_icon = true
@@ -151,7 +156,7 @@ func _promotion() -> void:
 		if kind=="R": button.grab_focus()
 
 func leave_is_resignation() -> bool:
-	return not app.replay.active and not app.room.is_empty() and not app.view.get("solo",false) and app.view.get("phase")!="over" and app.view.get("bothJoined",false) and (app.view.get("phase")=="play" or app.view.get("match",false)) and app.seat!="spectator"
+	return not app.view.get("queuePractice",false) and not app.replay.active and not app.room.is_empty() and not app.view.get("solo",false) and app.view.get("phase")!="over" and app.view.get("bothJoined",false) and (app.view.get("phase")=="play" or app.view.get("match",false)) and app.seat!="spectator"
 
 func leave_label() -> String:
 	if app.replay.active: return "리플레이 닫기"
@@ -163,20 +168,33 @@ func _leave_prompt() -> void:
 	if app.room.is_empty(): app._navigation_home(); return
 	if app.busy: return
 	var committed: bool = leave_is_resignation()
-	app.ui_components.confirm_action("기권 후 나가기" if committed else "나가기","기권 패배로 종료한 뒤 홈으로 돌아갑니다." if committed else "대국을 나가 홈으로 돌아갈까요?","기권 후 홈으로" if committed else "홈으로",func():
-		if committed:
+	app.ui_components.confirm_action("기권 후 나가기" if committed else "나가기","기권 패배로 종료한 뒤 홈으로 돌아갑니다." if committed else "대국을 나가 홈으로 돌아갈까요?","기권 후 홈으로" if committed else "나가기",func():
+		if app.view.get("queuePractice",false):
+			app.busy = true
+			var result: Dictionary = await app.api.request("/practice/leave",{"session":app.session,"room":app.room})
+			app.busy = false
+			if not app._report(result): return
+		elif committed:
 			await app._act({"type":"resign"})
 			if app.view.get("phase")!="over": app._message("기권 결과를 확인할 수 없어 방에 남아 있습니다."); return
+		elif app.view.get("phase")=="setup" and not app.view.get("solo",false) and not app.view.get("bot",false) and not app.view.get("match",false) and app.seat!="spectator":
+			app.busy = true
+			var result: Dictionary = await app.api.request("/room/cancel",{"room":app.room,"token":app.token})
+			app.busy = false
+			if not app._report(result):
+				await app._poll()
+				return
 		elif app.view.get("phase")=="over" and app.seat!="spectator": await app._act({"type":"rematch_decline"})
 		app._return_home())
 
 func _return_home() -> void:
+	var animate: bool = app.ui_motion.prepare_match_return()
+	app.board.reset_fog_arrival()
 	reset_request()
 	app.spectating.leave()
 	app.board.show()
 	app.board.fx.clear()
 	app.pending_fx = {}
-	app.audio.music(false)
 	app.generation += 1
 	app.room = ""
 	app.token = ""
@@ -193,6 +211,7 @@ func _return_home() -> void:
 	app._load_home_ranks()
 	app._save()
 	app._refresh_profile()
+	if animate: app.ui_motion.begin_match_return()
 
 func _open_invitation(code: String) -> void:
 	app.code_field.text = code.strip_edges().to_upper().left(8)

@@ -79,28 +79,39 @@ class FixtureHandler(dev_server.DevHandler):
 
 
 def main():
+    # This older scenario suite explicitly acts as white; color symmetry is
+    # exercised by run_account_polish_smoke and test_game_account_polish.
+    server.draw_starting_color = lambda: 'W'
     godot = default_godot()
     with tempfile.TemporaryDirectory(prefix='fogchess-godot-test-') as directory:
+        os.environ['FOG_SECURITY_DB'] = str(Path(directory) / 'security.db')
+        os.environ['FOG_REPLAY_DB'] = str(Path(directory) / 'replays.db')
         server.accounts.init_db(str(Path(directory) / 'test.db'))
         os.environ['FOG_ADMIN_KEY'] = uuid.uuid4().hex
         server.accounts.add_feedback('bug', 'Godot admin fixture', 'LocalTester', None, None, 'Godot test')
         httpd = server.ThreadingServer(('127.0.0.1', 0), FixtureHandler)
         threading.Thread(target=httpd.serve_forever, daemon=True).start()
-        env = dict(os.environ, FOG_TEST_URL=f'http://127.0.0.1:{httpd.server_port}', FOG_TEST_ADMIN_KEY=os.environ['FOG_ADMIN_KEY'])
-        log = ROOT / 'godot' / 'tests' / 'smoke.log'
-        args = [godot, '--path', str(ROOT / 'godot'), '--script', 'res://tests/smoke.gd', '--log-file', str(log)]
+        env = dict(os.environ, APPDATA=str(Path(directory) / 'appdata'), FOG_TEST_URL=f'http://127.0.0.1:{httpd.server_port}', FOG_TEST_ADMIN_KEY=os.environ['FOG_ADMIN_KEY'])
+        out = Path(os.environ.get('FOG_CAPTURE_DIR', ROOT / '.dev-data' / 'godot-smoke'))
+        out.mkdir(parents=True, exist_ok=True)
+        env['FOG_CAPTURE_DIR'] = str(out)
+        log = out / 'smoke.log'
+        script = sys.argv[sys.argv.index('--script')+1] if '--script' in sys.argv else 'res://tests/smoke.gd'
+        args = [godot, '--path', str(ROOT / 'godot'), '--script', script, '--log-file', str(log)]
         if '--capture' not in sys.argv and '--social-capture' not in sys.argv: args += ['--headless']
-        args += ['--', '--smoke']
+        else: args += ['--position', '-16000,-16000']
+        args += ['--audio-driver', 'Dummy', '--', '--smoke']
         if '--capture' in sys.argv: args += ['--capture']
         if '--social-capture' in sys.argv: args += ['--social-capture']
         try:
-            result = subprocess.run(args, env=env, timeout=140, capture_output=True)
+            result = subprocess.run(args, env=env, timeout=240, capture_output=True)
             output = log.read_text(encoding='utf-8')
             print(output)
             return int(result.returncode != 0 or 'SCRIPT ERROR' in output or 'ERROR:' in output or 'GODOT_SMOKE_FAILURES=0' not in output)
         finally:
             httpd.shutdown()
             httpd.server_close()
+            server.shutdown_bot_worker()
 
 
 if __name__ == '__main__':

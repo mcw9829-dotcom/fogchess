@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-APP_VERSION = '1.55'   # 화면 배지·/version 에 표시(패치노트 최신 항목과 맞출 것)
+APP_VERSION = '1.58.5'   # 화면 배지·/version 에 표시(패치노트 최신 항목과 맞출 것)
 """
 게임 설정 (control panel) — 대부분의 튜닝은 이 파일 하나만 고치면 됩니다.
 수정 후 서버를 재시작(Ctrl+C → python server.py)하면 반영됩니다.
@@ -66,7 +66,7 @@ ROOK_FIRE    = 4      # 룩 돌파사격: 십자(상하좌우) 최대 칸
 BISHOP_MOVE  = 2      # 비숍 대각 이동 최대
 BISHOP_RANGE = 5      # 비숍 저격 사거리(원형 반경). 단일 타일 저격, 시야에 든 적만 명중
 QUEEN_MOVE   = 2      # 퀸 이동 최대(8방향)
-SCAN_RANGE   = 6      # 퀸 스캔 캐스트 사거리(맨해튼 거리). 이 안의 한 지점 지정
+SCAN_RANGE   = 6      # 퀸 스캔 캐스트 사거리(원형 반경). 이 안의 한 지점 지정
 SCAN_DUR     = 5      # 스캔 지역 감시 지속(turnCount 단위, ~내 다음 2턴까지 그 2×2를 밝힘)
 MUZZLE       = 4      # 공격 후 내 위치 노출 지속(turnCount 단위, ~상대 2턴)
 ZONE = {'W': (9, 11), 'B': (0, 2)}   # 각 진영 배치(스폰) 가능 3줄

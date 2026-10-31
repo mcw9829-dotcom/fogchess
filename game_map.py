@@ -21,15 +21,31 @@ def in_board(r, c):
 
 
 def los_clear(r0, c0, r1, c1):
-    """(r0,c0)~(r1,c1) 사이에 숲이 있으면 시야가 막힌다."""
-    dr, dc = r1 - r0, c1 - c0
-    steps = max(abs(dr), abs(dc))
-    if steps <= 1:
-        return True
-    for i in range(1, steps):
-        rr = r0 + round(dr * i / steps)
-        cc = c0 + round(dc * i / steps)
-        if (rr, cc) in FORESTS:
+    """Trace every crossed square, including forest corners; endpoints stay visible.
+
+    Integer boundary comparisons avoid direction-dependent rounding and gaps in
+    steep/shallow rays. A forest touching the ray at a corner also blocks it.
+    """
+    nr, nc = abs(r1-r0), abs(c1-c0)
+    sr = (r1 > r0) - (r1 < r0)
+    sc = (c1 > c0) - (c1 < c0)
+    r, c = r0, c0
+    ir = ic = 0
+    endpoints = {(r0,c0), (r1,c1)}
+    def blocked(rr, cc):
+        return (rr,cc) not in endpoints and (rr,cc) in FORESTS
+    while ir < nr or ic < nc:
+        cross_r = (2*ir+1)*nc
+        cross_c = (2*ic+1)*nr
+        if cross_r == cross_c:
+            if blocked(r+sr,c) or blocked(r,c+sc):
+                return False
+            r += sr; c += sc; ir += 1; ic += 1
+        elif cross_r < cross_c:
+            r += sr; ir += 1
+        else:
+            c += sc; ic += 1
+        if blocked(r,c):
             return False
     return True
 

@@ -2,6 +2,9 @@ extends RefCounted
 ## Feature implementation. Shared scene state and cross-feature entry points live on app.
 var app
 var setup_ui
+var aim_assist
+var lobby_home
+var mobile_navigation
 var match_header: PanelContainer
 var presence_slot: HBoxContainer
 var presence_cell: MarginContainer
@@ -12,6 +15,8 @@ var presence_divider: VSeparator
 var self_panel: PanelContainer
 var content_margin: MarginContainer
 var self_row: HBoxContainer
+var match_gutter: Control
+var chrome_gutter: Control
 
 func _init(context: Control) -> void:
 	app = context
@@ -25,6 +30,7 @@ func _build() -> void:
 	app.rail_panel = PanelContainer.new()
 	app.rail_panel.custom_minimum_size.x = 208
 	app.shell.add_child(app.rail_panel)
+	app.rail_panel.hide()
 	app.rail = BoxContainer.new()
 	app.rail.vertical = true
 	app.rail.add_theme_constant_override("separation",4)
@@ -148,8 +154,16 @@ func _build() -> void:
 	app.game.add_child(app.split)
 	app.game_left = VBoxContainer.new()
 	app.game_left.add_theme_constant_override("separation",6)
+	match_gutter = Control.new()
+	match_gutter.name = "BoardCenterGutter"
+	match_gutter.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	app.split.add_child(match_gutter)
 	app.split.add_child(app.game_left)
 	app.match_ui.build_header()
+	chrome_gutter = Control.new()
+	chrome_gutter.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	app.match_ui.chrome.add_child(chrome_gutter)
+	app.match_ui.chrome.move_child(chrome_gutter,0)
 	app.board = app.Board.new()
 	app.board.tapped.connect(app._tap)
 	app.board.dragged.connect(app._drag)
@@ -170,7 +184,13 @@ func _build() -> void:
 	var result_box = VBoxContainer.new()
 	result_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	result_box.add_theme_constant_override("separation",12)
-	app.result_panel.add_child(result_box)
+	var result_scroll := ScrollContainer.new()
+	result_scroll.name = "ResultScroll"
+	result_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	app.result_panel.add_child(result_scroll)
+	result_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	result_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	result_scroll.add_child(result_box)
 	app.result_label = app._label(result_box,"",34)
 	app.result_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	app.result_score = app._label(result_box,"",26)
@@ -230,10 +250,11 @@ func _build() -> void:
 	app._button(actions,"나가기",app._leave_prompt).name = "LeaveMatch"
 	app.coach_label = app._label(action_card,"",16)
 	app.coach_label.add_theme_color_override("font_color",Color("#eed29a"))
-	app.action_hint = app._label(action_card,"",13)
+	app.action_hint = app._label(action_card,"",15)
+	app.action_hint.add_theme_constant_override("line_spacing",4)
 	app.action_hint.set_meta("match_muted",true)
 	app.action_hint.add_theme_color_override("font_color",app.ui_components._palette().muted)
-	app.action_details = app._label(action_card,"",12)
+	app.action_details = app._label(action_card,"",14)
 	app.action_details.hide()
 	app.over_controls = HBoxContainer.new()
 	action_card.add_child(app.over_controls)
@@ -242,10 +263,10 @@ func _build() -> void:
 	setup_ui = preload("res://features/setup_ui(배치 준비 시각 안내).gd").new(app)
 	setup_ui.build(action_card)
 	var log_card = app.match_ui.card(app.controls,"킬로그")
-	log_card.get_child(0).add_theme_font_size_override("font_size",12)
+	log_card.get_child(0).add_theme_font_size_override("font_size",15)
 	app.feed_box = VBoxContainer.new()
 	log_card.add_child(app.feed_box)
-	app.enemy_counts = app._label(log_card,"",12)
+	app.enemy_counts = app._label(log_card,"",14)
 	app.enemy_icons = HFlowContainer.new()
 	app.enemy_icons.add_theme_constant_override("h_separation",12)
 	log_card.add_child(app.enemy_icons)
@@ -265,6 +286,19 @@ func _build() -> void:
 	app.replay.build()
 	app._load_home_ranks.call_deferred()
 	app.game_ux.build(root)
+	# Existing home data nodes remain available to account/ranking integrations.
+	# The visible home is now the large-menu lobby; no old buttons remain focusable.
+	home_center.hide()
+	app.home.alignment = BoxContainer.ALIGNMENT_BEGIN
+	lobby_home = preload("res://features/lobby_home(로비 큰 메뉴·하위 선택).gd").new(app)
+	app.home.add_child(lobby_home)
+	app.home.move_child(lobby_home,0)
+	aim_assist = preload("res://features/aim_assist(모바일 조준·전술 안내).gd").new(app)
+	app.add_child(aim_assist)
+	aim_assist.build(root)
+	mobile_navigation = preload("res://features/mobile_match_navigation.gd").new(app)
+	app.add_child(mobile_navigation)
+	mobile_navigation.build(root)
 	app.game_left.minimum_size_changed.connect(app._layout.call_deferred)
 
 func _grid_panel(parent: Node) -> PanelContainer:
@@ -296,14 +330,17 @@ func _layout() -> void:
 	for child in app.get_children():
 		if child is Window and child.has_meta("preferred_size"):
 			var preferred: Vector2i = child.get_meta("preferred_size")
-			child.min_size = Vector2i(mini(320,int(app.size.x)-24),mini(280,int(app.size.y)-24))
-			child.size = Vector2i(mini(preferred.x,int(app.size.x)-24),mini(preferred.y,int(app.size.y)-24))
+			var margins: Vector2i = child.get_meta("viewport_margins",Vector2i(24,24))
+			var limit := Vector2i(maxi(1,int(app.size.x)-margins.x),maxi(1,int(app.size.y)-margins.y))
+			child.min_size = Vector2i(mini(320,limit.x),mini(280,limit.y))
+			child.size = Vector2i(mini(preferred.x,limit.x),mini(preferred.y,limit.y))
 			child.position = Vector2i((app.size-Vector2(child.size))/2)
 	if not is_instance_valid(app.split): return
 	var narrow = app.size.x <= 760
 	app.responsive = app.size.x < 1140
 	app.shell.vertical = narrow
 	app.rail.vertical = not narrow
+	app.rail.add_theme_constant_override("separation",0 if narrow else 4)
 	app.rail_panel.custom_minimum_size = Vector2(0,56) if narrow else Vector2(208,0)
 	app.rail_version.visible = not narrow
 	app.rail_spacer.visible = not narrow
@@ -321,10 +358,17 @@ func _layout() -> void:
 		button.alignment = HORIZONTAL_ALIGNMENT_CENTER if narrow else HORIZONTAL_ALIGNMENT_LEFT
 		button.add_theme_constant_override("icon_max_width",26)
 	app.profile_button.text = "" if narrow else "       "+("게스트\n       로그인 · 회원가입" if app.me.is_empty() else "%s\n       %d점 · 전적 보기" % [app.me.name,int(app.me.rating)])
-	app.rail_panel.visible = not app.game.visible
-	var page_padding := 16 if app.game.visible else 22
+	app.rail_panel.hide()
+	var page_padding := (8 if narrow else 16) if app.game.visible else (16 if narrow else 22)
 	for edge in ["left","right","top","bottom"]: content_margin.add_theme_constant_override("margin_"+edge,page_padding)
-	var available = maxf(260,app.size.x-(0 if narrow or app.game.visible else 208)-page_padding*2)
+	# The global queue occupies one fixed top slot across lobby and match views.
+	# Other game padding stays compact; it must not move the queue at handoff.
+	if is_instance_valid(app.lobby_status.queue_card) and app.lobby_status.queue_card.visible:
+		content_margin.add_theme_constant_override("margin_top",16 if narrow else 22)
+	# A vertical scrollbar occupies layout width. Reserve it on phones so the
+	# square board's minimum width cannot push the footer or settings off-screen.
+	var scroll_reserve: float = app.page_scroll.get_v_scroll_bar().get_combined_minimum_size().x if narrow else 0.0
+	var available = maxf(260,app.size.x-page_padding*2-scroll_reserve)
 	app.landing.vertical = available<820
 	app.landing.add_theme_constant_override("separation",20 if app.landing.vertical else 40)
 	var menu_width = minf(400,available)
@@ -332,7 +376,19 @@ func _layout() -> void:
 	app.ranking.get_parent().custom_minimum_size.x = menu_width if app.landing.vertical else 380
 	app.landing.move_child(app.ranking.get_parent(),1 if app.landing.vertical else 0)
 	app.subpage.custom_minimum_size.x = menu_width
-	app.split.vertical = available<780
+	if is_instance_valid(lobby_home): lobby_home.layout(available)
+	# Reserve the scrollbar gutter in the lobby so opening a taller accordion
+	# never nudges the board sideways. The bar appears only when content exceeds
+	# the viewport; short landscape windows can reach every menu without shrinking text.
+	app.page_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_RESERVE if app.home.visible else ScrollContainer.SCROLL_MODE_AUTO
+	app.split.vertical = available<924
+	if is_instance_valid(mobile_navigation): mobile_navigation.refresh()
+	# Replay devotes the empty centering gutter to the board. Live match geometry is unchanged.
+	match_gutter.visible = not app.split.vertical and not app.replay.active
+	chrome_gutter.visible = not app.split.vertical and not app.replay.active
+	app.replay.layout_controls(not app.split.vertical)
+	match_gutter.custom_minimum_size.x = 280
+	chrome_gutter.custom_minimum_size.x = 302-app.match_ui.chrome.get_theme_constant("separation")
 	# Mobile uses one page scroll; desktop keeps the bounded information rail.
 	app.controls_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED if app.split.vertical else ScrollContainer.SCROLL_MODE_AUTO
 	app.controls_scroll.size_flags_vertical = Control.SIZE_SHRINK_BEGIN if app.split.vertical else Control.SIZE_EXPAND_FILL
@@ -343,14 +399,21 @@ func _layout() -> void:
 		app.spectating.flip_button.tooltip_text = "보드 뒤집기"
 	# Measure the actual chrome so cards, warnings and replay controls cannot push
 	# the board off a desktop window after changing their parent containers.
-	var frame_chrome: float = page_padding*2.0+app.match_ui.chrome.get_combined_minimum_size().y+app.game.get_theme_constant("separation")+28
+	var outer_reserve := 0.0
+	var page_stack: VBoxContainer = app.page_scroll.get_parent()
+	for child in page_stack.get_children():
+		if child == app.page_scroll or not child.visible: continue
+		outer_reserve += child.get_combined_minimum_size().y + page_stack.get_theme_constant("separation")
+	var vertical_padding: float = content_margin.get_theme_constant("margin_top")+content_margin.get_theme_constant("margin_bottom")
+	var frame_chrome: float = vertical_padding+app.match_ui.chrome.get_combined_minimum_size().y+app.game.get_theme_constant("separation")+outer_reserve
 	var chrome_height := frame_chrome
 	for child in app.game_left.get_children():
 		if child==app.board or not child.visible: continue
 		chrome_height += child.get_combined_minimum_size().y+app.game_left.get_theme_constant("separation")
 	# Square cells and original art proportions, sized from the actual viewport.
 	# A wide browser can exceed the old 640 px cap; a short one must still fit.
-	var board_width = available if app.split.vertical else minf(available-302,maxf(280,app.size.y-chrome_height))
+	var horizontal_reserve := 302.0 if app.replay.active else 604.0
+	var board_width = (available if narrow else minf(available,maxf(280,app.size.y-chrome_height))) if app.split.vertical else minf(available-horizontal_reserve,maxf(280,app.size.y-chrome_height))
 	app.board.custom_minimum_size = Vector2(board_width,board_width)
 	app.side_panel.custom_minimum_size = Vector2(board_width if app.split.vertical else 280,0 if app.split.vertical else board_width+chrome_height-frame_chrome)
 	app.controls_scroll.custom_minimum_size = Vector2(0,0)
@@ -358,7 +421,7 @@ func _layout() -> void:
 	for card in app.mode_cards:
 		if is_instance_valid(card): card.custom_minimum_size.y = maxf(76,card.get_node("ModeCardContent").get_combined_minimum_size().y)
 	app.game_ux.update_scroll_bar.call_deferred()
-	app._nav_active("설정" if app.subpage.visible and app.subpage.get_child_count()>0 and app.subpage.get_child(0).text=="설정" else "플레이")
+	_refresh_navigation()
 
 func _navigation_home() -> void:
 	if app.room.is_empty():
@@ -371,6 +434,8 @@ func _navigation_home() -> void:
 		app.subpage.hide()
 		app.game.show()
 		app._nav_active("플레이")
+
+	app._layout.call_deferred()
 
 func _subscreen(title: String, description: String="") -> VBoxContainer:
 	for child in app.subpage.get_children():
@@ -387,7 +452,26 @@ func _subscreen(title: String, description: String="") -> VBoxContainer:
 		var sub = app._label(app.subpage,description,13)
 		sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		sub.custom_minimum_size.y = 34
+	app._layout.call_deferred()
 	return app.subpage
+
+func track_navigation_window(window: Window, section: String) -> void:
+	if not section.is_empty(): window.set_meta("navigation_section",section)
+	window.visibility_changed.connect(_refresh_navigation.call_deferred)
+	window.tree_exiting.connect(_refresh_navigation.call_deferred)
+	_refresh_navigation()
+
+func _refresh_navigation() -> void:
+	# The highlighted section follows the visible dialog, falling back to the
+	# underlying screen when it closes. Relayout must not overwrite that state.
+	var section := "플레이"
+	if is_instance_valid(app.subpage) and app.subpage.visible and app.subpage.get_child_count()>0:
+		var heading = app.subpage.get_child(0)
+		if heading is Label and heading.text=="설정": section = "설정"
+	for child in app.get_children():
+		if child is Window and child.visible and not child.is_queued_for_deletion():
+			section = str(child.get_meta("navigation_section",section))
+	_nav_active(section)
 
 func _nav_active(text: String) -> void:
 	for button in app.nav_buttons:

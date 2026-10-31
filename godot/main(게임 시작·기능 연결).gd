@@ -21,8 +21,10 @@ var replay = preload("res://features/replay(기보 저장·수순 재생).gd").n
 var game_ux = preload("res://features/game_ux(학습·기록·접근성).gd").new(self)
 
 var ui_motion = preload("res://features/ui_motion(정돈된 Material 모션).gd").new(self)
+var lobby_status = preload("res://features/lobby_status.gd").new(self)
 
 func _ready() -> void:
+	add_child(preload("res://features/web_viewport.gd").new())
 	add_child(ui_motion)
 	add_child(preload("res://features/tooltip_service(전체 설명 카드 배치).gd").new(self))
 	prefs.load("user://client.cfg")
@@ -39,6 +41,8 @@ func _ready() -> void:
 	audio.level = float(prefs.get_value("settings","volume",1.0))
 	session = str(prefs.get_value(api.base_url,"session",""))
 	_build()
+	add_child(lobby_status)
+	lobby_status.build()
 	_apply_theme()
 	var timer := Timer.new()
 	timer.wait_time = .7
@@ -51,7 +55,7 @@ func _ready() -> void:
 	if testing: return
 	if not session.is_empty():
 		var response: Dictionary = await api.request("/me",{"session":session})
-		if response.get("ok"): me = response.user
+		if response.get("ok"): me = response.user; lobby_status.set_active(response.get("activeGame"))
 		elif not response.get("network_error"): session = ""; _save()
 	_update_account()
 	var saved_room := str(prefs.get_value(api.base_url,"room",""))
@@ -75,6 +79,7 @@ func _message(text: String) -> void:
 		notice.visible = not text.is_empty()
 
 func _report(data: Dictionary) -> bool:
+	if data.has("activeGame"): lobby_status.set_active(data.activeGame)
 	if data.get("msg"): _message(str(data.msg))
 	return bool(data.get("ok",not data.get("network_error",false)))
 

@@ -20,7 +20,7 @@ func build() -> void:
 	eye.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	eye.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	presence_row.add_child(eye)
-	audience = app._label(presence_row,"관전자 0명",13)
+	audience = app._label(presence_row,"관전자 0명",14)
 	audience.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	audience.autowrap_mode = TextServer.AUTOWRAP_OFF
 	waiting = app._label(app.game_left,"",20)

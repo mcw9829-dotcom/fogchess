@@ -1,0 +1,6 @@
+Outfit variable font, used at weight 500 for Make Your Move.
+Source: https://github.com/google/fonts/tree/main/ofl/outfit
+File: https://raw.githubusercontent.com/google/fonts/main/ofl/outfit/Outfit%5Bwght%5D.ttf
+Original bytes retained, filename simplified to Outfit.ttf.
+SIL OFL 1.1: see Outfit-OFL.txt for copyright notice and license.
+Downloaded for the preceding typography review on 2026-10-24.

@@ -37,7 +37,7 @@ func _update_selection_ui() -> void:
 		var cell: Vector2i = app.selection.cell
 		app.selection_label.text = "%s · %s%d" % [app.NAMES.get(app.selection.t,"기물"),String.chr(97+cell.y),cell.x+1]
 		app.selection_icon.texture = app.board.textures.get(str(app.selection.t).to_lower()+("l" if app.selection.o=="W" else "d"))
-		app.action_details.text = {"B":"저격: 사거리 5 안의 보이는 적만 공격합니다. 사격 후 내 위치가 노출됩니다.","R":"돌파 사격: 상하좌우 최대 4칸을 관통합니다. 숲에 막히며 아군도 맞습니다. 빈 방향에도 턴을 사용합니다.","Q":"스캔: 선택 칸을 시작으로 2×2를 감시합니다. 적이 없어도 턴을 사용하며 퀸 위치는 노출되지 않습니다."}.get(app.selection.t,"이동·포획은 표시된 칸에서 가능합니다. 안개 속 이동은 숨은 적에게 가로막힐 수 있습니다.")
+		app.action_details.text = {"B":"저격: 사거리 5 안의 보이는 적만 공격합니다. 사격 후 내 위치가 노출됩니다.","R":"돌파 사격: 상하좌우 최대 4칸을 관통합니다. 숲에 막히며 아군도 맞습니다. 빈 방향에도 턴을 사용합니다.","Q":"스캔: 원형 반경 6칸 안의 지점을 선택해 2×2를 감시합니다. 적이 없어도 턴을 사용하며 퀸 위치는 노출되지 않습니다."}.get(app.selection.t,"이동·포획은 표시된 칸에서 가능합니다. 안개 속 이동은 숨은 적에게 가로막힐 수 있습니다.")
 		app.coach_label.text = {"choose":"","move":"이동할 칸을 선택하세요","attack":"표시된 적을 선택하세요","fire":"저격할 적을 선택하세요","barrage":"사격 방향을 선택하세요","scan":"스캔 지점을 선택하세요"}.get(shown_mode,"내 진영에 배치하세요")
 		app.action_hint.text = {"choose":"","move":"1턴 사용 · 안개 속 경로 주의","attack":"1턴 사용 · 포획","fire":"1턴 사용 · 발사 후 위치 노출","barrage":"1턴 사용 · 아군 피격 / 위치 노출","scan":"1턴 사용 · 2×2 감시"}.get(shown_mode,"")
 		if shown_mode=="fire" and app.board.targets.is_empty(): app.coach_label.text="저격 표적 없음"; app.action_hint.text="사거리만 확인할 수 있습니다"
@@ -54,7 +54,7 @@ func _update_selection_ui() -> void:
 			app.action_details.text += "\n부쉬 안에서도 스캔이나 공격 노출로 발각될 수 있습니다."
 		for exposure in app.view.get("exposed",[]):
 			if exposure.get("pid")==app.selection.get("id"):
-				app.action_hint.text += "\n! 이 기물: 상대에게 위치가 보이는 중입니다"
+				app.action_hint.text += "\n위치 노출 · 상대에게 보입니다"
 				app.action_details.text += "\n상대의 실제 시야에 들어온 상태입니다. 다시 은폐되면 ! 표시가 사라집니다. 누가 보고 있는지는 알려주지 않습니다."
 				break
 	if app.view.get("phase")=="setup":
@@ -101,6 +101,7 @@ func _move_targets(captures: bool) -> Array:
 	return result
 
 func _choose_action(value: String) -> void:
+	if app.ui_motion.is_transition_busy(): return
 	if app.busy or app.game_session.awaiting_state or app.selection.is_empty() or app.view.get("phase")!="play" or app.view.get("turn")!=app.view.get("yourColor"): return
 	if value in ["fire","barrage"] and app.moves.get("reloading",false): return
 	preview_mode = ""
@@ -132,6 +133,7 @@ func _show_actions(animate: bool=true) -> void:
 		app.action_menu.buttons[1].queue_redraw()
 
 func _select(cell: Vector2i) -> void:
+	if app.ui_motion.is_transition_busy(): return
 	if app.game_session.awaiting_state: return
 	var p: Variant = app.board.tile(cell).get("p")
 	if not p is Dictionary or not p.has("id") or p.o!=app.view.get("yourColor"): return
@@ -154,6 +156,7 @@ func _select(cell: Vector2i) -> void:
 	app._update_selection_ui()
 
 func _tap(cell: Vector2i) -> void:
+	if app.ui_motion.is_transition_busy(): return
 	if app.busy or app.game_session.awaiting_state or app.view.is_empty() or app.view.get("phase")=="over" or app.view.get("promote"): return
 	if app.seat=="spectator":
 		app.spectating.inspect(cell)
@@ -173,6 +176,7 @@ func _tap(cell: Vector2i) -> void:
 	elif not app.selection.is_empty(): _invalid_target(cell)
 
 func _drag(origin: Vector2i,target: Vector2i) -> void:
+	if app.ui_motion.is_transition_busy(): return
 	if app.seat=="spectator": return
 	if app.busy or app.game_session.awaiting_state or app.view.is_empty() or app.view.get("phase")=="over" or app.view.get("promote"): return
 	if app.view.get("phase")=="play" and app.view.get("turn")!=app.view.get("yourColor"): return

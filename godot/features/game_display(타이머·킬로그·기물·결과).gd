@@ -1,6 +1,7 @@
 extends RefCounted
 ## Feature implementation. Shared scene state and cross-feature entry points live on app.
 var app
+var result_history
 
 func _init(context: Control) -> void:
 	app = context
@@ -20,6 +21,9 @@ func _effect(data: Dictionary) -> void:
 	var cue = str(data.get("type","move"))
 	if cue in ["capture","kill"] and not app.board.piece_motion.is_empty():
 		app.board.fx.after(float(app.board.piece_motion.duration),func(): app.audio.cue(cue))
+	elif cue=="barrage" and app.board.effects and not app.board.fx.reduced and data.get("confirmed_source",false):
+		# Match the cannon report to the existing .14 s ground-decal lead-in.
+		app.board.fx.after(.14,func(): app.audio.cue(cue))
 	else: app.audio.cue(cue)
 
 func _render() -> void:
@@ -97,7 +101,7 @@ func _render() -> void:
 	app.opponent_line.tooltip_text = app.opponent_line.text+" "+app.ui_shell.opponent_rating.text
 	app.self_line.tooltip_text = app.self_line.text
 	app._update_selection_ui()
-	app.coach_label.get_parent().get_parent().visible = phase!="over" and not app.match_ui.mobile_actions_active()
+	app.coach_label.get_parent().get_parent().visible = phase!="over" and not app.match_ui.mobile_actions_active() and not app.replay.active
 	app.spectating.render()
 	app.match_ui.render()
 	app.ui_motion.observe_view()
@@ -113,12 +117,35 @@ func _piece_names(items: Array) -> String:
 	for item in items: names.append(app.NAMES.get(item,item))
 	return "·".join(names) if not names.is_empty() else "없음"
 
+func reset_feed_motion() -> void:
+	# Called on room entry so reconnect snapshots are not mistaken for new combat.
+	if is_instance_valid(app.feed_box):
+		for key in ["seen_feed_room","seen_feed_seq"]:
+			if app.feed_box.has_meta(key): app.feed_box.remove_meta(key)
+	app.feed_signature = ""
+
+func _accent_feed(strip: PanelContainer, style: StyleBoxFlat, color: Color, method: String, seq: int) -> void:
+	# Information is already visible. Only this decorative edge follows the hit.
+	strip.set_meta("new_feed_seq",seq)
+	var delay: float = {"artillery":.30,"barrage":.58}.get(method,.20)
+	var tween := strip.create_tween()
+	tween.tween_interval(delay)
+	tween.tween_property(style,"border_color",color.lerp(Color.WHITE,.40),.08)
+	tween.tween_property(style,"border_color",color,.18)
+
 func _render_feed() -> void:
 	var feed: Array = app.view.get("feed",[])
 	var captured: Array = app.view.get("captured",[])
 	var signature = str([app.game_ux.feed_expanded,feed,captured,app.view.get("capturedBy",{}),app.view.get("yourColor"),app.room,app.prefs.get_value("settings","light",false)])
 	if signature==app.feed_signature: return
-	var previous = app.feed_signature
+	var latest_seq := -1
+	for entry in feed: latest_seq = maxi(latest_seq,int(entry.get("seq",-1)))
+	var room_key := str([app.room,app.view.get("yourColor"),app.seat,app.replay.active])
+	var same_room: bool = app.feed_box.get_meta("seen_feed_room","")==room_key
+	var previous_seq: int = app.feed_box.get_meta("seen_feed_seq",-1)
+	var new_event: bool = same_room and latest_seq>previous_seq and latest_seq>=0 and not app.replay.active
+	app.feed_box.set_meta("seen_feed_room",room_key)
+	app.feed_box.set_meta("seen_feed_seq",latest_seq)
 	app.feed_signature = signature
 	if app.enemy_icons.has_meta("watch_signature"): app.enemy_icons.remove_meta("watch_signature")
 	app.enemy_counts.text = "내가 잡은 기물 · %d개" % captured.size()
@@ -136,7 +163,7 @@ func _render_feed() -> void:
 		var pawn = app._feed_icon(group,"P",opponent)
 		pawn.custom_minimum_size = Vector2(20,20)
 		pawn.get_parent().custom_minimum_size = Vector2(24,24)
-		var count_label = app._label(group,"×%d" % pawns,13)
+		var count_label = app._label(group,"×%d" % pawns,14)
 		count_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 		count_label.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	for kind in ["N","B","R","Q","K"]:
@@ -147,7 +174,7 @@ func _render_feed() -> void:
 	for child in app.feed_box.get_children():
 		app.feed_box.remove_child(child)
 		child.queue_free()
-	if feed.is_empty(): app._label(app.feed_box,"아직 교전 기록이 없습니다.",13)
+	if feed.is_empty(): app._label(app.feed_box,"아직 교전 기록이 없습니다.",14)
 	var light: bool = app.prefs.get_value("settings","light",false)
 	var mine_color := Color("#76521e") if light else Color("#dfac50")
 	var opponent_color := Color("#285d89") if light else Color("#8ab5e0")
@@ -189,15 +216,15 @@ func _render_feed() -> void:
 		weapon.ink = Color("#514938") if light else Color("#eee2cc")
 		weapon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		weapon_box.add_child(weapon)
-		var action = app._label(weapon_box,method,12)
-		action.add_theme_color_override("font_color",app.ui_components._palette().muted)
+		var action = app._label(weapon_box,method,14)
+		action.add_theme_color_override("font_color",Color("#525d63") if light else Color("#bbc4c9"))
 		action.autowrap_mode = TextServer.AUTOWRAP_OFF
 		action.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		app._feed_icon(row,str(entry.get("vtype","P")),str(entry.get("victim","B")))
 		if friendly: app._label(row,"아군",10).add_theme_color_override("font_color",app.ui_components._palette().muted)
-		if entry==reversed[0] and not previous.is_empty() and app.board.effects:
-			strip.modulate.a = .35
-			app.create_tween().tween_property(strip,"modulate:a",1.0,.18)
+		if new_event and int(entry.get("seq",-1))==latest_seq and app.board.effects and not app.board.fx.reduced:
+			_accent_feed(strip,style,mine_color if mine else opponent_color,str(entry.get("method","melee")),latest_seq)
+
 
 func _feed_icon(parent: Node, kind: String, color: String) -> TextureRect:
 	var icon = TextureRect.new()
@@ -229,9 +256,12 @@ func _render_result() -> void:
 	var reason = "적 왕 처치" if won else "내 왕이 당했다"
 	var logs: Array = app.view.get("log",[])
 	var tail = " ".join(logs.slice(maxi(0,logs.size()-3)))
-	if "접속 끊김" in tail: reason = "상대 접속 끊김 · 기권 처리" if won else "접속 끊김 · 기권 처리"
-	elif "미행동" in tail: reason = "상대 미행동 3회" if won else "미행동 3회"
-	elif "기권" in tail: reason = "상대 기권" if won else "기권"
+	# Authoritative reason is independent of localized log wording and ordering.
+	# Old saved games predate endReason, so retain their log-based presentation.
+	var end_reason: String = str(app.view.endReason) if app.view.get("endReason") is String else ""
+	if end_reason=="disconnect" or (end_reason.is_empty() and "접속 끊김" in tail): reason = "상대 접속 끊김 · 패배 처리" if won else "접속 끊김 · 패배 처리"
+	elif end_reason=="timeout" or (end_reason.is_empty() and "미행동" in tail): reason = "상대 미행동 3회" if won else "미행동 3회"
+	elif end_reason=="resign" or (end_reason.is_empty() and "기권" in tail): reason = "상대 기권" if won else "기권"
 	if solo: reason = "혼자 연습"
 	if app.view.get("winner")=="draw": reason = "턴 한도 도달"
 	var delta: Variant = app.view.get("ratingDelta")
@@ -249,6 +279,9 @@ func _render_result() -> void:
 		elif app.view.get("winner")=="draw": reason += " · 무승부는 승수 제외"
 	if app.view.get("settlementPending",false): reason += "\n결과 저장 중 · 자동으로 다시 시도합니다."
 	app.result_sub.text = reason
+	if result_history == null:
+		result_history = preload("res://features/result_history(결과 레이팅 기록).gd").new(app)
+	result_history.refresh()
 	var rematch: Dictionary = app.view.get("rematch",{})
 	var signature = str([series,solo,app.view.get("bot"),app.view.get("oppConnected"),rematch,app.view.get("rated"),app.seat,app.view.get("replayId")])
 	if signature==app.result_signature: return
@@ -261,14 +294,11 @@ func _render_result() -> void:
 	elif series.get("complete",false):
 		app._label(app.result_actions,"2선승 시리즈 종료 · 재대결 불가",14)
 		app._button(app.result_actions,"새 랭크 매칭",func(): app._return_home(); await app._match_command("join"),"primary")
-		app._button(app.result_actions,"홈으로",app._return_home)
 	elif not app.view.get("oppConnected",false):
 		app._label(app.result_actions,"상대가 나갔어요",14)
-		app._button(app.result_actions,"홈으로",app._leave_prompt)
 	elif rematch.get("me",false) and not rematch.get("opp",false):
 		app._label(app.result_actions,"다음 판을 제안했어요 · 상대 응답 대기 중…",14)
 		app._button(app.result_actions,"제안 취소",func(): await app._act({"type":"rematch_decline"}))
-		app._button(app.result_actions,"홈으로",app._leave_prompt)
 	elif rematch.get("opp",false) and not rematch.get("me",false):
 		app._label(app.result_actions,"상대가 다음 판을 제안했어요"+(" · 수락하면 같은 상대와 새 레이팅전(배치부터)" if app.view.get("rated",false) else ""),14)
 		app._button(app.result_actions,"다음 판 수락",func(): await app._act({"type":"rematch"}),"primary")
@@ -276,10 +306,12 @@ func _render_result() -> void:
 	else:
 		if app.view.get("rated",false): app._label(app.result_actions,"다음 판도 새 레이팅전 · 배치부터 시작",12)
 		app._button(app.result_actions,"다음 판 제안",func(): await app._act({"type":"rematch"}),"primary")
-		app._button(app.result_actions,"홈으로",app._leave_prompt)
 		app._label(app.result_actions,"나가도 이번 판 결과는 그대로예요"+(" · 추가 레이팅 변동 없음" if app.view.get("rated",false) else ""),12)
+	# Every player result keeps an exit, including bot/solo games and incoming rematches.
+	if app.seat!="spectator":
+		app._button(app.result_actions,"나가기",app._return_home if series.get("complete",false) else app._leave_prompt)
 	if app.view.get("replayId") and not app.replay.active:
-		app._button(app.result_actions,"기보 / 리플레이 보기",func(): await app.replay.open(str(app.view.replayId),app.token),"tertiary")
+		app._button(app.result_actions,"기보 / 리플레이 보기",func(): await app.replay.open(str(app.view.replayId),app.token))
 	for child in app.result_actions.get_children():
 		if child is Label: child.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		elif child is Button:
@@ -379,7 +411,7 @@ func _menu_button(parent: Node, text: String, callback: Callable, role: String="
 
 func _board_help() -> void:
 	var pair = app._window("보드 표시 도움말")
-	app._label(pair[1],"● 이동할 수 있는 칸\n◎ 공격 가능한 대상\n색칠된 사각형: 능력 적용 범위\n어두운 칸: 시야 밖 — 적의 유무를 알 수 없음\n부쉬: 은폐 지형\n\n기물 클릭 → 행동 아이콘 → 목표 선택\n같은 기물 재선택 / 선택 안내의 × / 우클릭 / Esc: 선택 취소\n? 도움말: 호버 없이 행동 설명과 행동 변경 버튼 확인\n키보드: Tab 이동 · Enter 선택 · Esc 취소\n드래그 이동도 사용할 수 있습니다.\n이동 중 숨은 적을 만나면 그 칸에서 포획하고 멈춥니다.\n내 기물의 ! 표시: 상대에게 위치가 보이는 중입니다.\n모든 기물에 적용되며, 다시 은폐되면 사라집니다.\n부쉬 안에서도 연결된 부쉬의 적·스캔·사격 노출로 보일 수 있습니다.\n내 기물의 파란 ? 표시: 사격 후 내 차례 한 턴 동안 재장전 중입니다. 재장전은 이동·포획을 제한하지 않습니다. 실제 가능한 칸은 보드 표시로 확인하세요.\n승격 선택 시간이 끝나면 전차로 자동 승격합니다.",14)
+	app._label(pair[1],"● 이동할 수 있는 칸\n◎ 공격 가능한 대상\n색칠된 사각형: 능력 적용 범위\n어두운 칸: 시야 밖 — 적의 유무를 알 수 없음\n부쉬: 은폐 지형\n\n기물 클릭 → 행동 아이콘 → 목표 선택\n같은 기물 재선택 / 선택 안내의 × / 우클릭 / Esc: 선택 취소\n? 도움말: 호버 없이 행동 설명과 행동 변경 버튼 확인\n키보드: Tab 이동 · Enter 선택 · Esc 취소\n드래그 이동도 사용할 수 있습니다.\n이동 중 숨은 적을 만나면 포획하고 멈춥니다. 폰의 정면 포획은 1칸만 가능합니다. 첫 두 칸 전진 중 두 번째 칸에 숨은 적이 있으면 그 앞에서 멈춥니다.\n내 기물의 ! 표시: 상대에게 위치가 보이는 중입니다.\n모든 기물에 적용되며, 다시 은폐되면 사라집니다.\n부쉬 안에서도 연결된 부쉬의 적·스캔·사격 노출로 보일 수 있습니다.\n내 기물의 파란 ? 표시: 사격 후 내 차례 한 턴 동안 재장전 중입니다. 재장전은 이동·포획을 제한하지 않습니다. 실제 가능한 칸은 보드 표시로 확인하세요.\n승격 선택 시간이 끝나면 전차로 자동 승격합니다.",14)
 
 func _compact_history(line: String) -> String:
 	for event in ["resign","timeout","disconnect"]:

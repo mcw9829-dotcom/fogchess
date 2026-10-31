@@ -1,3 +1,5 @@
+[2026-10-31 갱신] Fly Deploy는 workflow_dispatch 수동 실행입니다. Git push만으로 배포되지 않습니다.
+
 Fog Chess — Godot 게임 + Python 서버
 2026-10-16
 
@@ -54,8 +56,7 @@ FOG_CLIENT=godot으로 기본 게임을 전환하고 /healthz 검사 추가.
 공식 4.7.2 Linux 에디터/템플릿 다운로드 URL의 응답을 확인했음.
 
 이 작업에서는 git push, fly deploy, 운영 DB 접근을 하지 않았음.
-기존 main/master push 시 자동 배포가 실행되는 설정은 그대로이므로
-배포 시점에만 검토한 변경을 main/master에 반영해야 함.
+GitHub Actions에서 Fly Deploy를 수동 실행할 때만 운영 배포함.
 수동 배포는 위 준비/검증 뒤 flyctl deploy --remote-only로 수행 가능.
 운영 DB는 기존 볼륨을 그대로 쓰며, 새 UI에서 계정에 다시 로그인할 수 있음.
 대국 중인 방은 현재 Python 프로세스 메모리에 있으므로 서버 재시작 시 유지되지 않음.

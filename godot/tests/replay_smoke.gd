@@ -17,11 +17,15 @@ func run() -> void:
 	await app.api.request("/test-brush",{"room":fixture.room})
 	app._enter(fixture)
 	await app._poll()
+	for attempt in range(80):
+		if not app.ui_motion.is_transition_busy(): break
+		await create_timer(.05).timeout
 	await app._select(Vector2i(6,6))
 	await app._act({"type":"move","pid":"W_N1","r":4,"c":7})
 	await app._act({"type":"resign"})
 	check(app.view.phase=="over","fixture ends")
 	check(app.view.get("replayId")!=null,"finished game has saved replay")
+	if app.view.get("replayId")==null: quit(1); return
 	check(app.prefs.get_value(app.api.base_url,"replays",[]).size()==1,"local replay library remembers game")
 	var id: String = app.view.replayId
 	await app.replay.open(id,app.token)
@@ -35,7 +39,12 @@ func run() -> void:
 	app.replay.seek(0)
 	app.replay.vision="all"
 	check(app.replay.bar_panel.get_index()>app.board.get_index(),"transport below board")
-	check(app.replay.vision_panel.get_index()<app.board.get_index(),"vision selector above board")
+	check(app.replay.vision_panel.get_parent()==app.controls,"desktop vision selector in side rail")
+	check(app.replay.navigation_panel.visible,"replay navigation visible")
+	await create_timer(.3).timeout
+	check(app.board.size.x>=520,"desktop board has useful size")
+	check(not app.ui_shell.match_gutter.visible,"replay has no empty left gutter")
+	check(not app.match_ui.turn_panel.visible,"replay omits duplicate live timer")
 	app.replay.vision_buttons[1].pressed.emit()
 	check(app.board.tile(Vector2i(0,0)).get("p")==null,"white vision hides distant black king")
 	app.replay.vision_buttons[2].pressed.emit()
@@ -81,6 +90,8 @@ func run() -> void:
 		root.size = Vector2i(1280,850)
 	app.replay.close()
 	check(not app.replay.active and app.view.phase=="over","close restores result")
+	check(app.match_ui.turn_panel.visible,"live header restored after replay")
+	check(not app.replay.navigation_panel.visible,"navigation hidden after close")
 	app._return_home()
 	app.replay.menu()
 	check(app.subpage.visible,"saved replay library opens")

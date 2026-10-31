@@ -96,7 +96,7 @@ def decline(session, now=None):
 def accept(session, now=None):
     now = time.time() if now is None else now
     e = QUEUE.get(session)
-    if e and e.get('pending'):
+    if e and e.get('pending') and now <= e['pending']['deadline']:
         e['pending']['accepted'] = True
         e['seen'] = now
 
@@ -114,7 +114,7 @@ def prune(now):
 
 def _settle_pending(now, make_room):
     """수락 대기 중인 짝들: 둘 다 수락 → 방 생성(matched). 마감 지남 → 미수락자는 제거, 수락자는 다시 대기.
-    make_room(a, b) -> (room_code, tok_a, color_a, tok_b, color_b)"""
+    make_room(a, b) -> (room_code, tok_a, color_a, tok_b, color_b), or None after cancelling an invalid entry."""
     done = set()
     for s, e in list(QUEUE.items()):
         p = e.get('pending')
@@ -126,7 +126,10 @@ def _settle_pending(now, make_room):
             e['pending'] = None                                   # 상대가 사라짐(취소·거절) → 다시 대기
             continue
         if p['accepted'] and o['pending']['accepted']:
-            code, ta, ca, tb, cb = make_room(e, o)
+            created = make_room(e, o)
+            if created is None:  # Authentication/state changed since the pair was offered.
+                continue
+            code, ta, ca, tb, cb = created
             e['matched'] = {'room': code, 'token': ta, 'color': ca, 'opp': {'name': o['name'], 'rating': o['rating']}}
             o['matched'] = {'room': code, 'token': tb, 'color': cb, 'opp': {'name': e['name'], 'rating': e['rating']}}
             e['matched_at'] = o['matched_at'] = now

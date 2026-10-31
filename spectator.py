@@ -5,6 +5,7 @@ import time
 from collections import deque
 import pieces
 import replays
+import admin_ops
 
 DELAY = 180
 PRESENCE_TTL = 10
@@ -24,6 +25,7 @@ def capture(room, now=None):
     source = (st, room['terrain'], room['names'], room['ratings'])
     if room.get('_broadcast_source') == source:
         replays.save(room)
+        admin_ops.archive_safe(room)
         return
     v = pieces.player_view(st, 'W', True)
     for row in v['grid']:
@@ -47,6 +49,7 @@ def capture(room, now=None):
     v['_started_at'] = st.get('started_at')
     v['_ended_at'] = st.get('ended_at') or (now if st['phase'] == 'over' else None)
     replays.record(room, v, now)
+    admin_ops.archive_safe(room)
     room['_broadcast_source'] = copy.deepcopy(source)
     timeline = room.setdefault('_broadcast', deque())
     timeline.append((now, v))

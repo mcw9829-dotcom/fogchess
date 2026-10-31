@@ -3,6 +3,11 @@ extends Control
 signal tapped(cell: Vector2i)
 signal selection_cancelled()
 signal dragged(origin: Vector2i, target: Vector2i)
+signal aim_previewed(cell: Vector2i)
+signal aim_preview_cancelled()
+var touch_aim_enabled := false
+var touch_aim_locked := false
+var aim_finger := -1
 var view: Dictionary = {}
 var selected := Vector2i(-1,-1)
 var targets: Array = []
@@ -15,13 +20,21 @@ var colorblind := false:
 		if is_instance_valid(fx): fx.colorblind = value
 		queue_redraw()
 var effects := true
+# Transition content layers share one surrounding frame and coordinate layer.
+var show_surround := true
 var textures: Dictionary = {}
 var piece_content_rects: Dictionary = {}
 var terrain_textures: Dictionary = {}
 var fog_alpha: Dictionary = {}
+# Tint only: server fog flags, visible pieces and legal targets never change.
+const FOG_ARRIVAL_DURATION := .4
+var fog_display_strength := 1.0
+var fog_arrival_age := -1.0
+var fog_arrival_skip_tick := false
 var clock := 0.0
 var bursts: Array = []
 var fx: Control
+var targeting: Control
 var hover := Vector2i(-1,-1)
 var down := Vector2i(-1,-1)
 var right_down := Vector2i(-1,-1)
@@ -31,8 +44,12 @@ var annotations: Array = []
 var piece_motion: Dictionary = {}
 var recoil: Dictionary = {}
 var brush_reactions: Dictionary = {}
+var remote_motion_cells: Array = []
 
 func _ready() -> void:
+	targeting = preload("res://targeting(사거리·조준 표시).gd").new()
+	targeting.board = self
+	add_child(targeting)
 	fx = preload("res://fx_layer(파티클·전투 이펙트).gd").new()
 	add_child(fx)
 	fx.colorblind = colorblind
@@ -44,7 +61,8 @@ func _ready() -> void:
 	for variant in range(2): terrain_textures["forest_%d" % variant] = load("res://terrain/forest_%d.svg" % variant)
 	for r in range(12):
 		for c in range(12): terrain_textures["bush_%d_%d" % [r,c]] = load("res://terrain/bush_%d_%d.svg" % [r,c])
-	mouse_exited.connect(func(): hover = Vector2i(-1,-1))
+	mouse_exited.connect(func():
+		if not touch_aim_locked: hover = Vector2i(-1,-1))
 
 func set_view(data: Dictionary, black: bool) -> void:
 	# A new snapshot must never leave a stale sprite over newly concealed cells.
@@ -58,11 +76,19 @@ func set_view(data: Dictionary, black: bool) -> void:
 		if not current is Dictionary or current.get("o")!=piece_motion.p.o or current.get("t")!=piece_motion.p.t: piece_motion.clear()
 
 	if view.get("room", "") != data.get("room", "") or view.get("yourColor") != data.get("yourColor"):
+		if is_instance_valid(targeting): targeting.clear_decal()
 		fog_alpha.clear()
+		reset_fog_arrival()
 		bursts.clear()
 		if is_instance_valid(fx): fx.clear()
 	if data.get("room")!=view.get("room") or data.get("yourColor")!=view.get("yourColor"): brush_reactions.clear()
 	view = data
+	for rc in remote_motion_cells:
+		if not tile(Vector2i(rc[0],rc[1])).get("p") is Dictionary:
+			fx.clear()
+			bursts.clear()
+			remote_motion_cells.clear()
+			break
 	flip = black
 	queue_redraw()
 
@@ -113,12 +139,22 @@ func contains(cells: Array, cell: Vector2i) -> bool:
 
 func play_fx(data: Dictionary) -> void:
 	if data.is_empty(): return
+	remote_motion_cells.clear()
+	if data.get("type") in ["move","capture","kill"] and not data.get("confirmed_source",false):
+		for rc in data.get("cells",[]):
+			var piece: Variant = tile(Vector2i(rc[0],rc[1])).get("p")
+			if not piece is Dictionary: return
+			if data.has("actor") and piece.get("o")!=data.actor: return
+		remote_motion_cells = data.get("cells",[]).duplicate(true)
 	if effects and not fx.reduced and data.get("confirmed_source",false) and data.get("motion_piece") is Dictionary:
 		for key in ["from","to"]:
 			if data.get(key) is Array:
 				var cell := Vector2i(data[key][0],data[key][1])
 				if int(tile(cell).get("t",0))==3: brush_reactions[cell] = -.28 if key=="to" else 0.0
 	var visual := data.duplicate(true)
+	if effects and not fx.reduced and data.get("confirmed_source",false) and data.get("type")=="barrage":
+		targeting.prepare_barrage(data.get("cells",[]))
+		visual["delay"] = .14
 	if effects and not fx.reduced and data.get("motion_piece") is Dictionary and data.get("from") is Array and data.get("to") is Array:
 		var destination := Vector2i(int(data.to[0]),int(data.to[1]))
 		var current: Variant = tile(destination).get("p")
@@ -127,7 +163,7 @@ func play_fx(data: Dictionary) -> void:
 			piece_motion = {"p":data.motion_piece,"from":Vector2i(int(data.from[0]),int(data.from[1])),"to":destination,"age":0.0,"duration":.28 if current.t=="N" else .24}
 			visual["delay"] = piece_motion.duration
 	if effects and not fx.reduced and data.get("confirmed_source",false) and data.get("from") is Array and data.get("type") in ["fire","barrage"]:
-		recoil = {"cell":Vector2i(data.from[0],data.from[1]),"target":Vector2i(data.cells[0][0],data.cells[0][1]),"age":0.0}
+		recoil = {"cell":Vector2i(data.from[0],data.from[1]),"target":Vector2i(data.cells[0][0],data.cells[0][1]),"age":-float(visual.get("delay",0.0))}
 
 	if effects:
 		fx.position = geometry().position
@@ -138,7 +174,33 @@ func play_fx(data: Dictionary) -> void:
 		bursts.append({"age":0.0,"type":data.get("type","move"),"cells":data.get("cells",[])})
 
 func _gui_input(event: InputEvent) -> void:
+	if touch_aim_enabled and event is InputEventScreenTouch:
+		if event.pressed and aim_finger==-1:
+			aim_finger = event.index
+			touch_aim_locked = true
+			hover = cell_at(event.position)
+			aim_previewed.emit(hover)
+		elif not event.pressed and event.index==aim_finger:
+			aim_finger = -1
+			if event.canceled:
+				aim_preview_cancelled.emit()
+			else:
+				hover = cell_at(event.position)
+				aim_previewed.emit(hover)
+		accept_event()
+		return
+	if touch_aim_enabled and event is InputEventScreenDrag:
+		if event.index==aim_finger:
+			hover = cell_at(event.position)
+			aim_previewed.emit(hover)
+		accept_event()
+		return
+	# Touch-generated mouse events must not commit the same action a second time.
+	if touch_aim_enabled and event is InputEventMouse and event.device==InputEvent.DEVICE_ID_EMULATION:
+		accept_event()
+		return
 	if event is InputEventMouseMotion:
+		if touch_aim_locked: aim_preview_cancelled.emit()
 		hover = cell_at(event.position)
 		if down.x >= 0 and down_pos.distance_to(event.position)>7:
 			is_dragging = true
@@ -165,7 +227,32 @@ func _gui_input(event: InputEvent) -> void:
 				is_dragging = false
 		accept_event()
 
+func begin_fog_arrival() -> void:
+	fog_arrival_age = 0.0
+	fog_arrival_skip_tick = true
+	fog_display_strength = 0.0
+	queue_redraw()
+
+func reset_fog_arrival() -> void:
+	fog_arrival_age = -1.0
+	fog_arrival_skip_tick = false
+	fog_display_strength = 1.0
+	queue_redraw()
+
+func _advance_fog_arrival(delta: float) -> void:
+	if fog_arrival_age < 0.0: return
+	# Keep the first live frame identical to the bright transition board.
+	if fog_arrival_skip_tick:
+		fog_arrival_skip_tick = false
+		return
+	fog_arrival_age += maxf(0.0, delta)
+	var t := clampf(fog_arrival_age / FOG_ARRIVAL_DURATION, 0.0, 1.0)
+	if is_equal_approx(t, 1.0): t = 1.0
+	fog_display_strength = t * t * (3.0 - 2.0 * t)
+	if t >= 1.0: fog_arrival_age = -1.0
+
 func _process(delta: float) -> void:
+	_advance_fog_arrival(delta)
 	clock += delta
 	for cell in brush_reactions.keys():
 		brush_reactions[cell] += delta
@@ -197,14 +284,14 @@ func _bush(cell: Vector2i, box: Rect2, s: float) -> void:
 	if brush_reactions.has(cell) and brush_reactions[cell]>=0:
 		var age: float = brush_reactions[cell]
 		grass_box.position.x += sin(age*32)*s*.035*(1-age/.55)
-	var tint := Color(1.10,1.10,1.10,1).lerp(Color(14.0/255,18.0/255,22.0/255),float(fog_alpha.get(cell,0)))
+	var tint := Color(1.10,1.10,1.10,1).lerp(Color(14.0/255,18.0/255,22.0/255),float(fog_alpha.get(cell,0)) * fog_display_strength)
 	draw_texture_rect(terrain_textures["bush_%d_%d" % [cell.x,cell.y]],grass_box,false,tint)
 
 func _draw() -> void:
 	if is_instance_valid(fx): draw_set_transform(fx.shake_offset)
 	var rect := geometry()
 	var s := rect.size.x/12
-	draw_style_box(_frame(),rect.grow(5))
+	if show_surround: draw_style_box(_frame(),rect.grow(5))
 	for r in range(12):
 		for c in range(12):
 			var cell := Vector2i(r,c)
@@ -220,22 +307,16 @@ func _draw() -> void:
 			# Conceal newly hidden cells immediately; only revealing fades in.
 			var previous := float(fog_alpha.get(cell,alpha))
 			fog_alpha[cell] = alpha if alpha>previous else move_toward(previous,alpha,.055)
-			draw_rect(box,Color(14.0/255,18.0/255,22.0/255,fog_alpha[cell]))
+			draw_rect(box,Color(14.0/255,18.0/255,22.0/255,fog_alpha[cell] * fog_display_strength))
 			if view.get("phase")=="setup" and view.get("yourColor") in ["W","B"]:
 				var zone: Array = view.get("zone",[9,11])
 				if r>=zone[0] and r<=zone[1]: draw_rect(box.grow(-2),Color(.4,.8,1,.3),false,1)
-			if contains(view.get("scanTiles",[]),cell):
-				draw_rect(box.grow(-2),signal_color("scan",.7),false,2)
-			if contains(ranges,cell): draw_rect(box,signal_color(mode,.15))
 			var p: Variant = data.get("p")
 			if p is Dictionary and not (is_dragging and down==cell) and not _moving_at(cell):
 				_piece(p,at,s,_piece_opacity(cell),true,selected==cell)
-			if contains(targets,cell):
+			if contains(targets,cell) and mode in ["move","attack"]:
 				var col := signal_color(mode,.85)
-				if mode=="scan":
-					draw_rect(box,signal_color("scan",.2))
-					draw_rect(box.grow(-4),signal_color("scan"),false,2)
-				elif data.get("p") or mode!="move": draw_arc(at,s*.42,0,TAU,32,col,3,true)
+				if data.get("p") or mode!="move": draw_arc(at,s*.42,0,TAU,32,col,3,true)
 				else: draw_circle(at,s*.17,col)
 			if p is Dictionary and p.get("o")==view.get("yourColor"):
 				for reload_state in view.get("reloading",[]):
@@ -247,7 +328,7 @@ func _draw() -> void:
 					if exposure.get("pid")==p.get("id"):
 						var badge := box.position+Vector2(s*.8,s*.2)
 						preload("res://status_badge(공통 상태 배지).gd").exposure(self,badge,s)
-			if hover==cell and selected!=cell: draw_rect(box.grow(-1),Color(1,1,1,.45),false,1)
+			if hover==cell and selected!=cell and not targeting.active(): draw_rect(box.grow(-1),Color(1,1,1,.45),false,1)
 	if not piece_motion.is_empty():
 		var t: float = clampf(piece_motion.age/piece_motion.duration,0,1)
 		var eased: float = t*t*(3-2*t)
@@ -257,11 +338,6 @@ func _draw() -> void:
 			var lift: float = sin(t*PI)*s*(.42 if piece_motion.p.t=="N" else .10)
 			draw_circle(at+Vector2(0,s*.28),s*.22,Color(0,0,0,.18))
 			_piece(piece_motion.p,at-Vector2(0,lift),s*(1+.06*sin(t*PI)),_piece_opacity(cell_at(at)),false,selected==piece_motion.to)
-	if mode=="scan" and contains(targets,hover):
-		for dr in range(2):
-			for dc in range(2):
-				var cell := hover+Vector2i(dr,dc)
-				if cell.x<12 and cell.y<12: draw_rect(Rect2(center(cell)-Vector2.ONE*s/2,Vector2.ONE*s),signal_color("scan",.25))
 	if is_dragging and tile(down).get("p") is Dictionary:
 		_piece(tile(down).p,get_local_mouse_position(),s,_piece_opacity(down),true,true)
 	# Foreground grass covers the feet of stationary, moving and dragged pieces.
@@ -273,8 +349,7 @@ func _draw() -> void:
 			var box := Rect2(center(cell)-Vector2.ONE*s/2,Vector2.ONE*s)
 			_bush(cell,box,s)
 			# Interaction borders stay legible above foreground foliage.
-			if contains(view.get("scanTiles",[]),cell): draw_rect(box.grow(-2),signal_color("scan",.7),false,2)
-			if hover==cell and selected!=cell: draw_rect(box.grow(-1),Color(1,1,1,.45),false,1)
+			if hover==cell and selected!=cell and not targeting.active(): draw_rect(box.grow(-1),Color(1,1,1,.45),false,1)
 	for a in annotations: _annotation(a[0],a[1],s)
 	for b in bursts:
 		for rc in b.cells:
@@ -284,18 +359,24 @@ func _draw() -> void:
 			if b.type in ["fire","barrage"]:
 				draw_circle(at,s*(.12+progress*.48),Color(1,.28,.1,(1-progress)*.3))
 				draw_circle(at,s*(.07+progress*.2),Color(1,.94,.7,(1-progress)*.85))
-			elif b.type=="scan":
-				draw_rect(Rect2(at-Vector2.ONE*s/2,Vector2.ONE*s),Color(.59,.37,.88,(1-progress)*.3))
 			draw_arc(at,s*(.1+progress*.65),0,TAU,32,col,3,true)
 			if b.type!="scan":
 				for i in range(8): draw_circle(at+Vector2.from_angle(i*TAU/8)*s*progress*.75,2.5*(1-progress),col)
+	if show_surround: _draw_coordinates(self)
+
+func draw_surround(canvas: CanvasItem) -> void:
+	canvas.draw_style_box(_frame(),geometry().grow(5))
+	_draw_coordinates(canvas)
+
+func _draw_coordinates(canvas: CanvasItem) -> void:
+	var rect := geometry()
 	var font := ThemeDB.fallback_font
 	for i in range(12):
 		var cell := Vector2i(11,i)
 		var at := center(cell)
-		draw_string(font,Vector2(at.x-4,rect.position.y-6),String.chr(97+i),HORIZONTAL_ALIGNMENT_LEFT,-1,12,Color("#9a938a"))
+		canvas.draw_string(font,Vector2(at.x-4,rect.position.y-6),String.chr(97+i),HORIZONTAL_ALIGNMENT_LEFT,-1,12,Color("#9a938a"))
 		at = center(Vector2i(i,0))
-		draw_string(font,Vector2(rect.position.x-17,at.y+4),str(i+1),HORIZONTAL_ALIGNMENT_RIGHT,14,11,Color("#9a938a"))
+		canvas.draw_string(font,Vector2(rect.position.x-17,at.y+4),str(i+1),HORIZONTAL_ALIGNMENT_RIGHT,14,11,Color("#9a938a"))
 
 func _annotation(source: Vector2i, target: Vector2i, cell_size: float) -> void:
 	var begin := center(source)

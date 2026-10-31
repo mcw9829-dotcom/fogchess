@@ -27,6 +27,10 @@ var last_turn := ""
 var last_ready := false
 var result_key := ""
 var view_seen := false
+var pending_match_room := ""
+var match_entry_serial := 0
+var match_entry_count := 0
+var transition
 
 func _init(context: Control) -> void:
 	app = context
@@ -90,18 +94,53 @@ func _remove_motion(panel: Control, restore: bool=true) -> Vector2:
 			panel.modulate = Color.WHITE
 	return base
 
-func enter_panel(panel: Control, distance: float=Motion.DISTANCE, duration: float=Motion.ENTER, scale_from: float=Motion.SCALE) -> void:
+func enter_panel(panel: Control, distance: float=Motion.DISTANCE, duration: float=Motion.ENTER, scale_from: float=Motion.SCALE, alpha_from: float=.2, direction: Vector2=Vector2.DOWN, smooth: bool=false) -> void:
 	if not is_instance_valid(panel) or not panel.is_visible_in_tree(): return
 	var base := _remove_motion(panel)
-	var offset := Vector2(0,distance)
-	panels.append({"node":panel,"host":_motion_host(panel),"age":0.0,"base":base,"last_offset":offset,"from_offset":offset,"to_offset":Vector2.ZERO,"from_scale":scale_from,"to_scale":1.0,"from_alpha":.2,"to_alpha":1.0,"duration":duration,"done":Callable()})
+	var offset := direction*distance
+	panels.append({"node":panel,"host":_motion_host(panel),"age":0.0,"base":base,"last_offset":offset,"from_offset":offset,"to_offset":Vector2.ZERO,"from_scale":scale_from,"to_scale":1.0,"from_alpha":alpha_from,"to_alpha":1.0,"duration":duration,"smooth":smooth,"done":Callable()})
 	panel.pivot_offset = panel.size*Vector2(.5,.65)
 	_place(_motion_host(panel),base+offset)
 	panel.scale = Vector2.ONE*scale_from
-	panel.modulate.a = .2
+	panel.modulate.a = alpha_from
 
 func enter_screen(panel: Control) -> void:
 	enter_panel(panel,Motion.DISTANCE,Motion.PAGE,1.0)
+
+func _match_transition():
+	if not is_instance_valid(transition):
+		transition = preload("res://features/match_transition(로비·대국 공간 전환).gd").new(app)
+		add_child(transition)
+		transition.preparation_timed_out.connect(func():
+			app._return_home()
+			app._message("대국 화면을 불러오지 못했습니다. 다시 시도해 주세요."))
+	return transition
+
+func is_transition_busy() -> bool:
+	return is_instance_valid(transition) and transition.is_busy()
+
+func prepare_match_entry() -> void:
+	cancel_match_entry()
+	if app.game.visible or not app.home.is_visible_in_tree(): return
+	if _match_transition().prepare_entry(): pending_match_room = app.room
+
+func cancel_match_entry() -> void:
+	match_entry_serial += 1
+	pending_match_room = ""
+	if is_instance_valid(transition): transition.cancel()
+	for panel in [app.game_left,app.side_panel]:
+		if is_instance_valid(panel): _remove_motion(panel)
+
+func prepare_match_return() -> bool:
+	match_entry_serial += 1
+	pending_match_room = ""
+	if is_transition_busy():
+		transition.cancel()
+		return false
+	return _match_transition().prepare_return()
+
+func begin_match_return() -> void:
+	if is_instance_valid(transition): transition.begin_return.call_deferred()
 
 func _shade_to(shade: Control, alpha: float, duration: float) -> void:
 	if not is_instance_valid(shade): return
@@ -144,7 +183,14 @@ func pulse(control: Control) -> void:
 	tween.tween_property(control,"modulate",Color.WHITE,.18)
 
 func observe_view() -> void:
+	if is_transition_busy() and transition.direction=="entry":
+		if app.view.get("phase")=="over": cancel_match_entry()
+		else: transition.refresh_view()
 	var room: String = app.room
+	if not pending_match_room.is_empty() and pending_match_room==room and app.view.has("grid"):
+		pending_match_room = ""
+		match_entry_count += 1
+		transition.start_entry.call_deferred()
 	var turn: String = str([app.view.get("phase"),app.view.get("turn"),app.view.get("turnCount")])
 	var ready: bool = app.view.get("ready",false)
 	if view_seen and last_room==room:
@@ -180,7 +226,8 @@ func _process(delta: float) -> void:
 		# A parent container can relayout during resizing; follow its new origin.
 		if Vector2(item.host.position).distance_to(item.base+item.last_offset)>1.0: item.base = Vector2(item.host.position)
 		item.age += delta
-		var progress := Motion.ease(item.age/item.duration)
+		# Match entry uses the whole second instead of settling in the first few frames.
+		var progress := smoothstep(0.0,1.0,item.age/item.duration) if item.get("smooth",false) else Motion.ease(item.age/item.duration)
 		var offset: Vector2 = item.from_offset.lerp(item.to_offset,progress)
 		panel.pivot_offset = panel.size*Vector2(.5,.65)
 		_place(item.host,item.base+offset)

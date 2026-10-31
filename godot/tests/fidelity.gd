@@ -2,6 +2,7 @@ extends RefCounted
 var app: Control
 var tree: SceneTree
 var check: Callable
+var completed := false
 
 func window() -> Window:
 	for child in app.get_children():
@@ -11,7 +12,7 @@ func button(text: String) -> Button:
 	for node in window().find_children("*","Button",true,false):
 		if (node.text==text or node.get_meta("action_title","")==text) and node.is_visible_in_tree(): return node
 	return null
-func fields() -> Array: return window().find_children("*","LineEdit",true,false)
+func fields() -> Array: return window().find_children("*","LineEdit",true,false).filter(func(field):return field.is_visible_in_tree() and not field.is_queued_for_deletion())
 func error() -> String:
 	for node in window().find_children("*","Label",true,false):
 		if node.get_meta("form_error",false): return node.text
@@ -27,7 +28,7 @@ func wait_until(predicate: Callable) -> void:
 func shot(name: String) -> void:
 	if "--capture" not in OS.get_cmdline_user_args(): return
 	RenderingServer.force_draw(false)
-	tree.root.get_texture().get_image().save_png("res://tests/"+name+".png")
+	tree.root.get_texture().get_image().save_png(OS.get_environment("FOG_CAPTURE_DIR").path_join(name+".png"))
 
 func run(client: Control,scene: SceneTree,assertion: Callable) -> void:
 	app = client
@@ -112,6 +113,13 @@ func run(client: Control,scene: SceneTree,assertion: Callable) -> void:
 	await shot("profile_mobile")
 	tree.root.size = Vector2i(1280,720)
 	await tree.process_frame
+	var manage := button("계정 관리")
+	check.call(manage!=null,"profile exposes management tab")
+	if manage==null: return
+	manage.pressed.emit()
+	await tree.process_frame
+	check.call(button("닉네임 변경")!=null,"management tab exposes nickname action")
+	if button("닉네임 변경")==null: return
 	button("닉네임 변경").pressed.emit()
 	fields()[0].text = "!"
 	button("저장").pressed.emit()
@@ -134,7 +142,7 @@ func run(client: Control,scene: SceneTree,assertion: Callable) -> void:
 	check.call(fields().is_empty(),"password change succeeds and closes inline form")
 	button("복구 코드 재발급").pressed.emit()
 	fields()[0].text = "NewParity123!"
-	button("발급").pressed.emit()
+	button("코드 발급").pressed.emit()
 	await wait_until(func(): return window().title.begins_with("복구 코드"))
 	check.call(window().title.begins_with("복구 코드"),"reissue displays one-time code screen")
 	var code: String = fields()[0].text
@@ -151,3 +159,4 @@ func run(client: Control,scene: SceneTree,assertion: Callable) -> void:
 	var old: Dictionary = await app.api.request("/recover/code",{"code":code,"new":"AnotherPass123!"})
 	check.call(not old.get("ok"),"used recovery code becomes invalid")
 	await close()
+	completed = true

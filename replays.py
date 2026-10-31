@@ -13,6 +13,30 @@ import pieces
 from config import APP_VERSION
 
 
+def admin_payload(replay_id):
+    """Internal only. Handler must authenticate; stored replays are always ended."""
+    if not isinstance(replay_id,str) or len(replay_id)>64:return None
+    with database() as db:
+        row=db.execute('SELECT payload,access FROM replays WHERE id=?',(replay_id,)).fetchone()
+    if not row:return None
+    payload=json.loads(gzip.decompress(row[0]))
+    if not payload.get('frames') or payload['frames'][-1]['view'].get('phase')!='over':return None
+    return payload,json.loads(row[1])
+
+
+def admin_recent(excluded=()):
+    """Read-only old notation; do not invent settlement links or starting ratings."""
+    with database() as db:
+        rows=db.execute('SELECT id,ended,payload FROM replays ORDER BY ended DESC LIMIT 30').fetchall()
+    out=[]
+    for rid,ended,blob in rows:
+        if rid in excluded:continue
+        payload=json.loads(gzip.decompress(blob))
+        out.append({'id':rid,'replay_id':rid,'ended':ended,'room':payload.get('room',''),
+                    'names':payload.get('names',{}),'winner':payload.get('winner'),'legacy':True})
+    return out
+
+
 def digest(token):
     return hashlib.sha256(str(token).encode()).hexdigest()
 
@@ -37,6 +61,7 @@ def save(room):
     payload = rec['data']
     payload['ended'] = rec['state'].get('ended_at', payload['frames'][-1]['at'])
     payload['winner'] = rec['state']['winner']
+    payload['endReason'] = rec['state'].get('end_reason')
     access = {'tokens': [digest(t) for t, c in room['tokens'].items() if c in ('W', 'B', 'solo') and t != '__bot__'],
               'users': list(room.get('users', {}).values())}
     with database() as db:
@@ -56,7 +81,7 @@ def record(room, view, now):
                                          'names': dict(room['names']), 'frames': []}}
     view['replayId'] = rec['data']['id'] if st['phase'] == 'over' else None
     signature = copy.deepcopy((st['pieces'], st['phase'], st['turnCount'], st['turn'],
-                               st.get('promote'), st.get('notation'), st.get('misses'), st.get('scans'), st['winner']))
+                               st.get('promote'), st.get('notation'), st.get('misses'), st.get('scans'), st['winner'], st.get('end_reason')))
     if rec['signature'] == signature:
         save(room)
         return
@@ -77,6 +102,8 @@ def record(room, view, now):
     elif rec['data']['frames'] and st['phase'] == 'play':
         label = '턴 전환 / 시간 초과'
     if st['phase'] == 'over':
+        if st.get('end_reason') == 'disconnect':
+            label = '접속 종료'
         label += ' · 대국 종료'
     rec['notation_count'] = len(notation)
     item = {'at': now, 'label': label, 'action': action, 'view': frame,

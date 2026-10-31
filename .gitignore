@@ -1,44 +1,78 @@
-# Python
+# Python / dependencies / editor caches
 __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
-
-# 로그 / 런타임
-*.log
-out.log
-err.log
-
-# 계정/레이팅 DB (개인정보·비밀번호 해시 — 절대 커밋 금지)
-fogchess.db
-*.db
-*.db-journal
-
-# OS / 에디터
+.venv/
+venv/
+env/
+node_modules/
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
 
-# Local development server
-.dev-data/
+# Runtime databases, sidecars, exports and backups (never commit)
+*.db
+*.db-*
+*.db.*
+*.sqlite
+*.sqlite-*
+*.sqlite.*
+*.sqlite3
+*.sqlite3-*
+*.sqlite3.*
+*.sql
+*.dump
+*.bak
+backups/
+backup/
+*.zip
+*.7z
+*.tar
+*.tar.gz
+*.tgz
 
-replays.sqlite3*
-
-# Local credentials and database sidecars
+# Secrets / encrypted credentials / per-user login state
 .env
 .env.*
 !.env.example
 !.env.template
-*.db-*
-*.sqlite
-*.sqlite-*
-*.sqlite3
-*.sqlite3-*
 *.pem
 *.key
 *.p12
 *.pfx
-id_rsa
-id_ed25519
+*.dpapi
+*.dpapi.*
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+.netrc
+.npmrc
+.pypirc
 client.cfg
+export_credentials.cfg
+credentials.json
+secrets.json
+service-account*.json
+*.har
+
+# Local runtime / test output / operational and private handoff material
+.dev-data/
+*.log
+*.pid
+/QA/
+/outputs/
+/HOME_HANDOFF.md
+/게임 구조 지도/
+/docs/feedback/
+/docs/현재 작업 상태*.txt
+/docs/폴더 정리*.txt
+
+# Keep engine sources, .uid/.import references, assets and licenses.
+# Rebuild engine caches and web exports on each machine.
+godot/.godot/
+godot/build/
+godot/tests/*.png
+godot/tests/*.png.import

@@ -28,15 +28,18 @@ func run(client: Control,scene: SceneTree,assertion: Callable) -> void:
 	demo.queue_free()
 	app._help()
 	await tree.process_frame
-	var demos: Array=[]
-	for node in app.find_children("*","Control",true,false):
-		if node.get_script()==preload("res://guide_demo(설명용 시연).gd"): demos.append(node)
-	check.call(demos.size()==6,"guide exposes six original cards")
-	if demos.size()==6:
-		demos[0].start(); demos[1].start()
-		check.call(not demos[0].running and demos[1].running,"hovering a new card stops the previous demo")
-		check.call(demos[0].frames.size()==9 and demos[2].frames.size()==13 and demos[4].frames.size()==13,"guide movement capture and ability frames restored")
-		check.call(is_equal_approx(demos[2].frame_duration(2),.85),"guide advances every 850ms")
+	var guide = app.find_child("FocusedPieceGuide",true,false)
+	check.call(is_instance_valid(guide) and guide.piece_buttons.size()==6,"guide exposes all six original pieces")
+	if is_instance_valid(guide):
+		guide.select_piece("P",false)
+		var pawn_count: int = guide.demo.all_frames.size()
+		guide.select_piece("B",false)
+		var bishop_count: int = guide.demo.all_frames.size()
+		guide.select_stage("ability")
+		check.call(guide.demo.frames.all(func(frame):return frame.phase=="능력"),"focused guide isolates the chosen phase")
+		check.call(is_equal_approx(guide.demo.frame_duration(2),.85),"guide preserves the original 850ms timeline")
+		guide.select_piece("Q",false)
+		check.call(pawn_count==9 and bishop_count==13 and guide.demo.all_frames.size()==13,"guide preserves movement capture and ability source frames")
 	await close()
 	app._intro(3)
 	check.call(button(app,"직접 조작하며 배우기")!=null and button(app,"바로 쉬움 봇 대국")!=null,"intro offers learning and a direct easy-bot path")
@@ -74,9 +77,9 @@ func run(client: Control,scene: SceneTree,assertion: Callable) -> void:
 	var saved_me: Dictionary=app.me
 	app.me={"name":"LocalPlayer","rating":1000,"tier":"N"}
 	await app._match_update({"ok":true,"state":"waiting","waited":29,"window":200,"queue":1})
-	check.call(button(app.match_body,"컴퓨터와 한 판")==null,"bot suggestion hidden before 30 seconds")
+	var queue_height: float=app.lobby_status.queue_card.get_combined_minimum_size().y
 	await app._match_update({"ok":true,"state":"waiting","waited":30,"window":250,"queue":1})
-	check.call(button(app.match_body,"컴퓨터와 한 판")!=null,"bot suggestion appears at 30 seconds")
+	check.call(is_equal_approx(queue_height,app.lobby_status.queue_card.get_combined_minimum_size().y),"queue stays the same height after 30 seconds")
 	await shot("match_waiting")
 	await app._match_update({"ok":true,"state":"found","opp":{"name":"LocalOpponent","rating":1100},"secondsLeft":15,"accepted":false,"oppAccepted":false})
 	check.call(button(app.match_body,"수락")!=null and button(app.match_body,"거절")!=null,"match offer exposes accept and decline")
@@ -102,7 +105,7 @@ func run(client: Control,scene: SceneTree,assertion: Callable) -> void:
 	app.view.rematch={"me":false,"opp":true}; app._render_result()
 	check.call(button(app.result_actions,"거절")!=null and button(app.result_actions,"다음 판 수락")!=null,"opponent rematch offer exposes both responses")
 	app.view.oppConnected=false; app._render_result()
-	check.call(button(app.result_actions,"다음 판 제안")==null and button(app.result_actions,"홈으로")!=null,"departed opponent prevents rematch")
+	check.call(button(app.result_actions,"다음 판 제안")==null and button(app.result_actions,"나가기")!=null,"departed opponent prevents rematch but keeps exit")
 	app.view={"winner":"B","solo":true}; app._render_result()
 	check.call(app.result_label.text=="흑 승리" and app.result_sub.text=="혼자 연습","solo result never presents player defeat")
 	app.view=saved_view; app.seat=saved_seat; app.result_signature=""

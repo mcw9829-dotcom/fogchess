@@ -22,6 +22,7 @@ import hmac
 import hashlib
 import time
 import random
+import secrets
 import threading
 from urllib.parse import urlparse, parse_qs
 
@@ -43,6 +44,8 @@ import pieces
 import matchmaking
 import spectator
 import replays
+import admin_ops
+from admin_http import OperationsMixin
 import match_social
 import security
 
@@ -125,13 +128,48 @@ def new_room(code):
             'created': time.time()}
 
 
+def draw_starting_color():
+    """Independent of queue order, terrain seeds and bot random choices."""
+    return secrets.choice(('W', 'B'))
+
+
+def commit_match_room(a, b):
+    """Revalidate both accepted queue entries before changing any rooms; caller holds lock."""
+    now = time.time()
+    invalid = []
+    users = []
+    paused = admin_ops.maintenance()['paused']
+    for entry in (a, b):
+        session = entry.get('session')
+        user = accounts.user_by_token(session)
+        active = active_account_room(entry['uid'])
+        if (not user or user['id'] != entry['uid'] or paused
+                or admin_ops.block_reason(entry['uid'], 'match')
+                or (active and not active[1].get('queue_practice'))):
+            invalid.append(session)
+        users.append(user)
+    if a['uid'] == b['uid']:
+        invalid.extend((a.get('session'), b.get('session')))
+    if invalid:
+        for session in invalid:
+            matchmaking.cancel(session, now)
+        return None
+    for entry, user in zip((a, b), users):
+        entry.update(name=user['name'], rating=user['rating'])
+    return make_match_room(a, b)
+
+
 def make_match_room(a, b):
     """랭크 매칭 성사 → 두 회원을 앉힌 PvP 방 생성(색 무작위). (code, tokA, colorA, tokB, colorB). 락 안에서 호출."""
+    # Called only after both players accept, while holding the server lock.
+    for uid in (a['uid'], b['uid']):
+        close_queue_practice(uid)
     now = time.time()
     code = gen_code(); room = new_room(code)
     room['terrain'] = game_map.generate_terrain(PERLIN_SEED, symmetry='rotational')
     use_terrain(room)
-    cols = ('W', 'B') if random.random() < 0.5 else ('B', 'W')
+    first = draw_starting_color()
+    cols = (first, 'B' if first == 'W' else 'W')
     toks = (uuid.uuid4().hex, uuid.uuid4().hex)
     for ent, tok, col in ((a, toks[0], cols[0]), (b, toks[1], cols[1])):
         room['seats'][col] = tok; room['tokens'][tok] = col; room['seen'][tok] = now
@@ -177,7 +215,7 @@ def is_rated(room):
     """이 판이 레이팅전인가: 봇전=사람이 회원(BOT_RATED) / 사람끼리=랭크 매칭 방(match)이고 양쪽 다 다른 회원.
     로비(친구) 대전·솔로·게스트는 비레이팅 — 친구끼리 점수를 주고받는 걸 막고, 편하게 연습하도록."""
     users = room.get('users', {})
-    if room.get('solo'):
+    if room.get('solo') or room.get('queue_practice'):
         return False
     if room.get('bot'):
         human = 'W' if room['bot'] == 'B' else 'B'
@@ -186,7 +224,9 @@ def is_rated(room):
 
 
 def game_reason(st):
-    """종료 사유(최근 로그로 판단): king(왕 처치) / resign / disconnect / timeout(미행동) / draw(턴 한도)"""
+    """Authoritative reason for new games; log fallback for existing saved states."""
+    if st.get('end_reason') in ('king', 'resign', 'disconnect', 'timeout', 'draw'):
+        return st['end_reason']
     if st.get('winner') == 'draw':
         return 'draw'
     for ln in reversed(st['log'][-3:]):                      # 가장 최근 줄부터
@@ -212,11 +252,11 @@ def settle_rating(room):
         return True
     if room.get('rated_done'):
         return True
-    if room.get('solo') or not room.get('users'):
+    if room.get('solo') or room.get('queue_practice') or not room.get('users'):
         room['rated_done'] = True
         return True
     if '_settlement_request' not in st:
-        st['_settlement_id'] = uuid.uuid4().hex
+        st.setdefault('_settlement_id', uuid.uuid4().hex)
         st['_settlement_request'] = dict(
             users=dict(room['users']), names=dict(room['names']), ratings=dict(room['ratings']),
             rated=is_rated(room), bot=bool(room.get('bot')),
@@ -226,6 +266,7 @@ def settle_rating(room):
             kind='match' if room.get('match') else ('bot' if room.get('bot') else 'lobby'),
             reason=game_reason(st), room=room['code'], created=time.time())
     try:
+        admin_ops.archive(room)  # Durable retry request before mutating points.
         result = accounts.settle_game(st['_settlement_id'], st['_settlement_request'])
     except Exception as e:
         print('[rating] settlement pending:', e)
@@ -234,6 +275,7 @@ def settle_rating(room):
     for side, value in result.items():
         room['ratings'][side] = value['rating']
     room['rated_done'] = True
+    admin_ops.archive_safe(room)
     return True
 
 
@@ -274,9 +316,9 @@ def start_rematch(room):
         st['turn'] = 'W'
         st['log'] = ['🎯 혼자 연습 - 재시작.']
     elif room.get('bot'):
-        bot.setup_and_ready(st, 'B')
+        bot.setup_and_ready(st, room['bot'])
         st['deadline'] = time.time() + SETUP_SECONDS
-        st['log'] = ['🤖 컴퓨터와 대전 — 재대결! 백 배치 후 [준비 완료].']
+        st['log'] = ['🤖 컴퓨터와 대전 — 재대결! 내 진영 배치 후 [준비 완료].']
         note = bot_rating_note(room)
         if note:
             st['log'].append(note)
@@ -290,6 +332,8 @@ def rematch_request(room, color):
     """재대결 요청. 솔로·봇 방은 즉시 새 판. 사람끼리는 게임이 끝난 뒤 제안으로 기록하고, 양쪽이 다 누르면 새 판.
     → {'ok', 'pending'(상대 대기), 'msg'}"""
     st = room['state']
+    if room.get('participant_deleted'):
+        return {'ok': False, 'msg': '참가자가 탈퇴한 대국입니다. 새 대국을 시작해 주세요.'}
     if room.get('solo'):
         return {'ok': True} if start_rematch(room) else {'ok': False, 'msg': '결과 저장을 재시도 중입니다. 잠시 후 다시 요청하세요.'}
     if color not in ('W', 'B'):
@@ -371,14 +415,25 @@ def assign_seat(room, now, new_token):
     """Only an unreserved lobby setup seat may be assigned to a newcomer."""
     if room.get('match') or room['state']['phase'] != 'setup':
         return 'spectator'
-    for col in ('W', 'B'):
-        if room['seats'][col] is None:
-            room['seats'][col] = new_token
-            return col
+    available = [col for col in ('W', 'B') if room['seats'][col] is None]
+    if available:
+        col = draw_starting_color() if len(available) == 2 else available[0]
+        room['seats'][col] = new_token
+        return col
     return 'spectator'
 
 
+def close_queue_practice(uid, code=None):
+    """Discard only this account's interruptible practice; never settle a rated game. Lock held."""
+    for key, room in list(ROOMS.items()):
+        if room.get('queue_owner') == uid and room.get('queue_practice') and (code is None or key == code):
+            room.pop('_bot_job', None)  # Worker completion also checks ROOMS ownership.
+            del ROOMS[key]
+
+
 def account_seat(room, uid):
+    if room.get('solo') and room.get('queue_owner') == uid:
+        return 'solo', room['seats']['W']
     for color in ('W', 'B'):
         token = room['seats'].get(color)
         if room.get('users', {}).get(color) == uid and token:
@@ -395,6 +450,18 @@ def active_account_room(uid):
         if seat:
             return code, room, seat
     return None
+
+
+def active_game_summary(uid):
+    """Owner-only lobby metadata. Seat credentials are issued by /join after auth."""
+    active = active_account_room(uid)
+    if not active:
+        return None
+    code, room, (color, _token) = active
+    opponent = 'B' if color == 'W' else 'W'
+    return {'room': code, 'phase': room['state']['phase'],
+            'mode': 'practice' if room.get('queue_practice') else ('rank' if room.get('match') else ('bot' if room.get('bot') else 'friend')),
+            'opponent': room['names'].get(opponent, '상대')}
 
 
 def maybe_setup_timer(room):
@@ -508,6 +575,8 @@ def enforce_clock(room, now):
     """플레이 중 턴 제한시간을 넘겼으면 자동으로 상대 턴으로 넘긴다(time_out).
     솔로(핫시트)는 제외. 봇 차례는 자동 응수가 처리하므로 사람 차례만 검사한다."""
     st = room['state']
+    if room.get('participant_deleted'):
+        return {'ok': False, 'msg': '참가자가 탈퇴한 대국입니다. 새 대국을 시작해 주세요.'}
     if room.get('solo'):
         return
     if st['phase'] != 'play' or not st.get('turn_deadline'):
@@ -537,7 +606,7 @@ def _sweep_rooms(now):
                 gap = now - room['seen'].get(tok, room['created']) if tok else 0
                 if tok and gap > DISCONNECT_FORFEIT:
                     st['log'].append(f"📵 {SIDE_KR[color]} 접속 끊김 {int(gap)}초 — 기권 처리")
-                    apply_resign(st, color)
+                    apply_resign(st, color, 'disconnect')
                     settle_rating(room)
                     break
             continue
@@ -561,7 +630,7 @@ def _sweep_rooms(now):
                 worst, worst_gap = color, gap
         if worst:
             st['log'].append(f"📵 {SIDE_KR[worst]} 접속 끊김 {int(worst_gap)}초 — 기권 처리")
-            apply_resign(st, worst)
+            apply_resign(st, worst, 'disconnect')
             settle_rating(room)
 
 
@@ -595,6 +664,7 @@ def state_response(room, color, now, reveal=False):
     v['spectatorCount'] = spectator.count(room, now)
     v['replayId'] = room['_replay']['data']['id'] if st['phase'] == 'over' and room.get('_replay', {}).get('saved') else None
     v['solo'] = room.get('solo', False)
+    v['queuePractice'] = bool(room.get('queue_practice'))
     v['room'] = room['code']
     v['mapSeed'] = room['terrain']['seed']       # 이 방의 맵 시드(방 태그 표시·공유용)
     v['series'] = match_social.series_view(room, color)
@@ -648,7 +718,7 @@ def state_response(room, color, now, reveal=False):
 STATIC_MIME = {'.svg': 'image/svg+xml', '.png': 'image/png', '.css': 'text/css'}
 
 
-class Handler(http.server.BaseHTTPRequestHandler):
+class Handler(OperationsMixin, http.server.BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
@@ -688,7 +758,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return security.client_ip(self.client_address[0] if self.client_address else '?', self.headers)
 
     def _request_budget(self, path, data):
-        rules = security.request_rules(path, data, self._client_ip())
+        rules = security.request_rules('/login' if path=='/support/login' else '/feedback' if path=='/support/submit' else path, data, self._client_ip())
         if not rules:
             return True
         try:
@@ -733,7 +803,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             fn()
         except Exception as e:
-            print('[server] handler error:', repr(e))
+            print('[server] handler error:', type(e).__name__)
+            admin_ops.record_error(urlparse(self.path).path,e)
             if not getattr(self, '_sent', False):
                 try:
                     self._json({'ok': False, 'msg': '서버 오류가 났습니다. 새로고침해 보세요.'}, 500)
@@ -758,6 +829,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         if u.path == '/admin':                                 # 관리자 페이지(비밀번호는 페이지 안에서 입력)
             self._file('admin.html', 'text/html; charset=utf-8')
+            return
+        if u.path.startswith('/admin/ops/'):
+            self._ops_get(u)
+            return
+        if u.path == '/announcements':
+            self._json(dict(admin_ops.notices(True),maintenance=admin_ops.maintenance()))
             return
         if u.path == '/admin/check':                           # 비밀번호 확인용
             if self._admin():
@@ -808,6 +885,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return
             color = effective_color(room, token)
             now = time.time()
+            uid=room.get('users',{}).get(room['tokens'].get(token))
+            denied=admin_ops.block_reason(uid,'account')
+            if denied:
+                self._json({'ok':False,'msg':denied},403); return
+            admin_ops.touch(uid)
             room['seen'][token] = now
             if room.get('bot'):
                 room['seen'][BOT_TOKEN] = now   # 봇은 항상 '접속' 상태로 표시
@@ -872,27 +954,79 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._json({'ok': False, 'msg': '유효한 입장 정보가 필요합니다.'}, 403)
             return
 
+        if u.path.startswith('/admin/ops/'):
+            self._ops_post(u,data)
+            return
+        if u.path in ('/support/login','/support/mine','/support/submit','/support/context','/presence'):
+            self._support(u.path,data)
+            return
+
         # ── 계정(회원가입/로그인/로그아웃/내 정보) — 방 락 불필요(accounts가 자체 락) ──
         if u.path in ('/signup', '/login'):
             fn = accounts.signup if u.path == '/signup' else accounts.login
             res, err = fn(data.get('name'), data.get('pw'))
+            if res: admin_ops.touch(res['user']['id'])
             self._json({'ok': res is not None, 'msg': err, **(res or {})})
             return
         if u.path == '/logout':
-            accounts.logout(data.get('session'))
+            with lock:
+                accounts.logout(data.get('session'))
+                matchmaking.cancel(data.get('session'), now)
             self._json({'ok': True})
+            return
+        if u.path == '/account/delete':
+            import account_lifecycle
+            with lock:
+                user = accounts.user_by_token(data.get('session'))
+                if not user:
+                    self._json({'ok': False, 'msg': '다시 로그인해 주세요.'}, 401); return
+                if data.get('confirm') != 'DELETE':
+                    self._json({'ok': False, 'msg': '계정 삭제 확인이 필요합니다.'}, 400); return
+                active = active_game_summary(user['id'])
+                if active:
+                    self._json({'ok': False, 'msg': '진행 중인 대국을 마친 뒤 계정을 삭제할 수 있습니다.', 'activeGame': active}, 409); return
+                for room in ROOMS.values():
+                    if user['id'] in room.get('users', {}).values() and not settle_rating(room):
+                        self._json({'ok': False, 'msg': '대국 결과 저장 중입니다. 잠시 후 다시 시도하세요.'}, 409); return
+                uid, error = account_lifecycle.delete_account(data.get('session'), data.get('pw'))
+                if error:
+                    self._json({'ok': False, 'msg': error}, 400); return
+                for session, entry in list(matchmaking.QUEUE.items()):
+                    if entry['uid'] == uid: matchmaking.cancel(session, now)
+                for room in ROOMS.values():
+                    for side, player in room.get('users', {}).items():
+                        if player != uid: continue
+                        room['participant_deleted'] = True
+                        room['rematch'] = {}
+                        room['names'][side] = account_lifecycle.REMOVED
+                        room['chat'] = account_lifecycle.anonymize(room.get('chat', []), user['name'], [side])
+                        for token, color in list(room['tokens'].items()):
+                            if color == side:
+                                room['tokens'].pop(token, None)
+                                room['seen'].pop(token, None)
+                        rec = room.get('_replay')
+                        if rec: rec['data'] = account_lifecycle.anonymize(rec['data'], user['name'], [side])
+                        request = room['state'].get('_settlement_request')
+                        if request: request['names'][side] = account_lifecycle.REMOVED
+                self._json({'ok': True})
             return
         if u.path == '/account/name':                          # 닉네임 변경(로그인 회원)
             user, err = accounts.change_name(data.get('session'), data.get('name'))
             self._json({'ok': user is not None, 'msg': err, 'user': user})
             return
         if u.path == '/account/pw':                            # 비밀번호 변경(현재 비밀번호 확인 · 새 규칙 검사)
-            ok, err = accounts.change_password(data.get('session'), data.get('old'), data.get('new'))
+            with lock:
+                ok, err = accounts.change_password(data.get('session'), data.get('old'), data.get('new'))
+                if ok:
+                    self._prune_restricted_queue(now)
             self._json({'ok': ok, 'msg': err})
             return
         if u.path == '/recover/code':                          # 복구 코드로 비밀번호 재설정(코드는 1회용 → 새 코드) — 비밀번호·닉네임 찾기
             ip = self._client_ip()
-            res, err = accounts.recover_with_code(data.get('code'), data.get('new'), ip)
+            with lock:
+                res, err = accounts.recover_with_code(data.get('code'), data.get('new'), ip)
+                if res:
+                    self._prune_restricted_queue(now)
             self._json({'ok': res is not None, 'msg': err, **(res or {})})
             return
         if u.path == '/account/recovery':                      # 복구 코드 (재)발급(현재 비밀번호 확인)
@@ -901,28 +1035,41 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         if u.path == '/me':                                    # 내 정보(본인용: 복구 코드 보유 여부 포함)
             user = accounts.user_by_token(data.get('session'), private_info=True)
-            self._json({'ok': user is not None, 'user': user})
+            if user: admin_ops.touch(user['id'])
+            with lock:
+                active = active_game_summary(user['id']) if user else None
+            self._json({'ok': user is not None, 'user': user, 'restrictions':admin_ops.restrictions(user['id']) if user else [], 'activeGame': active})
+            return
+        if u.path == '/me/active-game':
+            user = accounts.user_by_token(data.get('session'))
+            if not user:
+                self._json({'ok': False, 'msg': '로그인이 필요합니다.'}, 401)
+                return
+            with lock:
+                self._json({'ok': True, 'activeGame': active_game_summary(user['id'])})
             return
         if u.path == '/me/history':                            # 내 최근 전적(최근 20판)
             user = accounts.user_by_token(data.get('session'))
             if not user:
                 self._json({'ok': False, 'msg': '로그인이 필요합니다.'})
                 return
-            self._json({'ok': True, 'rows': accounts.game_history(user['id'], 20)})
+            self._json({'ok': True, 'rows': accounts.rating_history(user['id']) if data.get('rating_only') is True else accounts.game_history(user['id'], 20)})
             return
         if u.path in ('/match/join', '/match/status', '/match/cancel', '/match/accept', '/match/decline'):   # 랭크 매칭(로그인 회원 전용)
-            user = accounts.user_by_token(data.get('session'))
-            if not user:
-                self._json({'ok': False, 'state': 'idle', 'msg': '랭크 매칭은 로그인이 필요합니다.'})
-                return
             with lock:
+                self._prune_restricted_queue(now)
+                user = accounts.user_by_token(data.get('session'))
+                if not user:
+                    self._json({'ok': False, 'state': 'idle', 'msg': '랭크 매칭은 로그인이 필요합니다.'})
+                    return
                 matchmaking.bind_account(data.get('session'), user, now)
-                if u.path in ('/match/cancel', '/match/decline'):     # 거절 = 나만 대기열에서 나감(상대는 다시 대기)
+                active = active_account_room(user['id'])
+                if u.path in ('/match/cancel', '/match/decline') and not (active and active[1].get('match')):     # 거절 = 나만 대기열에서 나감(상대는 다시 대기)
                     matchmaking.cancel(data.get('session'), now)
                     self._json({'ok': True, 'state': 'idle'})
                     return
                 active = active_account_room(user['id'])
-                if active:
+                if active and not active[1].get('queue_practice'):
                     code, room, (color, token) = active
                     matchmaking.cancel(data.get('session'), now)
                     if room.get('match'):
@@ -935,13 +1082,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                     'me': {'name': user['name'], 'rating': user['rating']}})
                     else:
                         self._json({'ok': False, 'state': 'idle',
-                                    'msg': '진행 중인 대국을 마친 뒤 매칭해 주세요.'})
+                                    'msg': '진행 중인 대국을 마친 뒤 매칭해 주세요.',
+                                    'activeGame': active_game_summary(user['id'])})
                     return
+                denied=admin_ops.block_reason(user['id'],'match')
+                maintenance=admin_ops.maintenance()
+                if denied or maintenance['paused']:
+                    matchmaking.cancel(data.get('session'),now)
+                    self._json({'ok':False,'state':'idle','msg':denied or '새 대국 시작이 일시 중지되었습니다. '+maintenance['reason']}); return
+                admin_ops.touch(user['id'])
                 if u.path == '/match/join':
                     matchmaking.join(data.get('session'), user, now)
                 if u.path == '/match/accept':
                     matchmaking.accept(data.get('session'), now)
-                res = matchmaking.status(data.get('session'), now, make_match_room)
+                res = matchmaking.status(data.get('session'), now, commit_match_room)
                 res['ok'] = True; res['me'] = {'name': user['name'], 'rating': user['rating']}
                 self._json(res)
             return
@@ -954,9 +1108,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._json({'ok': False, 'msg': 'id가 필요합니다.'})
                 return
             if u.path == '/feedback/done':
-                ok = accounts.feedback_set_done(fid, bool(data.get('done', True)))
+                ok = admin_ops.legacy_feedback(fid,bool(data.get('done',True)),False,self._ops_actor())
             else:
-                ok = accounts.feedback_delete(fid)
+                ok = admin_ops.legacy_feedback(fid,False,True,self._ops_actor())
             self._json({'ok': ok, 'msg': None if ok else '없는 항목입니다.'})
             return
         if u.path == '/feedback':                                   # 개발자 피드백 저장
@@ -997,26 +1151,88 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._json({'room': code, 'token': token, 'color': 'spectator'})
             return
 
+        if u.path == '/practice/leave':
+            user = accounts.user_by_token(data.get('session'))
+            with lock:
+                room = ROOMS.get(str(data.get('room') or ''))
+                if not user or not room or room.get('queue_owner') != user['id'] or not room.get('queue_practice'):
+                    self._json({'ok': False, 'msg': '본인의 매칭 대기용 연습만 종료할 수 있습니다.'})
+                    return
+                close_queue_practice(user['id'], room['code'])
+                self._json({'ok': True})
+            return
+
+        if u.path == '/room/cancel':
+            # A pre-game cancellation is not a resignation or a recorded game.
+            # Check and remove under the join lock: a newly arrived peer must win
+            # over a stale client-side "empty room" snapshot.
+            with lock:
+                code = str(data.get('room') or '').strip().upper()
+                token = data.get('token')
+                if not isinstance(token, str) or not token or token == BOT_TOKEN:
+                    self._json({'ok': False, 'msg': '유효한 입장 정보가 필요합니다.'}, 403)
+                    return
+                room = ROOMS.get(code)
+                if room is None:
+                    self._json({'ok': True})  # Safe retry after a lost response.
+                    return
+                color = room['tokens'].get(token)
+                if not valid_client_token(room, token) or color not in ('W', 'B') or room['seats'].get(color) != token:
+                    self._json({'ok': False, 'msg': '본인의 대기방만 취소할 수 있습니다.'}, 403)
+                    return
+                if (room['state']['phase'] != 'setup' or both_joined(room)
+                        or any(room.get(flag) for flag in ('match', 'bot', 'solo', 'queue_practice'))):
+                    self._json({'ok': False, 'msg': '상대가 참가했거나 대국이 시작되어 방을 취소할 수 없습니다. 나가려면 기권을 선택해 주세요.'}, 409)
+                    return
+                del ROOMS[code]
+                self._json({'ok': True})
+            return
+
         if u.path == '/join':
             with lock:
                 user = accounts.user_by_token(data.get('session'))
+                queue_practice = False
+                if data.get('resume'):
+                    active = active_account_room(user['id']) if user else None
+                    if not active or str(data.get('room') or '').strip().upper() != active[0]:
+                        self._json({'ok': False, 'msg': '이어갈 대국이 없습니다.', 'activeGame': None}, 410)
+                        return
                 if user:
                     active = active_account_room(user['id'])
                     requested = str(data.get('room') or '').strip().upper()
                     if active and (requested != active[0] or data.get('solo') or data.get('vs_bot')):
-                        self._json({'ok': False, 'msg': '진행 중인 대국을 마친 뒤 새 대국에 참가해 주세요.'})
+                        self._json({'ok': False, 'msg': '진행 중인 대국을 마친 뒤 새 대국에 참가해 주세요.',
+                                    'activeGame': active_game_summary(user['id'])})
                         return
                     matchmaking.prune(now)
-                    queued = any(e['uid'] == user['id'] and not e.get('matched')
-                                 for e in matchmaking.QUEUE.values())
-                    if queued and not active:
-                        self._json({'ok': False, 'msg': '랭크 매칭을 취소한 뒤 다른 대국에 참가해 주세요.'})
-                        return
+                    entry = next((e for e in matchmaking.QUEUE.values()
+                                  if e['uid'] == user['id'] and not e.get('matched')), None)
+                    if entry and not active:
+                        if not (data.get('solo') or data.get('vs_bot')) or entry.get('pending'):
+                            self._json({'ok': False, 'msg': '상대 수락을 먼저 확인해 주세요.' if entry.get('pending') else '매칭 중에는 컴퓨터 대국이나 혼자 연습을 이용해 주세요.'})
+                            return
+                        queue_practice = True
+                if data.get('queuePractice') and not queue_practice:
+                    self._json({'ok': False, 'msg': '매칭 대기가 종료되었습니다. 매칭을 다시 시작하거나 일반 대국을 선택해 주세요.'})
+                    return
+                existing=ROOMS.get(str(data.get('room') or '').strip().upper())
+                owned_reconnect=existing and not data.get('solo') and not data.get('vs_bot') and (
+                    (valid_client_token(existing,data.get('token')) and existing['tokens'].get(data.get('token')) in ('W','B','solo'))
+                    or (user and account_seat(existing,user['id'])))
+                token_uid=existing.get('users',{}).get(existing.get('tokens',{}).get(data.get('token'))) if existing else None
+                denied=admin_ops.block_reason(token_uid or (user['id'] if user else None),'account' if owned_reconnect else 'match')
+                maintenance=admin_ops.maintenance()
+                if (data.get('session') and not user) or denied or (maintenance['paused'] and not owned_reconnect):
+                    self._json({'ok':False,'msg':denied or ('새 대국 시작이 일시 중지되었습니다. '+maintenance['reason'] if maintenance['paused'] else '다시 로그인해 주세요.')},403); return
+                if user: admin_ops.touch(user['id'])
                 if data.get('solo'):   # 혼자 연습(핫시트) 방
                     code = gen_code()
                     room = new_room(code)
                     use_terrain(room)
                     room['solo'] = True
+                    if queue_practice:
+                        room['queue_practice'] = True
+                        room['queue_owner'] = user['id']
                     ntok = uuid.uuid4().hex
                     room['seats']['W'] = room['seats']['B'] = ntok
                     room['tokens'][ntok] = 'solo'
@@ -1031,38 +1247,46 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     spectator.capture(room)
                     self._json({'room': code, 'token': ntok, 'color': 'solo'})
                     return
-                if data.get('vs_bot'):   # 컴퓨터(봇)와 대전 — 사람=백, 봇=흑
+                if data.get('vs_bot'):   # 컴퓨터 대국도 새 방마다 선후공 추첨
                     code = gen_code()
                     room = new_room(code)
                     use_terrain(room)
-                    room['bot'] = 'B'
+                    human = draw_starting_color()
+                    computer = 'B' if human == 'W' else 'W'
+                    room['bot'] = computer
+                    if queue_practice:
+                        room['queue_practice'] = True
+                        room['queue_owner'] = user['id']
                     lv = data.get('level')
                     room['botlevel'] = lv if lv in ('easy', 'normal', 'hard') else 'normal'
                     htok = uuid.uuid4().hex
-                    room['seats']['W'] = htok
-                    room['seats']['B'] = BOT_TOKEN
-                    room['tokens'][htok] = 'W'
+                    room['seats'][human] = htok
+                    room['seats'][computer] = BOT_TOKEN
+                    room['tokens'][htok] = human
                     room['seen'][htok] = now
                     room['seen'][BOT_TOKEN] = now
                     st = room['state']
-                    bot.setup_and_ready(st, 'B')       # 봇은 즉시 배치+준비
+                    bot.setup_and_ready(st, computer)  # 실제 봇 진영을 배치
                     st['deadline'] = time.time() + SETUP_SECONDS
-                    st['log'] = ['🤖 컴퓨터와 대전 — 백(당신) 기물을 배치하고 [준비 완료]. 흑(컴퓨터)은 준비됨.']
-                    attach_user(room, 'W', data, '플레이어')          # 회원이면 계정 닉네임·레이팅전
-                    room['names']['B'] = '컴퓨터(' + room['botlevel'] + ')'
-                    note = bot_rating_note(room)
+                    st['log'] = [f'🤖 컴퓨터와 대전 — {SIDE_KR[human]}(당신) 기물을 배치하고 [준비 완료]. {SIDE_KR[computer]}(컴퓨터)은 준비됨.']
+                    attach_user(room, human, data, '플레이어')          # 회원이면 계정 닉네임·레이팅전
+                    room['names'][computer] = '컴퓨터(' + room['botlevel'] + ')'
+                    note = '매칭 대기용 연습 · 레이팅·전적 미반영. 양쪽이 수락하면 랭크로 이동합니다.' if queue_practice else bot_rating_note(room)
                     if note:
                         st['log'].append(note)
                     ROOMS[code] = room
                     use_terrain(room)
                     spectator.capture(room)
-                    self._json({'room': code, 'token': htok, 'color': 'W'})
+                    self._json({'room': code, 'token': htok, 'color': human})
                     return
                 code = (data.get('room') or '').strip().upper()
                 token = data.get('token') or ''
                 room = ROOMS.get(code) if code else None
                 if room is None:
-                    code = code if code else gen_code()
+                    if code:
+                        self._json({'ok': False, 'msg': '방 코드를 확인해 주세요. 존재하지 않거나 종료된 방입니다.'}, 404)
+                        return
+                    code = gen_code()
                     room = new_room(code)
                     ROOMS[code] = room
                 elif valid_client_token(room, token):
@@ -1102,6 +1326,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not isinstance(token, str):
                     self._json({'ok': False, 'msg': '참가자 인증이 필요해요.'})
                     return
+                uid=room.get('users',{}).get(room.get('tokens',{}).get(token))
+                denied=admin_ops.block_reason(uid,'chat')
+                if denied: self._json({'ok':False,'msg':denied},403); return
                 self._json(match_social.send_chat(room, token, data.get('text'), data.get('nonce'), now))
             return
 
@@ -1123,6 +1350,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if color not in ('W', 'B'):
                     self._json({'ok': False, 'msg': '관전자는 조작할 수 없습니다.'})
                     return
+                uid=room.get('users',{}).get(room.get('tokens',{}).get(token))
+                denied=admin_ops.block_reason(uid,'account')
+                if act=='rematch':
+                    for member in room.get('users',{}).values():
+                        denied=denied or admin_ops.block_reason(member,'match')
+                    maintenance=admin_ops.maintenance()
+                    if maintenance['paused']: denied=denied or '새 대국 시작이 일시 중지되었습니다. '+maintenance['reason']
+                if denied and act!='resign': self._json({'ok':False,'msg':denied},403); return
+                admin_ops.touch(uid)
                 if act not in ('rematch', 'resign'):
                     enforce_clock(room, now)        # 마감 지난 턴은 먼저 자동으로 넘김
                 if act == 'rematch':                                  # 솔로·봇: 즉시 새 판 / 사람끼리: 제안 → 둘 다 누르면 새 판

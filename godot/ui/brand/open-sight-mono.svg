@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <title>Fog Chess — Open Sight King</title>
+  <path d="M16.51 54.12A27 27 0 1 1 47.49 54.12" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
+  <g fill="#ffffff">
+    <path d="M30 13h4v5h5v4h-5v4h-4v-4h-5v-4h5z"/>
+    <path d="M22 27c5.5-2 14.5-2 20 0l-4 7h-2.5v3.4c0 2.7 1.8 5.2 4.4 7.6H24.1c2.6-2.4 4.4-4.9 4.4-7.6V34H26z"/>
+    <path d="M24 48h16l3.1 4.2c.6.8 0 1.8-1 1.8H21.9c-1 0-1.6-1-1-1.8z"/>
+  </g>
+</svg>

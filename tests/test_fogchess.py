@@ -76,12 +76,12 @@ def test_pawn_moves_and_no_retreat():
     assert (8, 5) not in set(pieces.legal_moves(st, 'W_P1'))        # 이동 후 2칸 불가
 
 
-def test_pawn_forward_blocked_no_capture():
+def test_pawn_forward_capture_without_passing_through():
     st = bare()
     put(st, 'W_P1', 'W', 'P', 10, 5, moved=False)
     put(st, 'B_P1', 'B', 'P', 9, 5)
     m = set(pieces.legal_moves(st, 'W_P1'))
-    assert (9, 5) not in m and (8, 5) not in m       # 정면 캡처·관통 불가
+    assert (9, 5) in m and (8, 5) not in m          # 정면 1칸 포획 가능, 관통 불가
 
 
 def test_pawn_diagonal_capture():
@@ -1124,7 +1124,7 @@ def test_promotion_rejects_bad_choice():
     st = bare()
     st['promote'] = {'pid': 'W_P1', 'color': 'W'}
     assert not pieces.apply_promote(st, 'W', 'K')[0]    # 킹으로는 승격 불가
-    assert not pieces.apply_promote(st, 'W', 'Q')[0]    # 퀸 없음
+    assert not pieces.apply_promote(st, 'W', 'P')[0]    # 폰으로는 승격 불가
 
 
 def test_resign_gives_win_to_opponent():

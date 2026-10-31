@@ -33,9 +33,15 @@ const TIER_FLOORS = [[1900,'K'],[1700,'Q'],[1500,'B'],[1200,'R'],[1000,'N'],[500
 async function join(){
   const stored = ROOM ? (localStorage.getItem('fog_'+ROOM) || '') : '';
   const r = await post('/join', {room: ROOM, token: stored, name: nick(), session: session()});
+  if(!r.room){
+    ROOM=null; TOKEN=''; COLOR=null; VIEW=null; location.hash='';
+    showScreen('home'); alert(r.msg || '방에 참가할 수 없습니다.');
+    return false;
+  }
   ROOM = r.room; TOKEN = r.token; COLOR = r.color;
   location.hash = '#'+ROOM;
   localStorage.setItem('fog_'+ROOM, TOKEN);
+  return true;
 }
 async function poll(){
   if(!ROOM) return;                               // 메뉴 화면에선 폴링 안 함
@@ -60,12 +66,13 @@ function _resetGame(){ clearSel(); prevPos={}; prevFog=null; overShown=null; las
 
 async function lobbyCreate(){        // 사설 방 생성(친구 초대)
   ROOM = null; TOKEN = '';
-  await join();
+  if(!await join()) return;
   _resetGame(); showGame(); poll();
 }
 async function joinByCode(code){     // 친구 방 코드로 참가
   ROOM = (code||'').trim().toUpperCase(); TOKEN = '';
-  await join();
+  if(!ROOM){ alert('친구의 방 코드를 입력해 주세요.'); return; }
+  if(!await join()) return;
   _resetGame(); showGame(); poll();
 }
 async function soloStart(){
@@ -76,7 +83,7 @@ async function soloStart(){
 }
 async function botStart(level){
   const r = await post('/join', {vs_bot:true, level, name: nick(), session: session()});
-  ROOM = r.room; TOKEN = r.token; COLOR = r.color;   // 'W' (사람=백, 컴퓨터=흑)
+  ROOM = r.room; TOKEN = r.token; COLOR = r.color;   // Server assigns either color; reconnect preserves that seat.
   location.hash = '#'+ROOM; localStorage.setItem('fog_'+ROOM, TOKEN);
   _resetGame(); showGame(); poll();
 }
@@ -153,6 +160,12 @@ async function leaveRoom(){
     try{ await act({type:'resign'}); }catch(e){}
   } else {
     if(!confirm('이 방에서 나가 홈으로 갈까요?')) return;
+    if(VIEW && VIEW.phase==='setup' && !solo && !VIEW.bot && !VIEW.match && COLOR!=='spectator'){
+      try{
+        const result=await post('/room/cancel',{room:ROOM,token:TOKEN});
+        if(!result.ok){ alert(result.msg); await poll(); return; }
+      }catch(e){ alert('방 취소를 확인할 수 없습니다. 다시 시도해 주세요.'); return; }
+    }
     if(VIEW && VIEW.phase==='over' && !solo && !VIEW.bot && COLOR!=='spectator'){ try{ post('/action', {room:ROOM, token:TOKEN, type:'rematch_decline'}); }catch(e){} }   // 상대가 재대결을 기다리지 않게
   }
   if(ROOM) localStorage.removeItem('fog_'+ROOM);
@@ -596,7 +609,7 @@ function renderPromo(me, solo){
   if(!show){ pm.style.display='none'; return; }
   if(pm.style.display!=='flex'){                 // 새로 뜰 때만 버튼 구성(깜빡임 방지)
     const box=document.getElementById('promoBtns'); box.innerHTML='';
-    [['R','전차'],['N','나이트'],['B','비숍']].forEach(([t,name])=>{
+    [['Q','퀸'],['R','전차'],['N','나이트'],['B','비숍']].forEach(([t,name])=>{
       const b=document.createElement('button');
       b.style.cssText='display:flex; flex-direction:column; align-items:center; gap:4px; padding:10px 14px;';
       b.innerHTML=`<img src="${pieceSrc(t, me)}" style="width:42px;height:42px" draggable="false"><span style="font-size:12px">${name}</span>`;
@@ -713,7 +726,7 @@ function render(){
         ? '🎯 이 비숍은 저격 가능 — 위 버튼 누르고 하늘색 표적(보이는 적)을 클릭. 숨은 적은 못 맞힘'
         : canBarrage
         ? '🚜 이 전차는 십자 돌파 사격 가능 — 위 버튼 누르고 하늘색 방향(상하좌우)을 클릭'
-        : '🔍 이 퀸은 스캔 가능 — 위 버튼 누르고 보라색 사거리(맨해튼 6)에서 지점 클릭. 그 자리 2×2를 ~2턴 감시(숨은 적 노출). 감시 지역은 상대도 보지만, 퀸 위치는 노출 안 됨';
+        : '🔍 이 퀸은 스캔 가능 — 위 버튼 누르고 보라색 사거리(원형 반경 6)에서 지점 클릭. 그 자리 2×2를 ~2턴 감시(숨은 적 노출). 감시 지역은 상대도 보지만, 퀸 위치는 노출 안 됨';
       ctr.appendChild(ah);
     }
   }
@@ -1121,15 +1134,15 @@ function pieceDemo(stage, spec, host){                  // host: 마우스/탭 �
   return stop;
 }
 const PIECE_GUIDE = [
-  {t:'P', nm:'폰 (Pawn)', move:'앞·좌·우·앞대각 1칸(첫 수는 앞으로 2칸). <b>후퇴 불가</b>.',
-   atk:'좌·우·앞대각으로 맞닿은 적을 잡음. 끝 줄 도달 시 <b>승격</b>.',
-   moves:[[-2,0],[0,-1]], capture:{mode:'move', enemy:[-1,1]}},
+  {t:'P', nm:'폰 (Pawn)', move:'앞·좌·우·앞대각 1칸. 첫 수는 앞의 두 칸이 비어 있으면 2칸 전진. <b>후퇴 불가</b>.',
+   atk:'<b>정면·좌·우·앞대각 1칸</b>의 적을 잡음. 부쉬 속 숨은 적도 정면 1칸 전진 중 만나면 포획. 첫 두 칸 전진은 2칸 거리 공격이 아님. 끝 줄 도달 시 <b>퀸·전차·나이트·비숍</b>으로 승격.',
+   moves:[[-2,0],[0,-1]], capture:{mode:'move', enemy:[-1,0]}},
   {t:'N', nm:'나이트 (Knight)', move:'체스와 동일한 L자(2+1). 지형만 없으면 <b>건너뜀</b>.',
    atk:'도착 칸의 적을 잡음. <b>시야 2칸</b> — 지형을 건너뛰어 정찰합니다.',
    moves:[[-2,1],[1,2]], capture:{mode:'move', enemy:[-2,-1]}},
   {t:'B', nm:'비숍 (Bishop · 저격수)', move:'대각선 최대 2칸.',
    atk:'대각선 이동 경로의 적을 잡음(움직여서 포획).',
-   abil:'<b>단일 타일 저격</b>(사거리 5, 시야에 든 적만). 쏘면 <b>내 위치 노출</b>. 다음 내 차례 한 번은 <b>재장전</b>(이동 가능).',
+   abil:'<b>단일 타일 저격</b>(사거리 5, 팀 시야에 든 적만 · 숲에 가로막히면 불가). 쏘면 <b>내 위치 노출</b>. 다음 내 차례 한 번은 <b>재장전</b>(이동 가능).',
    moves:[[-2,2],[2,-2]], capture:{mode:'move', enemy:[-1,1]},
    ability:{mode:'shot', enemies:[[-3,-3]], path:[[-1,-1],[-2,-2],[-3,-3]]}},
   {t:'R', nm:'전차 (Rook · 룩)', move:'상하좌우 최대 2칸.',
@@ -1741,7 +1754,7 @@ document.addEventListener('pointerdown', (e)=>{
   const hash = (location.hash || '').replace('#','');
   if(hash){                                                 // 초대 링크로 들어온 경우 → 바로 그 방
     ROOM = hash;
-    await join(); showGame(); await poll();
+    if(await join()){ showGame(); await poll(); }
   }else{                                                    // 그 외 → 시작 메뉴
     showScreen('home');
   }

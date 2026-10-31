@@ -16,7 +16,26 @@ if ($health -and $health.service -ne 'fogchess-godot-development') { throw 'Port
 if (-not $health) {
     if (Get-NetTCPConnection -LocalPort 7556 -State Listen -ErrorAction SilentlyContinue) { throw 'Port 7556 is already occupied.' }
     New-Item -ItemType Directory -Force .dev-data | Out-Null
-    $process = Start-Process -FilePath $PythonPath -ArgumentList '-u dev_server.py' -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -PassThru -RedirectStandardOutput '.dev-data\server.log' -RedirectStandardError '.dev-data\server-error.log'
+    # Use the existing per-user encrypted key only in the child server environment.
+    # Never pass it on the command line, write plaintext, or change the saved key.
+    $injectedAdminKey = $false
+    $encryptedAdminPath = Join-Path $PSScriptRoot '.dev-data/security/admin-key.dpapi'
+    try {
+        if (-not $env:FOG_ADMIN_KEY -and (Test-Path -LiteralPath $encryptedAdminPath)) {
+            $protectedAdminKey = ([IO.File]::ReadAllText($encryptedAdminPath)).Trim() | ConvertTo-SecureString
+            $adminKeyPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($protectedAdminKey)
+            try {
+                $env:FOG_ADMIN_KEY = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($adminKeyPointer)
+                $injectedAdminKey = $true
+            } finally {
+                [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($adminKeyPointer)
+                $protectedAdminKey.Dispose()
+            }
+        }
+        $process = Start-Process -FilePath $PythonPath -ArgumentList '-u dev_server.py' -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -PassThru -RedirectStandardOutput '.dev-data\server.log' -RedirectStandardError '.dev-data\server-error.log'
+    } finally {
+        if ($injectedAdminKey) { Remove-Item Env:FOG_ADMIN_KEY -ErrorAction SilentlyContinue }
+    }
     $process.Id | Set-Content '.dev-data\server.pid'
     for ($attempt = 0; $attempt -lt 30; $attempt++) {
         Start-Sleep -Milliseconds 200

@@ -1,3 +1,20 @@
+2026-10-25: account_lifecycle.py — 계정 삭제와 공유 기록 익명화. tests/test_game_account_polish.py, tests/test_forest_visibility.py, godot/tests/account_polish.gd — 신규 회귀 검사.
+
+2026-10-24 화면 기반 지도 안내
+현재 플레이어 동선과 실제 화면: 프로젝트 루트의 게임 구조 지도/review.html
+문서와 소스 연결은 각 화면 카드의 '개발 위치 · 연결 기능'에서 확인합니다.
+
+추가된 주요 화면 모듈
+features/lobby_home: 7개 로비 아코디언과 제목·로고
+features/lobby_backdrop / match_transition: 전술 지도 배경과 로비↔대국 전환
+focused_guide: 한 기물·한 행동에 집중하는 큰 설명 시연
+features/setup_ui / aim_assist: 배치 준비와 모바일 조준
+features/rating_rules / result_history: 레이팅 규칙 팝업과 결과 기록
+admin / admin_pages / support: 운영 데스크와 사용자 신고·공지·이의제기
+관리자 진입은 settings의 버전 5회 클릭이며 공개 버튼은 없습니다.
+
+아래는 2026-10-19 당시의 모듈 분리 설명입니다. 현재 화면/진입 위치는 위 지도를 우선합니다.
+--------------------------------------------------------------------------
 Fog Chess Godot 코드 안내
 2026-10-19 기능별 분리
 
@@ -49,3 +66,17 @@ Fly.io 배포는 수행하지 않는다.
 
 features/chat(대전 채팅).gd: 참가자 채팅 UI·전송·접기·새 메시지 표시
 match_social.py(프로젝트 루트): 채팅 검증·랭크 2선승 시리즈 집계
+
+모바일 웹 화면 배율 (2026-10-25)
+  features/web_viewport.gd: CSS 픽셀로 배치, 고해상도 캔버스 유지. 웹 시작/리사이즈/배율 변경에 동기화.
+  main의 _ready에서 UI 구성 전에 연결. 네이티브 게임에서는 적용하지 않음.
+  ui_shell: 휴대폰 스크롤바 폭 확보 / ui_components: 작은 팝업 폭 조절.
+  match_transition: 루트 캡처는 물리 픽셀로 자르고 논리 좌표에 배치.
+  검증: python tests/run_mobile_viewport_smoke.py (GPU 렌더링·임시 로컬 서버 사용)
+
+결과·로비 상태·폰 학습 (2026-10-25)
+  features/lobby_status.gd: 상단 매칭 대기, 하단 본인 진행 대국 복귀. /me/active-game 10초 조회(로비에 있을 때만).
+  game_display: 결과 나가기 공통 버튼 / game_session: 종료 대국 안전 나가기.
+  tutorial: 4단계 폰 정면 포획 포함. original_scenes의 폰 설명·시연도 같은 규칙.
+  서버 pieces.py: 정면 1칸 포획 / bot.py: 정면 위협 평가.
+  검증: tests/test_pawn_forward.py, test_active_game.py, run_result_exit_smoke.py, run_lobby_flow_smoke.py.

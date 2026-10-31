@@ -7,6 +7,15 @@ var update_timer: Timer
 
 func _init(context: Control) -> void:
 	app = context
+	_start_presence.call_deferred()
+
+func _start_presence() -> void:
+	var timer = Timer.new()
+	timer.wait_time = 30
+	timer.timeout.connect(func():
+		if not app.session.is_empty(): await app.api.request("/presence",{"session":app.session}))
+	app.add_child(timer)
+	timer.start()
 
 func check_updates() -> void:
 	var source: String = app.api.base_url
@@ -26,6 +35,7 @@ func queue_update(data: Dictionary) -> void:
 	update_server = app.api.base_url
 	var version: String = str(data.get("version",""))
 	if not version.is_empty(): app.rail_version.text = "v"+version+" · 패치노트"
+	app.settings._refresh_version_footer()
 	if show_pending_update(): return
 	update_timer = Timer.new()
 	update_timer.wait_time = 1.0
@@ -312,9 +322,17 @@ func _tier(rating: int) -> String:
 	return "P"
 
 func _admin() -> void:
-	var pair = app._small_window("안개전장 체스 · 관리자",920,680)
+	var pair = app._small_window("안개전장 체스 · 관리자",1180,790)
 	var panel = preload("res://admin(관리자 화면).gd").new()
 	panel.app = app
+	# Keep navigation outside the scrolling content region.
+	var scroll = pair[1].get_parent()
+	var frame = scroll.get_parent()
+	scroll.remove_child(pair[1])
+	frame.remove_child(scroll)
+	scroll.queue_free()
+	frame.add_child(pair[1])
+	pair[1].size_flags_vertical = Control.SIZE_EXPAND_FILL
 	pair[1].add_child(panel)
 	pair[0].visibility_changed.connect(func():
 		if not pair[0].visible: panel.key=""; pair[0].queue_free())

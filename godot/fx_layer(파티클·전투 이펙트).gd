@@ -136,6 +136,9 @@ func render(canvas: CanvasItem, additive: bool) -> void:
 				var edge: Color = p.get("edge",Color(p.color,0))
 				canvas.draw_texture_rect(radial(p.color,edge,p.kind=="flash"),Rect2(pos-Vector2.ONE*radius,Vector2.ONE*radius*2),false,Color(1,1,1,alpha))
 			"ring": canvas.draw_arc(pos,lerpf(p.r0,p.r1,1-pow(1-k,3)),0,TAU,64,color,maxf(1,p.size*(1-k)),true)
+			"pressure":
+				canvas.draw_set_transform(pos,p.angle,Vector2(1,.55))
+				canvas.draw_arc(Vector2.ZERO,lerpf(p.r0,p.r1,1-pow(1-k,3)),0,TAU,64,color,maxf(1,p.size*(1-k)),true)
 			"debris", "confetti":
 				if p.kind=="confetti": pos.x += sin(p.age*p.freq)*p.amp
 				canvas.draw_set_transform(pos,p.rot)
@@ -157,12 +160,6 @@ func render(canvas: CanvasItem, additive: bool) -> void:
 				var extent: float = p.size*(.5+.5*k)
 				canvas.draw_line(pos+Vector2(-extent,extent*.6),pos+Vector2(extent,-extent*.6),color,3*(1-k)+1,true)
 				canvas.draw_line(pos+Vector2(-extent,-extent*.6),pos+Vector2(extent,extent*.6),Color(color,.5*alpha),2,true)
-			"scan_frame":
-				var extent: float = p.size
-				for direction in [Vector2(-1,-1),Vector2(1,-1),Vector2(-1,1),Vector2(1,1)]:
-					var corner: Vector2 = pos+direction*extent
-					canvas.draw_line(corner,corner-Vector2(direction.x*extent*.45,0),color,2,true)
-					canvas.draw_line(corner,corner-Vector2(0,direction.y*extent*.45),color,2,true)
 			"vignette":
 				canvas.draw_texture_rect(vignette_texture,Rect2(shake_offset,size),false,Color(1,1,1,color.a))
 	canvas.draw_set_transform(Vector2.ZERO)
@@ -208,6 +205,29 @@ func impact(pos: Vector2,scale: float=1) -> void:
 	emit_particles("dust",pos,roundi(8*scale))
 	emit_particles("debris",pos,roundi(8*scale),cw*7*scale)
 
+func precision_hit(pos: Vector2, direction: Vector2) -> void:
+	var cw := cell_width()
+	# A brief point of light, never the cannon's circular blast.
+	add({"kind":"flash","pos":pos,"r0":cw*.06,"r1":cw*.28,"life":.075,"color":Color("fff7e4"),"edge":Color(1,.97,.9,0),"add":true})
+	for i in range(2 if reduced else 5):
+		var spread: Vector2 = direction.rotated(randf_range(-.65,.65))
+		add({"kind":"spark","pos":pos,"v":spread*cw*randf_range(1.4,2.8),"drag":4.0,"life":randf_range(.12,.22),"size":1.3,"color":Color("fff7e4"),"add":true})
+	for i in range(1 if reduced else 3):
+		add({"kind":"smoke","pos":pos+Vector2(randf_range(-2,2),0),"v":Vector2(randf_range(-cw*.08,cw*.08),-cw*.35),"life":randf_range(.25,.4),"size":cw*.18,"color":Color(.60,.68,.72,.25),"edge":Color(.60,.68,.72,0)})
+	shake_by(.08)
+
+func cannon_dust(pos: Vector2, direction: Vector2, last: bool) -> void:
+	var cw := cell_width()
+	var count := 2 if reduced else (6 if last else 3)
+	for i in range(count):
+		var spread: Vector2 = direction.rotated(randf_range(-1.0,1.0))
+		add({"kind":"smoke","pos":pos,"v":spread*cw*randf_range(.35,.9),"drag":3.5,"life":randf_range(.3,.55),"size":cw*(.28 if last else .17),"color":Color(.63,.55,.42,.32),"edge":Color(.63,.55,.42,0)})
+	if not last: return
+	flash(pos,cw*.75,.12,Color("f2c572"))
+	add({"kind":"pressure","pos":pos,"r0":cw*.18,"r1":cw*.95,"life":.32,"angle":direction.angle()+PI*.5,"color":Color("f2c572"),"size":2.2})
+	emit_particles("debris",pos,6,cw*3.2)
+	shake_by(.28)
+
 func play(data: Dictionary) -> void:
 	if float(data.get("delay",0))>0:
 		var delayed := data.duplicate(true)
@@ -233,32 +253,35 @@ func play(data: Dictionary) -> void:
 				ring(pos,cw*.2,cw*1.05,.45,Color(1,.863,.55,.9),3)
 			shake_by(.15)
 		"fire":
-			var hit := func(): impact(cells[0],.95); emit_particles("smoke",cells[0],8); shake_by(.25)
+			# Unknown enemy origins stay unknown; a neutral local impact needs no ray.
+			var direction: Vector2 = (cells[0]-source).normalized() if source!=null else Vector2.UP
+			var hit := func(): precision_hit(cells[0],direction)
 			if source!=null:
-				flash(source,cw*.7,.14,Color(1,.941,.706,.95))
-				ring(source,cw*.12,cw*.4,.12,Color("ffe9a0"),2)
-				after(.07,func(): tracer(source,cells[0],.10,Color("ffe9a0"),2.5,.3))
-				after(.17,hit)
+				flash(source,cw*.20,.06,Color("fff7e4"))
+				after(.06,func(): tracer(source,cells[0],.09,Color("fff7e4"),1.7,.18))
+				after(.15,hit)
 			else: hit.call()
 		"barrage":
+			if source==null:
+				# Public impact cells can be discontinuous across fog. Do not connect
+				# them, sequence a hidden path, or infer an origin from array order.
+				for pos in cells:
+					flash(pos,cw*.40,.10,Color("f2c572"))
+					cannon_dust(pos,Vector2.UP,false)
+				return
 			if source!=null:
-				flash(source,cw*1.1,.18,Color(1,.902,.627,.98))
-				emit_particles("smoke",source,6)
-				emit_particles("dust",source,8)
-			shake_by(.45)
+				flash(source,cw*.65,.12,Color("f2c572"))
+				cannon_dust(source,(cells[0]-source).normalized(),false)
+			shake_by(.14)
 			for i in range(cells.size()):
 				var pos: Vector2 = cells[i]
 				var previous: Vector2 = cells[i-1] if i>0 else (source if source!=null else pos)
 				var last: bool = i==cells.size()-1
+				var direction: Vector2 = (pos-previous).normalized() if previous!=pos else Vector2.UP
 				after(.09*i+(.05 if source!=null else 0),func():
-					if previous!=pos: tracer(previous,pos,.08,Color("ffd88a"),4,.9)
-					impact(pos,1.1 if last else .8)
-					emit_particles("smoke",pos,6 if last else 2)
-					shake_by(.55 if last else .4)
-					if last: ring(pos,cw*.3,cw*2.4,.6,Color(1,.784,.47,.85),4))
+					if previous!=pos: tracer(previous,pos,.08,Color("f2c572"),3,.65)
+					cannon_dust(pos,direction,last))
 		"scan":
-			for target in cells:
-				add({"kind":"scan_frame","pos":target,"life":.75,"size":cw*.45,"color":Color("85ccff")})
 			var pos := Vector2.ZERO
 			for cell in cells: pos += cell
 			pos /= cells.size()

@@ -62,6 +62,7 @@ def new_game():
         'fxseq': 0,
         'log': ['방 생성됨 — 친구가 접속하면 배치가 시작됩니다.'],
         'winner': None,             # 'W'/'B' 승자, 또는 'draw'
+        'end_reason': None,         # Authoritative result category; independent of display logs.
         'promote': None,            # 승격 대기 {pid, color} — 폰이 끝줄 도달 시
         'scans': [],                # 활성 퀸 스캔 [{viewer, cells, until}] — 그 2×2를 감시
     }
@@ -192,10 +193,11 @@ def legal_moves(st, pid):
     if t == 'P':
         fr = FORWARD[o]
         r1 = r + fr
-        if in_board(r1, c) and (r1, c) not in IMPASSABLE and piece_at(st, r1, c) is None:
+        if in_board(r1, c) and (r1, c) not in IMPASSABLE and not own_at(r1, c):
             out.append((r1, c))
             r2 = r + 2 * fr
-            if (not p['moved'] and in_board(r2, c) and (r2, c) not in IMPASSABLE
+            if (not p['moved'] and piece_at(st, r1, c) is None
+                    and in_board(r2, c) and (r2, c) not in IMPASSABLE
                     and piece_at(st, r2, c) is None):
                 out.append((r2, c))
         for dc in (-1, 1):
@@ -307,6 +309,7 @@ def fire_cells(st, pid):
     for q in st['pieces'].values():
         if q['alive'] and q['o'] != color:
             if (q['r'] - p['r']) ** 2 + (q['c'] - p['c']) ** 2 <= R2 \
+                    and los_clear(p['r'], p['c'], q['r'], q['c']) \
                     and enemy_visible_at(st, color, q['r'], q['c'], vis):
                 out.append((q['r'], q['c']))
     return out
@@ -353,14 +356,14 @@ def barrage_reach(st, pid):
 
 
 def scan_cells(st, pid):
-    """퀸이 스캔을 지정할 수 있는 칸(맨해튼 SCAN_RANGE 안) — 하이라이트용."""
+    """퀸이 스캔을 지정할 수 있는 칸(원형 반경 SCAN_RANGE 안) — 하이라이트용."""
     p = st['pieces'].get(pid)
     if not p or p['t'] != 'Q' or not p['alive']:
         return []
     out = []
     for dr in range(-SCAN_RANGE, SCAN_RANGE + 1):
         for dc in range(-SCAN_RANGE, SCAN_RANGE + 1):
-            if abs(dr) + abs(dc) <= SCAN_RANGE:
+            if dr * dr + dc * dc <= SCAN_RANGE ** 2:
                 r, c = p['r'] + dr, p['c'] + dc
                 if in_board(r, c):
                     out.append((r, c))
@@ -378,6 +381,7 @@ def advance_turn(st, real_move=True):
     if st['phase'] == 'play' and st['turnCount'] >= TURN_LIMIT:
         st['phase'] = 'over'
         st['winner'] = 'draw'
+        st['end_reason'] = 'draw'
         st['log'].append(f"턴 한도({TURN_LIMIT}) 도달 — 무승부!")
     # 다음 턴 제한시간 세팅(게임이 계속될 때만)
     st['turn_deadline'] = (time.time() + TURN_SECONDS) if st['phase'] == 'play' else None
@@ -398,6 +402,7 @@ def time_out(st):
     if n >= MAX_MISSES:                                   # 1분간 미행동 → 상대 자동 승리
         st['phase'] = 'over'
         st['winner'] = 'B' if loser == 'W' else 'W'
+        st['end_reason'] = 'timeout'
         st['turn_deadline'] = None
         st['log'].append(f"⌛ {SIDE_KR[loser]} 미행동 {MAX_MISSES}회 — {SIDE_KR[st['winner']]} 자동 승리!")
         return True
@@ -419,6 +424,7 @@ def kill(st, target, actor_color, atype, method):
     if target['t'] == 'K':
         st['phase'] = 'over'
         st['winner'] = 'B' if target['o'] == 'W' else 'W'
+        st['end_reason'] = 'king'
         st['turn_deadline'] = None
         st['log'].append(
             f"☠ {SIDE_KR[actor_color]} {PIECE_KR[atype]}(으)로 "
@@ -441,7 +447,10 @@ def apply_move(st, color, pid, tr, tc):
         for step in range(1, distance + 1):
             rr, cc = p['r'] + sr * step, p['c'] + sc * step
             if piece_at(st, rr, cc) is not None:
-                tr, tc = rr, cc
+                # Pawns capture only one forward square. A two-square search
+                # stops before a hidden enemy on the second square; hints still
+                # depend only on observed information, never hidden occupancy.
+                tr, tc = (rr - sr, cc - sc) if p['t'] == 'P' and step > 1 else (rr, cc)
                 break
     origin = (p['r'], p['c'])
     target = piece_at(st, tr, tc)
@@ -456,7 +465,7 @@ def apply_move(st, color, pid, tr, tc):
     last = 0 if color == 'W' else N - 1        # 폰이 끝줄 도달 → 승격 대기(턴 안 넘김)
     if p['t'] == 'P' and tr == last:
         st['promote'] = {'pid': p['id'], 'color': color}
-        st['log'].append(f"{SIDE_KR[color]} 폰 승격! — 비숍/나이트/전차 중 선택하세요.")
+        st['log'].append(f"{SIDE_KR[color]} 폰 승격! — 퀸/비숍/나이트/전차 중 선택하세요.")
         return True, None
     advance_turn(st)
     return True, None
@@ -475,6 +484,8 @@ def apply_fire(st, color, pid, tr, tc):
         return False, '보드 밖입니다.'
     if (tr - p['r']) ** 2 + (tc - p['c']) ** 2 > BISHOP_RANGE ** 2:
         return False, '사거리 밖입니다.'
+    if not los_clear(p['r'], p['c'], tr, tc):
+        return False, '숲에 가로막혀 저격할 수 없습니다.'
     q = enemy_visible_at(st, color, tr, tc)
     if q is None:
         return False, '저격할 적이 보이지 않습니다(숨은 적은 못 맞힘).'
@@ -535,7 +546,7 @@ def apply_scan(st, color, pid, tr, tc):
         return False, '스캔할 퀸이 아닙니다.'
     if not in_board(tr, tc):
         return False, '보드 밖입니다.'
-    if abs(tr - p['r']) + abs(tc - p['c']) > SCAN_RANGE:
+    if (tr - p['r']) ** 2 + (tc - p['c']) ** 2 > SCAN_RANGE ** 2:
         return False, '스캔 사거리 밖입니다.'
     area = [(tr, tc), (tr, tc + 1), (tr + 1, tc), (tr + 1, tc + 1)]  # 지정칸=좌상단 2×2
     cells = [(r, c) for (r, c) in area if in_board(r, c)]
@@ -551,12 +562,12 @@ def apply_scan(st, color, pid, tr, tc):
 
 
 def apply_promote(st, color, choice):
-    """승격 대기 중인 폰을 선택 기물로 바꾼다(비숍/나이트/전차). 그 후 턴을 넘긴다."""
+    """승격 대기 중인 폰을 선택 기물로 바꾼다(퀸/비숍/나이트/전차). 그 후 턴을 넘긴다."""
     pr = st.get('promote')
     if st['phase'] != 'play' or st['turn'] != color or not pr or pr['color'] != color:
         return False, '승격 대기 중이 아닙니다.'
-    if choice not in ('R', 'N', 'B'):
-        return False, '비숍(B)·나이트(N)·전차(R) 중에서 선택하세요.'
+    if choice not in ('Q', 'R', 'N', 'B'):
+        return False, '퀸(Q)·비숍(B)·나이트(N)·전차(R) 중에서 선택하세요.'
     p = st['pieces'].get(pr['pid'])
     if p:
         p['t'] = choice
@@ -567,14 +578,17 @@ def apply_promote(st, color, choice):
     return True, None
 
 
-def apply_resign(st, color):
+def apply_resign(st, color, reason='resign'):
     """기권 — 상대 승리 처리."""
     if st['phase'] not in ('setup', 'play'):
         return False, '진행 중인 게임이 아닙니다.'
     st['phase'] = 'over'
     st['winner'] = 'B' if color == 'W' else 'W'
+    st['end_reason'] = 'disconnect' if reason == 'disconnect' else 'resign'
+    st['turn_deadline'] = None
     st['promote'] = None
-    st['log'].append(f"🏳 {SIDE_KR[color]} 기권 — {SIDE_KR[st['winner']]} 승리!")
+    label = '접속 끊김' if st['end_reason'] == 'disconnect' else '기권'
+    st['log'].append(f"🏳 {SIDE_KR[color]} {label} — {SIDE_KR[st['winner']]} 승리!")
     return True, None
 
 
@@ -676,9 +690,14 @@ def player_view(st, color, reveal=False):
     fx = None
     if st['fx'] and not spectator:
         cells = st['fx']['cells']
-        if st['fx']['actor'] == color or any((r, c) in vis for (r, c) in cells):
+        own = st['fx']['actor'] == color
+        movement = st['fx']['type'] in ('move', 'capture', 'kill')
+        shown = [[r, c] for r, c in cells if own or (
+            bool(grid[r][c]['p']) and grid[r][c]['p']['o'] == st['fx']['actor']
+            if movement else (r, c) in vis)]
+        if shown:
             fx = {'seq': st['fx']['seq'], 'type': st['fx']['type'],
-                  'cells': [[r, c] for (r, c) in cells if (r, c) in vis or st['fx']['actor'] == color]}
+                  'actor': st['fx']['actor'], 'cells': shown}
 
     return {
         'phase': st['phase'],
@@ -697,10 +716,14 @@ def player_view(st, color, reveal=False):
         'deadMe': [] if spectator else dead_types(st, color),     # 내가 잃은 기물(상대의 전리품)
         'deadOpp': [] if spectator else dead_types(st, opp),      # 내가 잡은 상대 기물(적의 죽음은 전부 내 공격이므로 정보 누출 없음)
         'winner': st['winner'],
+        'endReason': st.get('end_reason'),
         'promote': (st['promote']['pid'] if (st.get('promote') and not spectator
                                              and st['promote']['color'] == color) else None),
         'scanTiles': [[r, c] for s in st.get('scans', [])       # 활성 스캔 감시 타일(양쪽 다 봄)
                       if st['turnCount'] < s['until'] for (r, c) in s['cells']],
+        'scanZones': [{'cells': [[r, c] for r, c in s['cells']], 'owner': s['viewer'],
+                       'remaining': s['until'] - st['turnCount']}
+                      for s in st.get('scans', []) if st['turnCount'] < s['until']],
         'log': st['log'][-9:],
         'moveHistory': [] if spectator else st.get('move_history', {}).get(color, [])[-24:],
         'captured': [] if spectator else list(st.get('captured', {}).get(color, [])),
@@ -730,6 +753,8 @@ def _record_action(fn, kind):
         if ok:
             after = st['pieces'].get(pid) or {}
             label = {'move':'이동', 'fire':'저격', 'barrage':'돌파', 'scan':'스캔', 'promote':'승격', 'resign':'기권'}[kind]
+            if kind == 'resign' and st.get('end_reason') == 'disconnect':
+                label = '접속 종료'
             def square(r, c):
                 return chr(97 + c) + str(r + 1)
             detail = label
@@ -751,16 +776,18 @@ def _record_action(fn, kind):
             elif kind in ('fire', 'barrage', 'scan'):
                 compact = letter + {'fire':'!', 'barrage':'>>', 'scan':'?'}[kind] + square(args[1], args[2])
             elif kind == 'promote': compact = destination + '=' + after['t']
-            else: compact = 'resign'
+            else: compact = st.get('end_reason') or 'resign'
             st.setdefault('move_history', {}).setdefault(color, []).append(f'{turn + 1}. {compact}')
             # Full coordinates are never placed in player_view for the opposing side.
             st.setdefault('notation', []).append({
                 'turn': turn, 'actor': color, 'action': kind, 'pid': pid,
                 'compact': compact, 'description': detail,
+                'captures': max(0,len(st.get('captured',{}).get(color,[]))-captured_before),
                 'from': [before.get('r'), before.get('c')],
                 'to': [after.get('r'), after.get('c')],
                 'target': list(args[1:3]) if kind in ('fire', 'barrage', 'scan') else None,
                 'promotion': args[0] if kind == 'promote' else None,
+                'endReason': st.get('end_reason') if st['phase'] == 'over' else None,
             })
         return ok, msg
     return wrapped

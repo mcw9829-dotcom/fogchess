@@ -47,10 +47,13 @@ func _field(parent: Node,placeholder: String,text: String="",secret: bool=false)
 	return field
 
 func _window(title: String) -> Array:
+	var navigation_section: String = {"기물 설명":"기물 설명","리더보드":"리더보드","개발자에게 피드백":"피드백"}.get(title,"")
 	# Hide the preceding dialog before opening another exclusive window.
 	# queue_free() alone runs at frame end and otherwise leaves two active modals.
 	for child in app.get_children():
-		if child is Window and child.visible: child.hide()
+		if child is Window and child.visible:
+			if navigation_section.is_empty(): navigation_section = str(child.get_meta("navigation_section",""))
+			child.hide()
 	var return_focus: Control = app.get_viewport().gui_get_focus_owner()
 	var window = DismissibleWindow.new()
 	window.title = title
@@ -60,7 +63,8 @@ func _window(title: String) -> Array:
 	window.transient = true
 	window.exclusive = true
 	window.wrap_controls = false
-	window.min_size = Vector2i(320,280)
+	window.min_size = Vector2i(mini(320,int(app.size.x)-24),mini(280,int(app.size.y)-24))
+	window.set_meta("preferred_size",Vector2i(560,600))
 	var shade = ColorRect.new()
 	shade.color = Color(0,0,0,.65)
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -91,6 +95,7 @@ func _window(title: String) -> Array:
 	window.popup_centered(Vector2i(mini(int(app.size.x)-24,560),mini(int(app.size.y)-30,600)))
 	close.grab_focus()
 	app.ui_motion.enter_window.call_deferred(panel,shade)
+	app.ui_shell.track_navigation_window(window,navigation_section)
 	return [window,box]
 
 func _restore_focus(control: Control) -> void:
@@ -126,6 +131,7 @@ func confirm_action(title: String,text: String,action: String,callback: Callable
 		var control: Control = focus_ref.get_ref() if focus_ref!=null else null
 		_restore_focus.call_deferred(control))
 	dialog.build(app,title,text,action)
+	app.ui_shell.track_navigation_window(dialog,str(previous_window.get_meta("navigation_section","")) if is_instance_valid(previous_window) else "")
 
 func _form(title: String,definitions: Array,submit: Callable) -> void:
 	var pair = app._window(title)

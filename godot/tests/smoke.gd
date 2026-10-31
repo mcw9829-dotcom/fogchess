@@ -1,15 +1,28 @@
 extends SceneTree
 var app: Control
 var failures := 0
+var checks := 0
 
 func _initialize() -> void:
 	_run.call_deferred()
 
 func check(condition: bool,message: String) -> void:
+	checks += 1
 	if not condition:
 		failures += 1
 		push_error("FAIL: " + message)
 	else: print("PASS: " + message)
+
+func wait_for(predicate: Callable, label: String) -> bool:
+	var deadline := Time.get_ticks_msec()+6000
+	while not predicate.call() and Time.get_ticks_msec()<deadline:
+		await create_timer(.05).timeout
+	var ok: bool = predicate.call()
+	check(ok,label)
+	return ok
+
+func visible_history() -> Array:
+	return app.match_ui.history_chips.filter(func(chip):return chip.is_visible_in_tree()).map(func(chip):return chip.accessibility_name.trim_suffix(" · 전체 이동 기록 보기"))
 
 func _run() -> void:
 	root.size = Vector2i(1280,720)
@@ -17,7 +30,7 @@ func _run() -> void:
 	root.add_child(app)
 	await process_frame
 	for child in app.get_children():
-		if child is Timer: child.stop()
+		if child is Timer and child.name!="ChatReadVisibility": child.stop()
 	check(app.home.visible,"home created")
 	await create_timer(.3).timeout
 	await capture("home")
@@ -54,17 +67,19 @@ func _run() -> void:
 	app._navigation_home()
 	app._help()
 	await process_frame
-	var demos: Array = []
-	for node in app.find_children("*","Control",true,false):
-		if node.get_script()==preload("res://guide_demo(설명용 시연).gd"): demos.append(node)
-	demos[0].start()
-	check("재생 중" in demos[0].host.find_child("PlaybackStatus",true,false).text,"guide card announces playback")
-	demos[1].start()
-	check(not demos[0].running and demos[0].host.find_child("PlaybackStatus",true,false).text=="시연 대기","switching guide cards clears the previous highlight and status")
+	var guide = app.find_child("FocusedPieceGuide",true,false)
+	check(is_instance_valid(guide),"focused piece guide opens")
+	if not is_instance_valid(guide): quit(1); return
+	guide.replay.pressed.emit()
+	check(guide.demo.running and "재생 중" in guide.playback.text,"guide announces explicit playback")
+	var previous_demo = guide.demo
+	guide.piece_buttons.N.pressed.emit()
+	check(not previous_demo.running and previous_demo.is_queued_for_deletion() and guide.demo.running,"changing piece stops and replaces the previous demo")
 	await capture("guide")
-	demos[2].start()
-	demos[2].apply_frame(demos[2].frames.size()-1)
-	check("능력" in demos[2].host.find_child("PlaybackStatus",true,false).text,"guide status follows the demonstrated phase")
+	guide.piece_buttons.B.pressed.emit()
+	guide.stage_buttons.ability.pressed.emit()
+	guide.demo.apply_frame(guide.demo.frames.size()-1)
+	check(guide.stage=="ability" and "저격" in guide.playback.text and guide.rule_heading.text=="저격","guide status and rules follow the selected ability")
 	if "--capture" in OS.get_cmdline_user_args():
 		await close_windows()
 		root.size = Vector2i(390,844)
@@ -90,6 +105,9 @@ func _run() -> void:
 		if child is Window:
 			var tutorial: Control = child.get_child(0)
 			check(tutorial.board.tile(Vector2i(4,7)).get("p")==null,"tutorial bush enemy initially hidden")
+			tutorial._tap(Vector2i(7,8))
+			tutorial.action_menu.buttons[0].pressed.emit()
+			tutorial._tap(Vector2i(6,8))
 			tutorial._tap(Vector2i(6,2))
 			tutorial.action_menu.buttons[2].pressed.emit()
 			tutorial._tap(Vector2i(4,1))
@@ -100,7 +118,7 @@ func _run() -> void:
 			tutorial._tap(Vector2i(5,2))
 			tutorial.action_menu.buttons[1].pressed.emit()
 			tutorial._tap(Vector2i(1,5))
-			check(tutorial.step==3,"guided tutorial completes")
+			check(tutorial.step==4,"guided tutorial completes")
 			child.queue_free()
 	await process_frame
 	app._account()
@@ -130,7 +148,10 @@ func _run() -> void:
 			child.queue_free()
 	check(recovery_visible,"signup form hands off to recovery dialog")
 	await process_frame
-	await preload("res://tests/fidelity.gd").new().run(app,self,check)
+	var fidelity = preload("res://tests/fidelity.gd").new()
+	await fidelity.run(app,self,check)
+	check(fidelity.completed,"profile fidelity completes through recovery without an aborted scenario")
+	if not fidelity.completed: quit(1); return
 	await preload("res://tests/admin_flow.gd").new().run(app,self,check)
 	app._bot_menu()
 	await process_frame
@@ -232,7 +253,8 @@ func _run() -> void:
 		await app.api.request("/test-return-turn",{"room":app.room})
 		await app._poll()
 		check("잡은 기물" in app.enemy_counts.text and not app.view.get("captured",[]).is_empty(),"captured pieces shown instead of hidden opponent composition")
-		check(app.history_label.visible and not app.view.get("moveHistory",[]).is_empty(),"own move record visible below kill feed")
+		var records: Array = app.view.get("moveHistory",[])
+		check(not records.is_empty() and visible_history()==records.slice(maxi(0,records.size()-3)) and not app.history_label.visible,"own move record chips show server history / "+kind)
 		if kind=="Q": await capture("icon_killlog")
 	var trophy_data: Dictionary = await app.api.request("/test-fixture",{"scenario":"trophies"})
 	app._enter(trophy_data)
@@ -347,13 +369,18 @@ func _run() -> void:
 	await app.api.request("/chat",{"room":app.room,"token":friend.token,"text":"반가워요!","nonce":"friend-1"})
 	await app._poll()
 	check("반가워요!" in app.chat.transcript.text,"incoming chat renders")
+	# A received message is unread until the transcript is laid out and visible.
+	await app.chat._jump_to_chat()
+	await wait_for(func():return app.chat._can_read_latest() and app.chat.unread==0,"visible incoming chat becomes read before folding")
 	app.chat.toggle.pressed.emit()
 	await create_timer(1.05).timeout
 	await app.api.request("/chat",{"room":app.room,"token":friend.token,"text":"즐거운 대국 해요","nonce":"friend-2"})
 	await app._poll()
 	check(app.chat.unread==1 and not app.chat.body.visible,"collapsed chat counts new messages")
 	app.chat.toggle.pressed.emit()
-	check(app.chat.unread==0 and app.chat.body.visible,"expanding chat clears unread count")
+	check(app.chat.unread==1,"expansion alone does not acknowledge an unlaid-out message")
+	await app.chat._jump_to_chat()
+	await wait_for(func():return app.chat._can_read_latest() and app.chat.unread==0,"visible expanded chat clears unread count")
 
 	var reconnect: Dictionary = await app.api.request("/join",{"room":app.room,"token":app.token})
 	check(reconnect.get("token")==app.token and reconnect.get("color")==app.seat,"reconnect retains seat")
@@ -371,9 +398,18 @@ func _run() -> void:
 	app.game_display._render()
 	await process_frame
 	await process_frame
-	check(not app.history_label.text.contains("\n") and app.history_label.text.contains("80. Nf4") and not app.history_label.text.contains("77. Nf4"),"collapsed history shows only the last three compact moves")
+	check(visible_history()==["78. Nf4","79. Nf4","80. Nf4"] and not app.history_label.visible,"collapsed history shows exactly the last three move chips")
 	app.match_ui.history_toggle.pressed.emit()
-	check(app.history_label.text.split("\n").size()==10 and app.history_button.visible,"expanded history is bounded to ten moves with full history access")
+	check(visible_history()==long_history.slice(70) and app.history_button.visible,"expanded history shows exactly the last ten move chips with full history access")
+	app.history_button.pressed.emit()
+	await process_frame
+	var full_history: Label
+	for child in app.get_children():
+		if child is Window:
+			for label in child.find_children("*","Label",true,false):
+				if label.text.begins_with("1. Nf4"): full_history=label
+	check(full_history!=null and full_history.text.split("\n").size()==80 and full_history.text.ends_with("80. Nf4"),"full history preserves all eighty server moves")
+	await close_windows()
 	check(app.chat.entry.get_global_rect().end.y<=app.side_panel.get_global_rect().end.y,"chat input remains inside sidebar with long history")
 	check(app.game_display._compact_history("1. resign")=="1. 기권","internal resignation event has player-facing notation")
 	app.view["moveHistory"] = old_history
@@ -398,7 +434,9 @@ func _run() -> void:
 	await app._match_command("join")
 	await app.api.request("/match/join",{"session":other.get("session","")})
 	await app._poll()
-	check(app.match_data.get("state")=="found","rank match found")
+	# _poll starts queue polling asynchronously when there is no active room.
+	await wait_for(func():return app.match_data.get("state")=="found" and not app.matchmaking.polling,"rank match found after queue response")
+	check(is_instance_valid(app.match_window) and app.match_window.visible,"found rank exposes acceptance dialog")
 	await app.api.request("/match/accept",{"session":other.get("session","")})
 	await app._match_command("accept")
 	await app._poll()
@@ -467,6 +505,7 @@ func _run() -> void:
 	await app._poll()
 	check(app.board.tile(Vector2i(0,2)).get("f")==0,"solo reveal toggle")
 	# Web build also loads this client, but excludes test scripts.
+	print("GODOT_SMOKE_CHECKS="+str(checks))
 	print("GODOT_SMOKE_FAILURES="+str(failures))
 	app.queue_free()
 	await process_frame
@@ -477,7 +516,8 @@ func capture(name: String) -> void:
 	await process_frame
 	await create_timer(1.0).timeout
 	RenderingServer.force_draw(false)
-	var directory := ProjectSettings.globalize_path("res://").path_join("../.dev-data/qa-captures")
+	var directory := OS.get_environment("FOG_CAPTURE_DIR")
+	if directory.is_empty(): directory=ProjectSettings.globalize_path("res://").path_join("../.dev-data/qa-captures")
 	DirAccess.make_dir_recursive_absolute(directory)
 	root.get_texture().get_image().save_png(directory.path_join(name+".png"))
 

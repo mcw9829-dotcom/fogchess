@@ -1,6 +1,7 @@
 extends RefCounted
 ## Feature implementation. Shared scene state and cross-feature entry points live on app.
 var app
+var version_footer: Button
 
 func _init(context: Control) -> void:
 	app = context
@@ -16,7 +17,7 @@ func _save() -> void:
 func _settings() -> void:
 	var box = app._subscreen("설정")
 	app._nav_active("설정")
-	for item in [["sound","효과음","",true],["music","배경음악","",true],["colorblind","색약 모드","빨강·초록 대신 파랑·주황 계열로 구분",false],["effects","파티클 이펙트","폭발·안개·물결 연출",true],["practice_tips","연습 학습 안내","컴퓨터 대국·혼자 연습에서 상황별 규칙 설명",true]]:
+	for item in [["sound","효과음","버튼·토글과 전투 효과음",true],["lobby_music","로비 배경음악","홈·메뉴에서만 재생 · 대국과 리플레이에서는 정지",true],["colorblind","색약 모드","빨강·초록 대신 파랑·주황 계열로 구분",false],["effects","파티클 이펙트","폭발·안개·물결 연출",true],["practice_tips","연습 학습 안내","컴퓨터 대국·혼자 연습에서 상황별 규칙 설명",true]]:
 		var content = app._card(box,"")
 		var row = HBoxContainer.new()
 		content.add_child(row)
@@ -41,8 +42,6 @@ func _settings() -> void:
 			app.prefs.set_value("settings",item[0],value)
 			app._save()
 			app.audio.enabled = bool(app.prefs.get_value("settings","sound",true))
-			if item[0]=="sound" and value: app.audio.cue("place")
-			app.audio.music(not app.room.is_empty() and bool(app.prefs.get_value("settings","music",true)))
 			app.board.effects = bool(app.prefs.get_value("settings","effects",true))
 			app.board.colorblind = bool(app.prefs.get_value("settings","colorblind",false))
 			for sample in samples: sample.queue_redraw())
@@ -51,13 +50,13 @@ func _settings() -> void:
 	volume_card.add_child(volume_row)
 	app._label(volume_row,"볼륨",14)
 	var volume = HSlider.new()
-	volume.custom_minimum_size = Vector2(180,34)
+	volume.custom_minimum_size = Vector2(180,44)
 	volume.min_value = 0
 	volume.max_value = 1
 	volume.step = .05
 	volume.value = app.audio.level
 	volume_row.add_child(volume)
-	volume.drag_ended.connect(func(_changed): app.audio.cue("place"))
+	volume.drag_ended.connect(func(_changed): app.audio.cue("ui_click"))
 	volume.value_changed.connect(func(value): app.audio.set_level(value); app.prefs.set_value("settings","volume",value); app._save())
 	var theme_card = app._card(box,"")
 	var theme_row = HBoxContainer.new()
@@ -77,22 +76,68 @@ func _settings() -> void:
 	_refresh_theme_choices()
 	var theme_note = app._label(theme_card,"화면과 메뉴 색상에 적용됩니다.",11)
 	theme_note.autowrap_mode = TextServer.AUTOWRAP_OFF
-	box.move_child(volume_card.get_parent(),3)
-	box.move_child(theme_card.get_parent(),4)
+	box.move_child(volume_card.get_parent(),2)
+	box.move_child(theme_card.get_parent(),3)
 	var preview_card = app._card(box,"")
 	var preview_row = HBoxContainer.new()
 	preview_card.add_child(preview_row)
 	app._label(preview_row,"이펙트 미리보기",14)
 	app._button(preview_row,"열기",app._effect_preview)
-	app._button(box,"관리자",app._admin)
 	var advanced = app._button(box,"서버 연결 · 개발 설정",app._connection_settings)
 	advanced.visible = not OS.has_feature("web")
 	advanced.flat = true
 	advanced.add_theme_font_size_override("font_size",11)
 	app._button(box,"← 뒤로",app._navigation_home)
+	_version_footer(box)
 	for child in box.get_children():
 		if child is PanelContainer: child.set_meta("settings_card",true)
 	_refresh_setting_cards()
+
+func _version_footer(box: Control) -> void:
+	# This only reveals the existing login dialog. Authorization remains server-side.
+	var version := Button.new()
+	version_footer = version
+	version.name = "SettingsVersion"
+	_refresh_version_footer()
+	version.flat = true
+	version.custom_minimum_size = Vector2(120,44)
+	version.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	version.add_theme_font_size_override("font_size",12)
+	version.modulate.a = .75
+	for state in ["normal","hover","pressed","disabled"]:
+		version.add_theme_stylebox_override(state,StyleBoxEmpty.new())
+	# Keyboard focus stays visible; ordinary pointer hover remains plain version text.
+	var focus := StyleBoxFlat.new()
+	focus.bg_color = Color.TRANSPARENT
+	focus.border_color = Color("#b18a4d")
+	focus.set_border_width_all(1)
+	focus.set_corner_radius_all(4)
+	version.add_theme_stylebox_override("focus",focus)
+	box.add_child(version)
+	var taps := {"count":0,"deadline":0}
+	version.visibility_changed.connect(func():
+		if not version.is_visible_in_tree():
+			taps.count = 0
+			taps.deadline = 0)
+	# BaseButton.pressed handles mouse, keyboard and emulated touch once per release.
+	version.pressed.connect(func():
+		if not version.is_visible_in_tree(): return
+		var now := Time.get_ticks_msec()
+		if taps.count==0 or now>int(taps.deadline):
+			taps.count = 0
+			taps.deadline = now+5000
+		taps.count += 1
+		if taps.count==5:
+			taps.count = 0
+			taps.deadline = 0
+			version.release_focus()
+			app._admin())
+
+func _refresh_version_footer() -> void:
+	if not is_instance_valid(version_footer): return
+	version_footer.text = app.rail_version.text.get_slice(" · ",0)
+	if not version_footer.text.begins_with("v"): version_footer.text = "버전 정보"
+	version_footer.accessibility_name = "게임 버전 " + version_footer.text
 
 func _refresh_setting_cards() -> void:
 	for child in app.subpage.get_children():
@@ -117,7 +162,7 @@ func _colorblind_preview(parent: Node) -> Array:
 	var row = HBoxContainer.new()
 	row.add_theme_constant_override("separation",8)
 	parent.add_child(row)
-	for entry in [["move","이동 · 점"],["attack","공격 · 원"],["scan","스캔 · 사각"]]:
+	for entry in [["move","이동 · 점"],["attack","공격 · 원"],["scan","스캔 · 조준"]]:
 		var column = VBoxContainer.new()
 		column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(column)
@@ -138,8 +183,12 @@ func _draw_signal_sample(sample: Control, kind: String) -> void:
 		"move": sample.draw_circle(at,8,color)
 		"attack": sample.draw_arc(at,10,0,TAU,32,color,3,true)
 		"scan":
-			sample.draw_rect(Rect2(at-Vector2.ONE*10,Vector2.ONE*20),Color(color,.2))
-			sample.draw_rect(Rect2(at-Vector2.ONE*10,Vector2.ONE*20),color,false,2)
+			sample.draw_circle(at,9,Color(color,.15))
+			for i in range(4):
+				var angle := PI*.25+i*PI*.5
+				sample.draw_arc(at,10,angle-.32,angle+.32,10,color,2,true)
+			sample.draw_line(at-Vector2(4,0),at+Vector2(4,0),color,1.5,true)
+			sample.draw_line(at-Vector2(0,4),at+Vector2(0,4),color,1.5,true)
 
 func _apply_theme() -> void:
 	var light = bool(app.prefs.get_value("settings","light",false))
@@ -147,6 +196,9 @@ func _apply_theme() -> void:
 	design.default_font = app._original_font(400)
 	design.default_font_size = 14
 	var colors: Dictionary = app.ui_components._palette()
+	_apply_range_control_theme(design,colors,light)
+	design.set_color("default_color","RichTextLabel",colors.text)
+	design.set_color("selection_color","RichTextLabel",Color(colors.accent,.28))
 	for type in ["Label","RichTextLabel","CheckBox","Button","LineEdit","TextEdit","OptionButton"]:
 		design.set_color("font_color",type,colors.text)
 		design.set_color("font_disabled_color",type,colors.disabled)
@@ -190,6 +242,7 @@ func _apply_theme() -> void:
 	app.theme = design
 	app.coach_label.add_theme_color_override("font_color",Color("#76521e") if light else Color("#eed29a"))
 	app.ui_components._refresh_button_styles(app)
+	if is_instance_valid(app.ui_shell.lobby_home): app.ui_shell.lobby_home.apply_theme()
 	_refresh_theme_choices()
 	_refresh_setting_cards()
 	app._tint_button(app.ready_button,Color("#c69a5e"),true)
@@ -206,11 +259,81 @@ func _apply_theme() -> void:
 	overlay.bg_color = Color(.055,.07,.086,.88)
 	overlay.set_corner_radius_all(4)
 	app.result_panel.add_theme_stylebox_override("panel",overlay)
-	app._nav_active("설정" if app.subpage.visible else "플레이")
+	# This surface stays dark in both themes, including dynamically added labels.
+	var result_theme := Theme.new()
+	result_theme.set_color("font_color","Label",Color("#f3f0e8"))
+	result_theme.set_color("default_color","RichTextLabel",Color("#f3f0e8"))
+	app.result_panel.theme = result_theme
+	app.ui_shell._refresh_navigation()
 	app.match_ui.apply_theme()
+	app.replay.apply_theme()
 	app.feed_signature = ""
 	if not app.view.is_empty(): app._render()
-	app.audio.music(not app.room.is_empty() and bool(app.prefs.get_value("settings","music",true)))
+
+func _control_svg(markup: String, width: int, height: int) -> Texture2D:
+	var image := Image.new()
+	image.load_svg_from_string('<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d">%s</svg>' % [width,height,width,height,markup])
+	return ImageTexture.create_from_image(image)
+
+func _range_track(color: Color, vertical: bool) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = color
+	style.set_corner_radius_all(2)
+	style.content_margin_left = 2 if vertical else 0
+	style.content_margin_right = 2 if vertical else 0
+	style.content_margin_top = 0 if vertical else 2
+	style.content_margin_bottom = 0 if vertical else 2
+	return style
+
+func _scroll_thumb(color: Color, vertical: bool, highlighted: bool) -> StyleBoxTexture:
+	# Narrow visible ink inside the unchanged 16px interaction width.
+	var thickness := 8 if highlighted else 6
+	var inset := (16-thickness)/2
+	var rect := '<rect x="%d" y="2" width="%d" height="28" rx="%d" fill="#%s"/>' % [inset,thickness,thickness/2,color.to_html(false)] if vertical else '<rect x="2" y="%d" width="28" height="%d" rx="%d" fill="#%s"/>' % [inset,thickness,thickness/2,color.to_html(false)]
+	var style := StyleBoxTexture.new()
+	style.texture = _control_svg(rect,16 if vertical else 32,32 if vertical else 16)
+	style.texture_margin_left = 8 if vertical else 6
+	style.texture_margin_right = 8 if vertical else 6
+	style.texture_margin_top = 6 if vertical else 8
+	style.texture_margin_bottom = 6 if vertical else 8
+	style.content_margin_left = 8 if vertical else 6
+	style.content_margin_right = 8 if vertical else 6
+	style.content_margin_top = 6 if vertical else 8
+	style.content_margin_bottom = 6 if vertical else 8
+	return style
+
+func _apply_range_control_theme(design: Theme, colors: Dictionary, light: bool) -> void:
+	var track := Color("#c9c8bf") if light else Color("#424e49")
+	var thumb := Color("#7b847c") if light else Color("#87978e")
+	var accent := Color("#9b722e") if light else Color("#e3bd78")
+	for type in ["HSlider","VSlider"]:
+		var vertical: bool = type=="VSlider"
+		design.set_stylebox("slider",type,_range_track(track,vertical))
+		design.set_stylebox("grabber_area",type,_range_track(accent,vertical))
+		design.set_stylebox("grabber_area_highlight",type,_range_track(accent.lightened(.12),vertical))
+		for state in ["grabber","grabber_highlight","grabber_disabled"]:
+			var fill: Color = colors.surface if state=="grabber" else (accent if state=="grabber_highlight" else track)
+			var edge: Color = thumb if state=="grabber_disabled" else accent
+			var halo := '<circle cx="13" cy="13" r="11" fill="#%s" fill-opacity="0.16"/>' % accent.to_html(false) if state=="grabber_highlight" else ''
+			# 14px handle, 26px texture footprint; the slider control keeps 44px height.
+			design.set_icon(state,type,_control_svg(halo+'<circle cx="13" cy="13" r="7" fill="#%s" stroke="#%s" stroke-width="1.6"/>' % [fill.to_html(false),edge.to_html(false)],26,26))
+	for type in ["HScrollBar","VScrollBar"]:
+		var vertical: bool = type=="VScrollBar"
+		var background := StyleBoxFlat.new()
+		background.bg_color = Color.TRANSPARENT
+		background.content_margin_left = 8 if vertical else 0
+		background.content_margin_right = 8 if vertical else 0
+		background.content_margin_top = 0 if vertical else 8
+		background.content_margin_bottom = 0 if vertical else 8
+		design.set_stylebox("scroll",type,background)
+		var focus: StyleBoxFlat = background.duplicate()
+		focus.set_border_width_all(1)
+		focus.border_color = Color(accent,.55)
+		focus.set_corner_radius_all(4)
+		design.set_stylebox("scroll_focus",type,focus)
+		design.set_stylebox("grabber",type,_scroll_thumb(thumb,vertical,false))
+		design.set_stylebox("grabber_highlight",type,_scroll_thumb(accent,vertical,true))
+		design.set_stylebox("grabber_pressed",type,_scroll_thumb(accent,vertical,true))
 
 func _connection_settings() -> void:
 	var pair = app._window("서버 연결")
@@ -239,3 +362,4 @@ func _toggle_sound() -> void:
 	app._save()
 	app.sound_button.text = "소리 켜짐" if app.audio.enabled else "소리 꺼짐"
 	if not app.view.is_empty(): app.match_ui.render()
+
